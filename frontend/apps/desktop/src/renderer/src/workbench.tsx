@@ -1,32 +1,47 @@
-/** 工作台容器：把右栏的文件、Diff、终端、checkpoint、PR 与预览面板接到 Host RPC。 */
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react"
+/** 右侧面板容器：把浏览器、终端、文件、Diff、PR 与检查点 surface 接到 Host RPC。 */
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react"
+import { Plus, Trash2 } from "lucide-react"
 import type { Connection } from "@pigcode/client-runtime"
 import type { PullRequestInfo } from "@pigcode/contracts"
 import { Button, useLocale } from "@pigcode/ui-primitives"
 import {
+  BrowserView,
   CheckpointPanel,
   DiffView,
   FilePreview,
   FileTree,
   PrPanel,
-  PreviewPanel,
   RightPanel,
-  TerminalView,
   WorktreePicker,
+  addSurface,
+  closeSurface,
+  renameSurface,
   type CheckpointPhase,
   type FilePreviewFile,
+  type PanelSurfaceState,
   type PrCreateInput,
-  type RightPanelTab,
-  type TerminalHandle,
+  type SurfaceKind,
 } from "@pigcode/ui-workbench"
-import { prPanelLabels, previewPanelLabels, tabLabels } from "./workbench-labels"
+import { TerminalSurface } from "./terminal-surface"
+import { browserLabels, prPanelLabels, rightPanelLabels, surfaceTitle } from "./workbench-labels"
 
-/** 工作台属性；线程切换时由父组件用 key 重新挂载以释放终端。 */
+/** 右侧面板属性；标签状态由 App 按线程保存，线程切换时父组件用 key 重新挂载以释放终端。 */
 export interface WorkbenchPanelProps {
   connection: Connection
   threadId: string
-  onClose: () => void
+  panel: PanelSurfaceState
+  onPanelChange: (update: (state: PanelSurfaceState) => PanelSurfaceState) => void
+  /** 标签栏右侧的布局按钮。 */
+  controls?: ReactNode
   onError: (message: string) => void
+}
+
+let surfaceSeq = 0
+
+/** 生成 surface id；只需在本窗口内唯一。 */
+function nextSurfaceId(): string {
+  surfaceSeq += 1
+  return `surface-${surfaceSeq}`
 }
 
 /** workspace.tree 返回的条目。 */
@@ -51,17 +66,6 @@ interface WorktreeRecord {
   branch: string | null
 }
 
-/** terminal.open 返回的会话。 */
-interface TerminalSession {
-  id: string
-  cols: number
-  rows: number
-}
-
-/** 终端初始尺寸；xterm 挂载后会通过 fit 与 resize 修正。 */
-const TERMINAL_COLS = 80
-const TERMINAL_ROWS = 24
-
 /** 把 unknown 错误转成可展示文本。 */
 function messageOf(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
@@ -72,10 +76,18 @@ async function callRpc<T>(connection: Connection, method: string, params: unknow
   return (await connection.call(method, params)) as T
 }
 
-/** 工作台右栏；每个 tab 的数据只在激活时加载。 */
-export function WorkbenchPanel({ connection, threadId, onClose, onError }: WorkbenchPanelProps) {
+/** 右侧面板；文件、Diff、PR 的数据只在对应标签激活时加载，终端与浏览器标签切走后保持挂载。 */
+export function WorkbenchPanel({
+  connection,
+  threadId,
+  panel,
+  onPanelChange,
+  controls,
+  onError,
+}: WorkbenchPanelProps) {
   const { t } = useLocale()
-  const [tab, setTab] = useState<RightPanelTab>("files")
+  const tab: SurfaceKind | null =
+    panel.surfaces.find((surface) => surface.id === panel.activeId)?.kind ?? null
   const [entries, setEntries] = useState<WorkspaceEntry[]>([])
   const [treeError, setTreeError] = useState<string | null>(null)
   const [selectedPath, setSelectedPath] = useState<string | null>(null)
@@ -89,8 +101,6 @@ export function WorkbenchPanel({ connection, threadId, onClose, onError }: Workb
   const [diffLoading, setDiffLoading] = useState(false)
   const [diffError, setDiffError] = useState<string | null>(null)
   const [diffBase, setDiffBase] = useState<string | null>(null)
-  const [terminalId, setTerminalId] = useState<string | null>(null)
-  const [terminalError, setTerminalError] = useState<string | null>(null)
   const [worktrees, setWorktrees] = useState<WorktreeRecord[]>([])
   const [activeWorktree, setActiveWorktree] = useState<string | null>(null)
   const [worktreeBusy, setWorktreeBusy] = useState(false)
@@ -98,9 +108,8 @@ export function WorkbenchPanel({ connection, threadId, onClose, onError }: Workb
   const [prLoading, setPrLoading] = useState(false)
   const [prCreating, setPrCreating] = useState(false)
   const [prError, setPrError] = useState<string | null>(null)
-  const terminalHandle = useRef<TerminalHandle | null>(null)
 
-  // 文件树：每次进入 Files tab 都重新读取，反映终端或外部编辑后的状态。
+  // 文件树：每次进入文件标签都重新读取，反映终端或外部编辑后的状态。
   useEffect(() => {
     if (tab !== "files") return undefined
     let cancelled = false
@@ -223,64 +232,6 @@ export function WorkbenchPanel({ connection, threadId, onClose, onError }: Workb
     }
   }, [tab, threadId, connection])
 
-  // 终端：进入 Terminal tab 时打开 PTY；离开 tab 或卸载时关闭并释放订阅。
-  useEffect(() => {
-    if (tab !== "terminal") return undefined
-    let cancelled = false
-    let openedId: string | null = null
-    setTerminalError(null)
-    void callRpc<TerminalSession>(connection, "terminal.open", {
-      threadId,
-      cols: TERMINAL_COLS,
-      rows: TERMINAL_ROWS,
-    })
-      .then((session) => {
-        openedId = session.id
-        if (cancelled) {
-          void connection.call("terminal.close", { terminalId: session.id }).catch(() => undefined)
-          return
-        }
-        setTerminalId(session.id)
-      })
-      .catch((error: unknown) => {
-        if (!cancelled) setTerminalError(messageOf(error))
-      })
-    return () => {
-      cancelled = true
-      setTerminalId(null)
-      if (openedId) {
-        void connection.call("terminal.close", { terminalId: openedId }).catch(() => undefined)
-      }
-    }
-  }, [tab, threadId, connection])
-
-  // 只把当前终端 id 的输出写进 xterm；订阅随 terminalId 变化或卸载释放。
-  useEffect(() => {
-    if (!terminalId) return undefined
-    return connection.onTerminalOutput((output) => {
-      if (output.terminalId === terminalId) terminalHandle.current?.write(output.data)
-    })
-  }, [connection, terminalId])
-
-  function sendTerminalData(data: string): void {
-    if (!terminalId) return
-    void connection
-      .call("terminal.write", { terminalId, data })
-      .catch((error: unknown) => setTerminalError(messageOf(error)))
-  }
-
-  function resizeTerminal(cols: number, rows: number): void {
-    if (!terminalId) return
-    void connection
-      .call("terminal.resize", { terminalId, cols, rows })
-      .catch((error: unknown) => setTerminalError(messageOf(error)))
-  }
-
-  function handleTerminalReady(handle: TerminalHandle | null): void {
-    terminalHandle.current = handle
-    handle?.focus()
-  }
-
   async function createCheckpoint(): Promise<void> {
     setCheckpointBusy(true)
     setCheckpointError(null)
@@ -368,11 +319,25 @@ export function WorkbenchPanel({ connection, threadId, onClose, onError }: Workb
     }
   }
 
-  const labels = tabLabels(t)
+  const labels = rightPanelLabels(t)
   const prLabels = prPanelLabels(t)
-  const previewLabels = previewPanelLabels(t)
+  const webLabels = browserLabels(t)
 
-  const tabs: Record<RightPanelTab, ReactNode> = {
+  function add(kind: SurfaceKind): void {
+    onPanelChange((state) =>
+      addSurface(state, kind, nextSurfaceId(), (index) => surfaceTitle(t, kind, index)),
+    )
+  }
+
+  function close(id: string): void {
+    onPanelChange((state) => closeSurface(state, id))
+  }
+
+  function retitleBrowser(id: string, url: string): void {
+    onPanelChange((state) => renameSurface(state, id, new URL(url).host))
+  }
+
+  const content: Record<"files" | "diff" | "checkpoint" | "pr", ReactNode> = {
     files: (
       <div className="workbench-files">
         <div className="workbench-worktree-compact">
@@ -420,22 +385,6 @@ export function WorkbenchPanel({ connection, threadId, onClose, onError }: Workb
         )}
       </div>
     ),
-    terminal: (
-      <div className="workbench-terminal">
-        {terminalError ? (
-          <p className="workbench-error">{terminalError}</p>
-        ) : terminalId ? (
-          <TerminalView
-            onData={sendTerminalData}
-            onResize={resizeTerminal}
-            onReady={handleTerminalReady}
-          />
-        ) : (
-          // terminal.open 是异步 RPC；会话就绪前不挂载 xterm，避免输入被静默丢弃。
-          <p className="workbench-empty">{t("workbench.terminalOpening")}</p>
-        )}
-      </div>
-    ),
     checkpoint: (
       <div className="workbench-checkpoints">
         <header className="workbench-section-header">
@@ -467,19 +416,75 @@ export function WorkbenchPanel({ connection, threadId, onClose, onError }: Workb
         labels={prLabels}
       />
     ),
-    preview: <PreviewPanel labels={previewLabels} />,
   }
 
   return (
     <div className="workbench">
       <RightPanel
         threadId={threadId}
-        tabs={tabs}
-        active={tab}
-        onTab={setTab}
-        onClose={onClose}
+        surfaces={panel.surfaces}
+        activeId={panel.activeId}
+        onActivate={(id) => onPanelChange((state) => ({ ...state, activeId: id }))}
+        onClose={close}
+        onAdd={add}
+        controls={controls}
         labels={labels}
-      />
+      >
+        {panel.surfaces.map((surface) => {
+          const active = surface.id === panel.activeId
+          if (surface.kind === "terminal") {
+            return (
+              <div key={surface.id} className="surface-pane" hidden={!active}>
+                <TerminalSurface
+                  connection={connection}
+                  threadId={threadId}
+                  active={active}
+                  tools={
+                    <>
+                      <Button
+                        variant="plain"
+                        size="icon"
+                        type="button"
+                        aria-label={t("terminal.new")}
+                        title={t("terminal.new")}
+                        onClick={() => add("terminal")}
+                      >
+                        <Plus className="ic ic-sm" aria-hidden="true" />
+                      </Button>
+                      <Button
+                        variant="plain"
+                        size="icon"
+                        type="button"
+                        aria-label={t("terminal.kill")}
+                        title={t("terminal.kill")}
+                        onClick={() => close(surface.id)}
+                      >
+                        <Trash2 className="ic ic-sm" aria-hidden="true" />
+                      </Button>
+                    </>
+                  }
+                />
+              </div>
+            )
+          }
+          if (surface.kind === "browser") {
+            return (
+              <div key={surface.id} className="surface-pane" hidden={!active}>
+                <BrowserView
+                  labels={webLabels}
+                  onNavigate={(url) => retitleBrowser(surface.id, url)}
+                />
+              </div>
+            )
+          }
+          if (!active) return null
+          return (
+            <div key={surface.id} className="surface-pane surface-scroll">
+              {content[surface.kind]}
+            </div>
+          )
+        })}
+      </RightPanel>
     </div>
   )
 }

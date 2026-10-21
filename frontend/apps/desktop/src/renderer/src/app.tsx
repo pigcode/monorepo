@@ -1,5 +1,5 @@
 /** 应用外壳：把 store/connection 接到 Shell、聊天、设置与插件管理器。 */
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useRef, useState, type ReactNode } from "react"
 import type { Project, Thread } from "@pigcode/contracts"
 import {
   AppRenderer,
@@ -16,13 +16,20 @@ import {
   type Locale,
 } from "@pigcode/ui-primitives"
 import { ChatView, type ApprovalDecision, type ProviderOption } from "@pigcode/ui-chat"
-import type { SettingsSection, ShellView } from "@pigcode/ui-shell"
-import { ThreadTabs, type ThreadTabStatus } from "@pigcode/ui-shell"
+import type { SettingsSection, ShellView, ThreadStatus } from "@pigcode/ui-shell"
+import {
+  EMPTY_SURFACE_STATE,
+  PanelLayoutControls,
+  type PanelLayoutControlsProps,
+  type PanelSurfaceState,
+} from "@pigcode/ui-workbench"
 import type { ClientPluginController } from "./client-plugins"
 import { PluginPanels } from "./client-plugins"
 import { ConnectionBanner } from "./connection-banner"
 import { listProviders, loadProviderContext, pickProviderId } from "./providers"
+import { TerminalDrawer } from "./terminal-drawer"
 import { WorkbenchPanel } from "./workbench"
+import { layoutLabels } from "./workbench-labels"
 
 /** 核心容器共享的依赖。 */
 export interface CoreDeps {
@@ -35,6 +42,8 @@ export interface CoreDeps {
 export interface ChatSlotProps {
   rightOpen?: boolean
   onToggleRight?: () => void
+  /** 右栏收起时放在线程头末尾的布局按钮。 */
+  layoutControls?: ReactNode
   onNewThread?: () => void
 }
 
@@ -62,7 +71,7 @@ export function ChatViewContainer({
   deps,
   rightOpen = false,
   onToggleRight,
-  onNewThread,
+  layoutControls,
 }: { deps: CoreDeps } & ChatSlotProps) {
   const state = useAppStore(deps.store)
   const thread = state.threads.find((item) => item.id === state.activeThreadId) ?? null
@@ -154,31 +163,6 @@ export function ChatViewContainer({
       .catch((error: unknown) => deps.store.update({ error: messageOf(error) }))
   }
 
-  // 多会话 tab 栏：标题来自线程列表，状态来自每个线程独立的 ThreadViewState。
-  const openThreads = state.openThreadIds.flatMap(
-    (id) => state.threads.find((item) => item.id === id) ?? [],
-  )
-  const statusByThread = Object.fromEntries(
-    state.openThreadIds.map((id) => [id, state.threadStates[id]?.status ?? "idle"]),
-  ) as Record<string, ThreadTabStatus>
-  const tabs =
-    openThreads.length > 0 ? (
-      <ThreadTabs
-        threads={openThreads}
-        openThreadIds={state.openThreadIds}
-        activeThreadId={state.activeThreadId}
-        statusByThread={statusByThread}
-        onActivate={(threadId) => deps.store.setActiveThread(threadId)}
-        onClose={(threadId) => {
-          deps.store.closeThread(threadId)
-          void deps.connection
-            .closeThread(threadId)
-            .catch((error: unknown) => deps.store.update({ error: messageOf(error) }))
-        }}
-        {...(onNewThread ? { onNew: onNewThread } : {})}
-      />
-    ) : undefined
-
   return (
     <>
       {providerNotice ? (
@@ -190,7 +174,6 @@ export function ChatViewContainer({
         thread={thread}
         events={state.events}
         streamingText={state.streamingText}
-        tabs={tabs}
         capabilities={state.providerCapabilities}
         models={state.providerModels}
         providers={providerOptions}
@@ -207,11 +190,17 @@ export function ChatViewContainer({
         onSwitchModel={switchModel}
         rightOpen={rightOpen}
         {...(onToggleRight ? { onToggleRight } : {})}
+        {...(layoutControls ? { layoutControls } : {})}
       />
     </>
   )
 }
 
+/** 布局按钮；App 位于 LocaleProvider 之外，文案在渲染处读取。 */
+function LayoutControls(props: Omit<PanelLayoutControlsProps, "labels">) {
+  const { t } = useLocale()
+  return <PanelLayoutControls {...props} labels={layoutLabels(t)} />
+}
 
 /** 应用根组件。 */
 export function App({ store, slots, connection, plugins, locale }: AppProps) {
@@ -220,6 +209,11 @@ export function App({ store, slots, connection, plugins, locale }: AppProps) {
   const [view, setView] = useState<ShellView>("chat")
   const [section, setSection] = useState<SettingsSection>("general")
   const [rightOpen, setRightOpen] = useState(false)
+  const [rightMaximized, setRightMaximized] = useState(false)
+  const [terminalOpen, setTerminalOpen] = useState(false)
+  // 底部终端第一次打开后才挂载，之后收起只隐藏，shell 会话保留到切换线程。
+  const [terminalStarted, setTerminalStarted] = useState(false)
+  const [panels, setPanels] = useState<Record<string, PanelSurfaceState>>({})
   const initialLoadDone = useRef(false)
 
   // 首次连上 Host 后拉取项目与线程；重连时保留当前界面状态。
@@ -298,10 +292,42 @@ export function App({ store, slots, connection, plugins, locale }: AppProps) {
   }
 
   const effectiveSection: SettingsSection = view === "plugins" ? "plugins" : section
-  const threadStatus: Record<string, ThreadTabStatus> = {}
+  const threadStatus: Record<string, ThreadStatus> = {}
   for (const [threadId, viewState] of Object.entries(state.threadStates)) {
     threadStatus[threadId] = viewState.status
   }
+  const activeThreadId = view === "chat" ? state.activeThreadId : null
+
+  function toggleRight(): void {
+    setRightOpen((value) => !value)
+    setRightMaximized(false)
+  }
+
+  function toggleTerminal(): void {
+    if (!activeThreadId) return
+    setTerminalStarted(true)
+    setTerminalOpen((value) => !value)
+  }
+
+  function updatePanel(threadId: string, update: (panel: PanelSurfaceState) => PanelSurfaceState) {
+    setPanels((current) => ({
+      ...current,
+      [threadId]: update(current[threadId] ?? EMPTY_SURFACE_STATE),
+    }))
+  }
+
+  const layoutControls = (maximizable: boolean) => (
+    <LayoutControls
+      rightOpen={rightOpen}
+      onToggleRight={toggleRight}
+      terminalOpen={terminalOpen}
+      onToggleTerminal={toggleTerminal}
+      {...(maximizable
+        ? { maximized: rightMaximized, onToggleMaximize: () => setRightMaximized((value) => !value) }
+        : {})}
+      disabled={!activeThreadId}
+    />
+  )
 
   return (
     <AppRenderer
@@ -311,7 +337,8 @@ export function App({ store, slots, connection, plugins, locale }: AppProps) {
       threads={state.threads}
       activeThreadId={state.activeThreadId}
       threadStatus={threadStatus}
-      onToggleRight={() => setRightOpen((value) => !value)}
+      onToggleRight={toggleRight}
+      onToggleTerminal={toggleTerminal}
       settingsSection={effectiveSection}
       onView={setView}
       onSettingsSection={setSection}
@@ -320,14 +347,28 @@ export function App({ store, slots, connection, plugins, locale }: AppProps) {
       onOpenThread={openThread}
       sidebarExtra={<PluginPanels controller={plugins} />}
       rightOpen={rightOpen}
+      rightMaximized={rightMaximized}
       rightPanel={
-        view === "chat" && state.activeThreadId ? (
+        activeThreadId ? (
           <WorkbenchPanel
-            key={state.activeThreadId}
+            key={activeThreadId}
             connection={connection}
-            threadId={state.activeThreadId}
-            onClose={() => setRightOpen(false)}
+            threadId={activeThreadId}
+            panel={panels[activeThreadId] ?? EMPTY_SURFACE_STATE}
+            onPanelChange={(update) => updatePanel(activeThreadId, update)}
+            controls={layoutControls(true)}
             onError={(message) => store.update({ error: message })}
+          />
+        ) : undefined
+      }
+      bottomPanel={
+        activeThreadId && terminalStarted ? (
+          <TerminalDrawer
+            key={activeThreadId}
+            connection={connection}
+            threadId={activeThreadId}
+            open={terminalOpen}
+            onClose={() => setTerminalOpen(false)}
           />
         ) : undefined
       }
@@ -339,7 +380,8 @@ export function App({ store, slots, connection, plugins, locale }: AppProps) {
           name="chat.view"
           props={{
             rightOpen,
-            onToggleRight: () => setRightOpen((value) => !value),
+            onToggleRight: toggleRight,
+            ...(rightOpen && activeThreadId ? {} : { layoutControls: layoutControls(false) }),
             onNewThread: () => void createThread(),
           }}
         />

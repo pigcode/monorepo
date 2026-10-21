@@ -3,7 +3,7 @@ import { app, BrowserWindow, ipcMain, nativeTheme } from "electron"
 import { join } from "node:path"
 import { startHostProcess, type HostProcess } from "./host-process"
 import { registerAppProtocol, registerPluginProtocol, registerPrivilegedSchemes } from "./protocol"
-import { closePreview, openPreview } from "./preview"
+import { closePreview, isAllowedPreviewUrl, openPreview } from "./preview"
 import { createMainWindowOptions, readThemeSource } from "./window-options"
 
 registerPrivilegedSchemes()
@@ -74,6 +74,14 @@ export async function createWindow(): Promise<BrowserWindow> {
     }),
   )
   window.once("ready-to-show", () => window.show())
+  // 右侧浏览器用 iframe 内嵌本机页面；子框架的跳转与重定向同样只能留在 loopback。
+  const guardFrame = (event: { isMainFrame: boolean; url: string; preventDefault: () => void }) => {
+    if (!event.isMainFrame && /^https?:/i.test(event.url) && !isAllowedPreviewUrl(event.url)) {
+      event.preventDefault()
+    }
+  }
+  window.webContents.on("will-frame-navigate", guardFrame)
+  window.webContents.on("will-redirect", guardFrame)
   window.webContents.on("did-finish-load", () => {
     if (host) window.webContents.postMessage("pigcode:port", null, [host.appPort])
   })
