@@ -57,6 +57,28 @@ export function hasCustomTitleBar(platform: string): boolean {
   return platform === "win32" || platform === "linux"
 }
 
+/** 与 globals.css 的窄窗口断点一致：更窄时侧栏改成浮在内容上的抽屉。 */
+const NARROW_QUERY = "(max-width: 960px)"
+
+function matchesNarrow(): boolean {
+  return typeof window !== "undefined" && typeof window.matchMedia === "function"
+    ? window.matchMedia(NARROW_QUERY).matches
+    : false
+}
+
+/** 窗口是否窄到侧栏改成抽屉。 */
+function useNarrowWindow(): boolean {
+  const [narrow, setNarrow] = useState(matchesNarrow)
+  useEffect(() => {
+    if (typeof window.matchMedia !== "function") return
+    const list = window.matchMedia(NARROW_QUERY)
+    const onChange = (event: MediaQueryListEvent): void => setNarrow(event.matches)
+    list.addEventListener("change", onChange)
+    return () => list.removeEventListener("change", onChange)
+  }, [])
+  return narrow
+}
+
 /** 外壳所需的数据与事件；项目/线程数据由 store 传入。 */
 export interface ShellProps {
   view: ShellView
@@ -158,6 +180,27 @@ export function Shell({
   const [localSidebarOpen, setLocalSidebarOpen] = useState(true)
   const inSettings = view !== "chat"
   const platform = nativePlatform()
+  const narrow = useNarrowWindow()
+  const [drawerOpen, setDrawerOpen] = useState(false)
+
+  // 抽屉只在窄窗口里有意义；变宽后复位，下次变窄时从收起开始。
+  useEffect(() => {
+    if (!narrow) setDrawerOpen(false)
+  }, [narrow])
+
+  // 切到别的会话或页面后收起抽屉，回到内容。
+  useEffect(() => {
+    setDrawerOpen(false)
+  }, [activeThreadId, view, settingsSection])
+
+  useEffect(() => {
+    if (!drawerOpen) return
+    function onKeyDown(event: KeyboardEvent): void {
+      if (event.key === "Escape") setDrawerOpen(false)
+    }
+    window.addEventListener("keydown", onKeyDown)
+    return () => window.removeEventListener("keydown", onKeyDown)
+  }, [drawerOpen])
 
   // 标题栏、交通灯留白和配色按平台区分，CSS 依赖 html[data-platform]；绘制前写入，避免布局跳动。
   useLayoutEffect(() => {
@@ -234,13 +277,18 @@ export function Shell({
     }
     window.addEventListener("keydown", onKeyDown)
     return () => window.removeEventListener("keydown", onKeyDown)
-  }, [onNewThread, onToggleRight, onToggleTerminal, onView, sidebarOpen])
+  }, [onNewThread, onToggleRight, onToggleTerminal, onView, sidebarOpen, narrow])
 
   const expanded = expandedProjects ?? localExpanded
   const open = sidebarOpen ?? localSidebarOpen
   const section: SettingsSection = settingsSection ?? (view === "plugins" ? "plugins" : "general")
 
+  /** 宽窗口里收起或展开侧栏；窄窗口里开关抽屉。 */
   function toggleSidebar(): void {
+    if (narrow) {
+      setDrawerOpen((current) => !current)
+      return
+    }
     if (sidebarOpen === undefined) setLocalSidebarOpen((current) => !current)
     onToggleSidebar?.()
   }
@@ -261,6 +309,7 @@ export function Shell({
   const appClass = [
     "app",
     open ? "" : "is-collapsed",
+    narrow && drawerOpen ? "is-drawer-open" : "",
     showRight ? "has-right" : "",
     showRight && rightMaximized ? "is-right-max" : "",
   ]
@@ -310,7 +359,7 @@ export function Shell({
     <div className={appClass} style={appStyle}>
       {menus ? <TitleBar menus={menus} label={t("menu.label")} /> : null}
       <WindowControls
-        sidebarOpen={open}
+        sidebarOpen={narrow ? drawerOpen : open}
         canGoBack={canGoBack}
         canGoForward={canGoForward}
         onToggleSidebar={toggleSidebar}
@@ -336,8 +385,14 @@ export function Shell({
               expandedProjects={expanded}
               onAddProject={() => setDialogOpen(true)}
               onToggleProject={toggleProject}
-              onOpenThread={onOpenThread}
-              onNewThread={onNewThread}
+              onOpenThread={(threadId) => {
+                setDrawerOpen(false)
+                onOpenThread(threadId)
+              }}
+              onNewThread={(projectId) => {
+                setDrawerOpen(false)
+                onNewThread(projectId)
+              }}
               onOpenSchedules={() => selectSection("schedules")}
               onOpenPlugins={() => selectSection("plugins")}
             />
@@ -365,6 +420,7 @@ export function Shell({
           </div>
         ) : null}
       </aside>
+      <div className="drawer-scrim" aria-hidden="true" onClick={() => setDrawerOpen(false)} />
       <div className="workspace">
         <main className="panel">
           {children}

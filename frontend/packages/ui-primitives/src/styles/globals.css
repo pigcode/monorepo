@@ -5276,6 +5276,17 @@ body.is-resizing-rows iframe {
   .window-controls-gap {
     flex: 0 0 4px;
   }
+  /* 抽屉打开时顶行按钮回到侧栏的排法：开关在左，搜索与前进后退在右 */
+  .app.is-drawer-open .window-controls {
+    width: var(--sidebar-w);
+    padding-right: 10px;
+  }
+  .app.is-drawer-open .window-controls-gap {
+    flex: 1 1 auto;
+  }
+  .drawer-scrim {
+    top: var(--titlebar-h);
+  }
   .app.has-right .right-panel-slot {
     position: fixed;
     z-index: 60;

@@ -97,6 +97,34 @@ describe("Shell", () => {
     expect(document.documentElement.dataset.fullscreen).toBeUndefined()
   })
 
+  it("opens the sidebar as a drawer in narrow windows and closes it from the scrim or Esc", () => {
+    Object.defineProperty(window, "matchMedia", {
+      configurable: true,
+      value: (query: string) => ({
+        matches: query === "(max-width: 960px)",
+        addEventListener: () => undefined,
+        removeEventListener: () => undefined,
+      }),
+    })
+    try {
+      const { container } = renderShell()
+      const app = container.querySelector(".app")
+
+      fireEvent.click(screen.getByRole("button", { name: "展开侧栏" }))
+      expect(app?.classList.contains("is-drawer-open")).toBe(true)
+      expect(app?.classList.contains("is-collapsed")).toBe(false)
+      fireEvent.click(container.querySelector(".drawer-scrim") as HTMLElement)
+      expect(app?.classList.contains("is-drawer-open")).toBe(false)
+
+      fireEvent.keyDown(window, { key: "b", ctrlKey: true })
+      expect(app?.classList.contains("is-drawer-open")).toBe(true)
+      fireEvent.keyDown(window, { key: "Escape" })
+      expect(app?.classList.contains("is-drawer-open")).toBe(false)
+    } finally {
+      Reflect.deleteProperty(window, "matchMedia")
+    }
+  })
+
   it("opens the command palette from the search button in the sidebar's top row", () => {
     renderShell()
 
