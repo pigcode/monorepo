@@ -363,9 +363,7 @@ describe("CodexDriver", () => {
 
     const models = await driver.listModels()
 
-    expect(models).toEqual([
-      { id: "gpt-6.1-sol", displayName: "GPT-6.1 Sol", isDefault: true },
-    ])
+    expect(models).toEqual([{ id: "gpt-6.1-sol", displayName: "GPT-6.1 Sol", isDefault: true }])
     expect(transport.closed).toBe(true)
   })
 })

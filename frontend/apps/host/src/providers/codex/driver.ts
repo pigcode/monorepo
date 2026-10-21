@@ -285,7 +285,7 @@ function waitForTurn(
   turnId: string | null,
   signal: AbortSignal,
 ): Promise<void> {
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
     let settled = false
     let dispose: () => void = () => undefined
     const finish = (): void => {
@@ -295,11 +295,23 @@ function waitForTurn(
       signal.removeEventListener("abort", finish)
       resolve()
     }
-    dispose = client.onNotification("turn/completed", (params) => {
+    const disposeCompleted = client.onNotification("turn/completed", (params) => {
       const completed = completedTurnId(params)
       if (turnId && completed && completed !== turnId) return
       finish()
     })
+    // app-server 中途退出时这一轮不会再有 turn/completed；以失败结束，而不是一直等。
+    const disposeClose = client.onClose((reason) => {
+      if (settled) return
+      settled = true
+      dispose()
+      signal.removeEventListener("abort", finish)
+      reject(reason)
+    })
+    dispose = () => {
+      disposeCompleted()
+      disposeClose()
+    }
     signal.addEventListener("abort", finish, { once: true })
     if (signal.aborted) finish()
   })

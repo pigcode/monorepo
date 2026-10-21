@@ -48,12 +48,15 @@ async function openThread(
 test("composer: agent rail, models, thinking depth, permissions, @files and /commands", async () => {
   const { app, page } = await openThread("composer")
   try {
-    // 胶囊显示当前 agent 的默认模型与默认思考深度。
+    // 新会话用 agent 的默认模型；思考深度是本机偏好，先显式选一次。
     const chip = page.getByRole("button", { name: /Agent 与模型/ })
     await expect(chip).toContainText("Fake Sage")
-    await expect(chip).toContainText("中")
 
     await chip.click()
+    const efforts = page.getByRole("radiogroup", { name: "思考深度" })
+    await expect(efforts.getByRole("radio")).toHaveText(["低", "中", "高", "最高"])
+    await efforts.getByRole("radio", { name: "中", exact: true }).click()
+    await expect(chip).toContainText("中")
     await expect(page.getByRole("tab", { name: "Fake Provider" })).toHaveAttribute(
       "aria-selected",
       "true",
@@ -63,11 +66,11 @@ test("composer: agent rail, models, thinking depth, permissions, @files and /com
     // 其他 agent 只有选中后才列出自己的模型。
     await page.getByRole("tab", { name: "Claude Code" }).click()
     await expect(page.getByRole("listbox", { name: "Claude Code" })).toBeVisible()
+    // 没装 Codex 时读取目录会启动失败；Host 不能因此崩溃，列表只是为空。
+    await page.getByRole("tab", { name: "Codex" }).click()
+    await expect(page.getByRole("listbox", { name: "Codex" })).toContainText("没有匹配的模型")
     await page.getByRole("tab", { name: "Fake Provider" }).click()
-    await page
-      .getByRole("radiogroup", { name: "思考深度" })
-      .getByRole("radio", { name: "最高" })
-      .click()
+    await efforts.getByRole("radio", { name: "最高" }).click()
     await expect(chip).toContainText("最高")
     await page.getByRole("listbox", { name: "Fake Provider" }).getByText("Fake Swift").click()
     await expect(chip).toContainText("Fake Swift")
@@ -150,16 +153,17 @@ test("the header's open-in button opens the project with the chosen app", async 
         return ""
       }
     })
+    const opened = () => app.evaluate(() => (globalThis as { __opened?: string[] }).__opened ?? [])
+    // 列表第一项总是文件管理器；选中后它成为左半边按钮的默认应用。
     await page.getByRole("button", { name: "选择打开方式" }).click()
     const items = page.locator(".open-in-menu .open-in-item")
     await expect(items.first()).toBeVisible()
     await expect(page.getByRole("menuitem", { name: "复制路径" })).toBeVisible()
-    await page.keyboard.press("Escape")
+    await items.first().click()
+    await expect.poll(opened).toEqual([root])
 
     await page.locator(".open-in-main").click()
-    await expect
-      .poll(() => app.evaluate(() => (globalThis as { __opened?: string[] }).__opened ?? []))
-      .toEqual([root])
+    await expect.poll(opened).toEqual([root, root])
   } finally {
     await app.close()
   }
