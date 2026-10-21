@@ -3159,6 +3159,27 @@ body.is-resizing-rows iframe {
 .msgs > .run-interrupted {
   margin-left: 12px;
 }
+/* 一轮回复结束后的复制按钮与时间；图标与正文左对齐 */
+.turn-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: -8px 0 2px 7px;
+  color: var(--faint);
+  font-size: calc(var(--ui-scale) * 12px);
+}
+.turn-action {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  color: var(--muted);
+}
+.turn-action:hover {
+  background: var(--hover);
+  color: var(--fg);
+}
 .msgs > .tool-card + .tool-card {
   margin-top: -9px;
 }

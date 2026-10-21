@@ -9,6 +9,7 @@ import { AssistantMessage, MessageText, UserMessage } from "./message-item"
 import { PlanCard, type PlanStep, type PlanStepStatus, type PlanUpdate } from "./plan-card"
 import { SubagentCard, type SubagentCall, type SubagentStatus } from "./subagent-card"
 import { ToolCard, type ToolCall, type ToolStatus } from "./tool-card"
+import { TurnActions } from "./turn-actions"
 
 /** 消息列表需要的线程事件与交互回调。 */
 export interface MessageListProps {
@@ -343,6 +344,9 @@ export function MessageList({
     headShown = true
     return continued
   }
+  // 当前这一轮助手回复的文本与最后一条的时间；run 结束时在下方放复制与时间。
+  let replyTexts: string[] = []
+  let replyAt: string | null = null
 
   for (const event of sorted) {
     const key = `${event.seq}-${event.type}`
@@ -365,6 +369,8 @@ export function MessageList({
         nodes.push(<UserMessage key={key} text={text} />)
         headShown = false
       }
+      replyTexts = []
+      replyAt = null
       continue
     }
     if (event.type === "message.completed") {
@@ -373,8 +379,12 @@ export function MessageList({
       if (asText(payload?.role) === "user") {
         nodes.push(<UserMessage key={key} text={text} />)
         headShown = false
+        replyTexts = []
+        replyAt = null
         continue
       }
+      replyTexts.push(text)
+      replyAt = event.createdAt
       nodes.push(
         <AssistantMessage
           key={key}
@@ -432,7 +442,6 @@ export function MessageList({
           {t("chat.interrupted")}
         </div>,
       )
-      continue
     }
     if (event.type === "run.failed") {
       nodes.push(
@@ -448,6 +457,18 @@ export function MessageList({
           </div>
         </AssistantMessage>,
       )
+    }
+    if (
+      (event.type === "run.completed" ||
+        event.type === "run.failed" ||
+        event.type === "run.interrupted") &&
+      replyTexts.length > 0
+    ) {
+      nodes.push(
+        <TurnActions key={`actions-${event.seq}`} text={replyTexts.join("\n\n")} at={replyAt} />,
+      )
+      replyTexts = []
+      replyAt = null
     }
   }
 

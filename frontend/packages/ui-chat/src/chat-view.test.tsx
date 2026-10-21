@@ -81,6 +81,44 @@ describe("ChatView", () => {
     expect(screen.queryByRole("button", { name: "中断" })).toBeNull()
   })
 
+  it("offers copy and the reply time once a reply is finished", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText } })
+    const { rerender } = render(
+      <LocaleProvider locale="zh-CN">
+        <ChatView
+          thread={thread}
+          events={[
+            event(1, "run.started", { text: "question" }),
+            event(2, "message.completed", { role: "assistant", text: "part one" }),
+          ]}
+        />
+      </LocaleProvider>,
+    )
+    expect(screen.queryByRole("button", { name: "复制" })).toBeNull()
+
+    rerender(
+      <LocaleProvider locale="zh-CN">
+        <ChatView
+          thread={thread}
+          events={[
+            event(1, "run.started", { text: "question" }),
+            event(2, "message.completed", { role: "assistant", text: "part one" }),
+            event(3, "message.completed", { role: "assistant", text: "part two" }),
+            event(4, "run.completed"),
+          ]}
+        />
+      </LocaleProvider>,
+    )
+    await userEvent.click(screen.getByRole("button", { name: "复制" }))
+    expect(writeText).toHaveBeenCalledWith("part one\n\npart two")
+    expect(await screen.findByRole("button", { name: "已复制" })).toBeTruthy()
+    const time = document.querySelector(".turn-actions time")
+    expect(time?.getAttribute("datetime")).toBe("2026-10-20T00:00:00.000Z")
+    expect(time?.textContent).not.toBe("")
+    Reflect.deleteProperty(navigator, "clipboard")
+  })
+
   it("renders persisted and streaming content", () => {
     render(
       <LocaleProvider locale="zh-CN">
