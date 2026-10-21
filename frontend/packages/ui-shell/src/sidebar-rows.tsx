@@ -61,7 +61,12 @@ function RowMenu({ actions, children }: { actions: RowAction[]; children: ReactN
 }
 
 /** 改名输入框：回车或失焦提交，Esc 取消；没有改动或清空时等同取消。 */
-function RenameInput({ value, label, onRename, onCancel }: { value: string; label: string } & RenameHandlers) {
+function RenameInput({
+  value,
+  label,
+  onRename,
+  onCancel,
+}: { value: string; label: string } & RenameHandlers) {
   const done = useRef(false)
   function finish(next: string | null): void {
     if (done.current) return
@@ -115,6 +120,7 @@ export function ThreadRow({
   rename,
   actions,
   onOpen,
+  now,
 }: {
   thread: Thread
   active: boolean
@@ -126,6 +132,8 @@ export function ThreadRow({
   rename: RenameHandlers | null
   actions: RowAction[]
   onOpen: () => void
+  /** 计算相对时间用的当前时间；侧栏每分钟刷新一次。 */
+  now?: number
 }) {
   const { t, locale } = useLocale()
   const statusKey = THREAD_STATUS_MESSAGE[status]
@@ -157,7 +165,9 @@ export function ThreadRow({
         ) : (
           <>
             <span className={`${detailClass} truncate`}>{detail}</span>
-            <time dateTime={thread.updatedAt}>{formatThreadTime(thread.updatedAt, locale)}</time>
+            <time dateTime={thread.updatedAt}>
+              {formatThreadTime(thread.updatedAt, locale, now)}
+            </time>
           </>
         )}
       </Button>
@@ -196,7 +206,13 @@ export function ProjectRow({
   return (
     <RowMenu actions={actions}>
       <div className="proj-row">
-        <Button variant="plain" className="proj" type="button" aria-expanded={open} onClick={onToggle}>
+        <Button
+          variant="plain"
+          className="proj"
+          type="button"
+          aria-expanded={open}
+          onClick={onToggle}
+        >
           {folder}
           <span className="truncate">{project.name}</span>
         </Button>

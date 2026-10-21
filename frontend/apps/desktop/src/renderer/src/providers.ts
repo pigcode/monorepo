@@ -10,11 +10,6 @@ export interface ProviderInfo {
   capabilities: ProviderCapabilities
 }
 
-/** provider.models 返回的模型条目；M2 只消费 id。 */
-interface ProviderModelInfo {
-  id: string
-}
-
 /** provider.detect 返回的 Codex 检测字段；authMethod 由 UI 层补空。 */
 export interface CodexDetection {
   installed: boolean
@@ -29,21 +24,7 @@ export async function listProviders(connection: Connection): Promise<ProviderInf
   return (await connection.call("provider.list", {})) as ProviderInfo[]
 }
 
-/** 读取某个 provider 的模型目录并写入全局状态。 */
-export async function loadProviderModels(
-  connection: Connection,
-  store: AppStore,
-  providerId: string,
-): Promise<void> {
-  const models = (await connection.call("provider.models", { providerId })) as ProviderModelInfo[]
-  store.update({
-    providerModels: models.flatMap((model) =>
-      typeof model.id === "string" && model.id.length > 0 ? [model.id] : [],
-    ),
-  })
-}
-
-/** 按线程当前 provider 刷新能力与模型列表。 */
+/** 按线程当前 provider 刷新能力；输入框的模型目录由聊天容器按 agent 懒加载。 */
 export async function loadProviderContext(
   connection: Connection,
   store: AppStore,
@@ -51,16 +32,10 @@ export async function loadProviderContext(
 ): Promise<void> {
   const providerId = thread.lastProviderId ?? thread.defaultProviderId
   // 切换线程时先清空上一线程的能力，避免短暂显示错误的控件。
-  store.update({ providerCapabilities: null, providerModels: [] })
+  store.update({ providerCapabilities: null })
   const providers = await listProviders(connection)
   const capabilities = providers.find((provider) => provider.id === providerId)?.capabilities
   store.update({ providerCapabilities: capabilities ?? null })
-  try {
-    await loadProviderModels(connection, store, providerId)
-  } catch {
-    // 模型目录不可用时保留空列表，不阻塞聊天。
-    store.update({ providerModels: [] })
-  }
 }
 
 /** 把检测结果归一化为设置页的 provider 分区。 */

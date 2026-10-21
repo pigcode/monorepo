@@ -1,0 +1,166 @@
+/** 输入框、按轮时间线、运行指示与「用…打开」的端到端验收（fake provider）。 */
+import { mkdirSync, rmSync, writeFileSync } from "node:fs"
+import { join } from "node:path"
+import {
+  _electron as electron,
+  expect,
+  test,
+  type ElectronApplication,
+  type Page,
+} from "@playwright/test"
+import { addProject } from "./projects"
+
+/** 过滤 undefined，满足 Playwright env 的 string 值约束。 */
+function launchEnv(extra: Record<string, string>): Record<string, string> {
+  return {
+    ...Object.fromEntries(
+      Object.entries(process.env).filter(
+        (entry): entry is [string, string] => entry[1] !== undefined,
+      ),
+    ),
+    PIGCODE_PROVIDER: "fake",
+    ...extra,
+  }
+}
+
+/** 建一个带两个源文件的项目，并在里面开一个新会话。 */
+async function openThread(
+  name: string,
+  extra: Record<string, string> = {},
+): Promise<{ app: ElectronApplication; page: Page; root: string }> {
+  const root = `/tmp/pigcode-e2e-${name}`
+  rmSync(root, { recursive: true, force: true })
+  mkdirSync(join(root, "src"), { recursive: true })
+  writeFileSync(join(root, "README.md"), "# Demo\n")
+  writeFileSync(join(root, "src/index.ts"), "export const answer = 42\n")
+  const app = await electron.launch({ args: ["."], env: launchEnv(extra) })
+  const page = await app.firstWindow()
+  await addProject(app, page, root)
+  await page
+    .locator(".proj-block")
+    .filter({ hasText: `pigcode-e2e-${name}` })
+    .locator(".proj-add")
+    .click()
+  await expect(page.locator(".tiptap")).toHaveAttribute("contenteditable", "true")
+  return { app, page, root }
+}
+
+test("composer: agent rail, models, thinking depth, permissions, @files and /commands", async () => {
+  const { app, page } = await openThread("composer")
+  try {
+    // 胶囊显示当前 agent 的默认模型与默认思考深度。
+    const chip = page.getByRole("button", { name: /Agent 与模型/ })
+    await expect(chip).toContainText("Fake Sage")
+    await expect(chip).toContainText("中")
+
+    await chip.click()
+    await expect(page.getByRole("tab", { name: "Fake Provider" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    )
+    const list = page.getByRole("listbox", { name: "Fake Provider" })
+    await expect(list.getByRole("option")).toHaveCount(2)
+    // 其他 agent 只有选中后才列出自己的模型。
+    await page.getByRole("tab", { name: "Claude Code" }).click()
+    await expect(page.getByRole("listbox", { name: "Claude Code" })).toBeVisible()
+    await page.getByRole("tab", { name: "Fake Provider" }).click()
+    await page
+      .getByRole("radiogroup", { name: "思考深度" })
+      .getByRole("radio", { name: "最高" })
+      .click()
+    await expect(chip).toContainText("最高")
+    await page.getByRole("listbox", { name: "Fake Provider" }).getByText("Fake Swift").click()
+    await expect(chip).toContainText("Fake Swift")
+    await expect(chip).not.toContainText("最高")
+
+    // 权限：完全访问要确认；选择保存在线程上。
+    await page.getByRole("button", { name: /^权限/ }).click()
+    await page.getByRole("menuitem", { name: /完全访问/ }).click()
+    await page.getByRole("button", { name: "开启完全访问" }).click()
+    await expect(page.getByRole("button", { name: "权限: 完全访问" })).toBeVisible()
+
+    // @ 引用文件，发送后用户消息里是 @路径。
+    await page.locator(".tiptap").click()
+    await page.keyboard.type("look at @ind")
+    await expect(page.getByRole("listbox", { name: "文件" })).toContainText("index.ts")
+    await page.keyboard.press("Enter")
+    await expect(page.locator(".tiptap .mention-chip")).toHaveText("@src/index.ts")
+    await page.keyboard.type("please")
+    await page.keyboard.press("Enter")
+    await expect(
+      page.locator(".msg-user").filter({ hasText: "look at @src/index.ts please" }),
+    ).toBeVisible()
+    await expect(
+      page.locator(".msg-ai").filter({ hasText: "Hello from fake provider" }),
+    ).toBeVisible()
+
+    // ↑ 取回刚发送的消息；/ 命令切换权限。
+    await page.locator(".tiptap").click()
+    await page.keyboard.press("ArrowUp")
+    await expect(page.locator(".tiptap")).toContainText("look at @src/index.ts please")
+    await page.keyboard.press("Control+a")
+    await page.keyboard.press("Backspace")
+    await page.keyboard.type("/readonly")
+    await page.keyboard.press("Enter")
+    await expect(page.getByRole("button", { name: "权限: 只读" })).toBeVisible()
+    await expect(page.locator(".tiptap")).toHaveText("")
+  } finally {
+    await app.close()
+  }
+})
+
+test("timeline folds a finished turn's work and the sidebar animates running threads", async () => {
+  const { app, page } = await openThread("timeline", { PIGCODE_FAKE_STEP_MS: "500" })
+  try {
+    await page.locator(".tiptap").click()
+    await page.keyboard.type("tools")
+    await page.keyboard.press("Enter")
+
+    // 运行中：侧栏与线程头显示点阵，工作区展开并实时计时。
+    await expect(page.locator(".sess.is-active .sess-indicator .dot-matrix")).toBeVisible()
+    await expect(page.locator(".status-pill.is-running .dot-matrix")).toBeVisible()
+    await expect(page.getByRole("button", { name: /工作中/ })).toBeVisible()
+    await expect(page.locator(".turn-work .tool-row").first()).toBeVisible()
+
+    // 结束后折叠成「已工作」，只留最终回答；展开后看到查阅分组与命令。
+    const header = page.getByRole("button", { name: /已工作/ })
+    await expect(header).toBeVisible({ timeout: 20_000 })
+    await expect(page.locator(".sess.is-active .sess-indicator")).toHaveCount(0)
+    await expect(page.locator(".msg-ai").filter({ hasText: "改好了" })).toBeVisible()
+    await expect(page.locator(".turn-work")).toHaveCount(0)
+    await header.click()
+    await expect(page.getByRole("button", { name: /查阅/ })).toContainText("2 个文件 · 1 次搜索")
+    const command = page.getByRole("button", { name: /运行/ })
+    await expect(command).toContainText("pnpm test")
+    await command.click()
+    await expect(page.locator(".tool-row.is-open pre").last()).toContainText("Tests  3 passed")
+  } finally {
+    await app.close()
+  }
+})
+
+test("the header's open-in button opens the project with the chosen app", async () => {
+  const { app, page, root } = await openThread("open-in")
+  try {
+    await app.evaluate(({ shell }) => {
+      const opened: string[] = []
+      ;(globalThis as { __opened?: string[] }).__opened = opened
+      shell.openPath = async (path: string) => {
+        opened.push(path)
+        return ""
+      }
+    })
+    await page.getByRole("button", { name: "选择打开方式" }).click()
+    const items = page.locator(".open-in-menu .open-in-item")
+    await expect(items.first()).toBeVisible()
+    await expect(page.getByRole("menuitem", { name: "复制路径" })).toBeVisible()
+    await page.keyboard.press("Escape")
+
+    await page.locator(".open-in-main").click()
+    await expect
+      .poll(() => app.evaluate(() => (globalThis as { __opened?: string[] }).__opened ?? []))
+      .toEqual([root])
+  } finally {
+    await app.close()
+  }
+})

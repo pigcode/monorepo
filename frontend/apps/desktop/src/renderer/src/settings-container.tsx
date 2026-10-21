@@ -4,12 +4,7 @@ import type { ProviderCapabilities } from "@pigcode/contracts"
 import { PluginManagerView, type PluginSummary } from "@pigcode/ui-plugin-manager"
 import { SettingsView, type ProviderDetection, type ProviderStatus } from "@pigcode/ui-settings"
 import type { CoreDeps, SettingsSlotProps } from "./app"
-import {
-  listProviders,
-  loadProviderModels,
-  toProviderStatus,
-  type CodexDetection,
-} from "./providers"
+import { listProviders, toProviderStatus, type CodexDetection } from "./providers"
 import { SchedulesContainer } from "./schedules"
 
 /** 把 unknown 错误转成可展示文本。 */
@@ -27,7 +22,7 @@ export function PluginManagerContainer({ deps }: { deps: CoreDeps }) {
   }, [deps.connection])
 
   /**
-   * 启停插件会改变 provider 集合：重新拉取列表与检测结果，刷新当前线程的能力/模型，
+   * 启停插件会改变 provider 集合：重新拉取列表与检测结果，刷新当前线程的能力，
    * 并递增 providerRevision 让线程头菜单重新读取 provider 列表。
    */
   const refreshProviders = useCallback(async (): Promise<void> => {
@@ -44,11 +39,6 @@ export function PluginManagerContainer({ deps }: { deps: CoreDeps }) {
           providerCapabilities:
             providers.find((provider) => provider.id === providerId)?.capabilities ?? null,
         })
-        try {
-          await loadProviderModels(deps.connection, deps.store, providerId)
-        } catch {
-          deps.store.update({ providerModels: [] })
-        }
       }
       deps.store.update({ providerRevision: deps.store.getSnapshot().providerRevision + 1 })
     } catch {
@@ -88,7 +78,7 @@ export function SettingsContainer({
 }: SettingsSlotProps & { deps: CoreDeps }) {
   const [providers, setProviders] = useState<ProviderStatus[]>([])
 
-  /** 拉取 Claude/Codex 只读检测结果与能力，并刷新模型列表。 */
+  /** 拉取 Claude/Codex 只读检测结果与能力。 */
   const detect = useCallback(async (): Promise<void> => {
     try {
       const [detection, list] = await Promise.all([
@@ -124,12 +114,6 @@ export function SettingsContainer({
           capabilityOf("codex"),
         ),
       ])
-
-      // 用当前线程 provider 的模型目录填充 composer 的模型列表。
-      const snapshot = deps.store.getSnapshot()
-      const thread = snapshot.threads.find((item) => item.id === snapshot.activeThreadId)
-      const providerId = thread?.lastProviderId ?? thread?.defaultProviderId
-      if (providerId) await loadProviderModels(deps.connection, deps.store, providerId)
     } catch (error) {
       deps.store.update({ error: messageOf(error) })
     }

@@ -1,0 +1,149 @@
+/** 验证 store 的批量写入：整段回放只通知一次、按帧合并流式文本，以及 thread.updated 同步线程字段。 */
+import { describe, expect, it } from "vitest"
+import type { Thread, ThreadEvent } from "@pigcode/contracts"
+import { AppStore } from "./store"
+
+function threadEvent(
+  threadId: string,
+  seq: number,
+  type: ThreadEvent["type"],
+  payload: unknown = {},
+  runId: string | null = "run_1",
+): ThreadEvent {
+  return {
+    seq,
+    threadId,
+    runId,
+    type,
+    payload,
+    schemaVersion: 1,
+    createdAt: "2026-10-21T00:00:00.000Z",
+  }
+}
+
+/** 手动推进的调度器：flush() 时才执行排队的回调。 */
+function manualSchedule(): { schedule: (callback: () => void) => void; flush: () => void } {
+  const queue: Array<() => void> = []
+  return {
+    schedule: (callback) => queue.push(callback),
+    flush: () => {
+      for (const callback of queue.splice(0)) callback()
+    },
+  }
+}
+
+const thread: Thread = {
+  id: "th_1",
+  projectId: "p1",
+  title: "Old",
+  defaultProviderId: "claude",
+  lastProviderId: null,
+  lastModelId: null,
+  permissionMode: "workspace-write",
+  createdAt: "2026-10-21T00:00:00.000Z",
+  updatedAt: "2026-10-21T00:00:00.000Z",
+  archivedAt: null,
+  lastRunId: null,
+}
+
+describe("AppStore batching", () => {
+  it("replays a whole history with one notification and the same result as one by one", () => {
+    const history = Array.from({ length: 500 }, (_, index) =>
+      threadEvent(
+        "th_1",
+        index + 1,
+        index % 50 === 0 ? "run.started" : index % 50 === 49 ? "run.completed" : "tool.completed",
+      ),
+    )
+    const batched = new AppStore()
+    batched.openThread("th_1")
+    batched.setActiveThread("th_1")
+    let notifications = 0
+    batched.subscribe(() => {
+      notifications += 1
+    })
+    batched.addEvents(history)
+    expect(notifications).toBe(1)
+
+    const single = new AppStore()
+    single.openThread("th_1")
+    single.setActiveThread("th_1")
+    for (const event of history) single.addEvent(event)
+    expect(batched.getSnapshot().threadStates["th_1"]).toEqual(
+      single.getSnapshot().threadStates["th_1"],
+    )
+    expect(batched.getSnapshot().events).toHaveLength(500)
+  })
+
+  it("skips events it already has, even when they arrive again out of order", () => {
+    const store = new AppStore()
+    store.openThread("th_1")
+    store.addEvents([
+      threadEvent("th_1", 1, "run.started"),
+      threadEvent("th_1", 2, "approval.requested"),
+    ])
+    store.addEvents([
+      threadEvent("th_1", 2, "approval.requested"),
+      threadEvent("th_1", 3, "approval.resolved"),
+    ])
+    const state = store.getSnapshot().threadStates["th_1"]
+    expect(state?.events.map((event) => event.seq)).toEqual([1, 2, 3])
+    expect(state?.pendingApprovals).toBe(0)
+  })
+
+  it("merges streaming deltas into one update per frame", () => {
+    const frames = manualSchedule()
+    const store = new AppStore({ schedule: frames.schedule })
+    store.openThread("th_1")
+    store.setActiveThread("th_1")
+    let notifications = 0
+    store.subscribe(() => {
+      notifications += 1
+    })
+    for (const word of ["Hel", "lo", " wor", "ld"]) store.queueDelta("th_1", word)
+    expect(store.getSnapshot().streamingText).toBe("")
+    expect(notifications).toBe(0)
+    frames.flush()
+    expect(store.getSnapshot().streamingText).toBe("Hello world")
+    expect(notifications).toBe(1)
+  })
+
+  it("writes queued text before the event that ends the stream", () => {
+    const frames = manualSchedule()
+    const store = new AppStore({ schedule: frames.schedule })
+    store.openThread("th_1")
+    store.setActiveThread("th_1")
+    store.queueDelta("th_1", "final answer")
+    store.addEvent(
+      threadEvent("th_1", 1, "message.completed", { role: "assistant", text: "final answer" }),
+    )
+    // 完成事件之后的帧不能把已经落成消息的文本再写回流式区。
+    frames.flush()
+    expect(store.getSnapshot().streamingText).toBe("")
+    expect(store.getSnapshot().threadStates["th_1"]?.streamingText).toBe("")
+  })
+
+  it("applies title, permission mode and agent switches from thread.updated", () => {
+    const store = new AppStore()
+    store.update({ threads: [thread] })
+    store.openThread("th_1")
+    store.addEvents([
+      threadEvent("th_1", 1, "thread.updated", { title: "New title" }, null),
+      threadEvent("th_1", 2, "thread.updated", { permissionMode: "plan" }, null),
+      threadEvent(
+        "th_1",
+        3,
+        "thread.updated",
+        { providerId: "codex", modelId: "gpt-6.1-sol", handoff: "x" },
+        null,
+      ),
+      threadEvent("th_1", 4, "thread.updated", { permissionMode: "everything" }, null),
+    ])
+    expect(store.getSnapshot().threads[0]).toMatchObject({
+      title: "New title",
+      permissionMode: "plan",
+      lastProviderId: "codex",
+      lastModelId: "gpt-6.1-sol",
+    })
+  })
+})

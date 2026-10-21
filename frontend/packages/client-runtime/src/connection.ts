@@ -14,6 +14,8 @@ export type ConnectionStatus = "connecting" | "connected" | "reconnecting" | "of
 /** 连接层向上层转发的回调。 */
 export interface ConnectionHandlers {
   onEvent(event: ThreadEvent): void
+  /** 订阅回放的一整段历史；提供时一次交出，不提供时逐条调用 onEvent。 */
+  onEvents?(events: ThreadEvent[]): void
   onDelta(event: { threadId: string; event: ProviderEvent }): void
   onStatus(status: ConnectionStatus): void
 }
@@ -91,7 +93,8 @@ export class Connection {
       threadId,
       cursor,
     })) as SubscribeResult
-    for (const event of result.events) this.handlers.onEvent(event)
+    if (this.handlers.onEvents) this.handlers.onEvents(result.events)
+    else for (const event of result.events) this.handlers.onEvent(event)
     const lastSeq = result.events.reduce((max, event) => Math.max(max, event.seq), cursor)
     const nextCursor = Math.max(cursor, result.cursor ?? 0, lastSeq)
     this.subscriptions.set(threadId, nextCursor)

@@ -1,12 +1,7 @@
 /** 应用外壳：把 store/connection 接到 Shell、聊天、设置与插件管理器。 */
-import { useEffect, useRef, useState } from "react"
+import { Suspense, lazy, useEffect, useRef, useState } from "react"
 import type { Project, Thread } from "@pigcode/contracts"
-import {
-  AppRenderer,
-  SlotHost,
-  useAppStore,
-  type SlotRegistry,
-} from "@pigcode/client-runtime"
+import { AppRenderer, SlotHost, useAppStore, type SlotRegistry } from "@pigcode/client-runtime"
 import {
   useAppearance,
   useLocale,
@@ -38,8 +33,14 @@ import {
   type NavLocation,
 } from "./navigation"
 import { loadProviderContext, pickProviderId } from "./providers"
-import { TerminalDrawer } from "./terminal-drawer"
-import { WorkbenchPanel } from "./workbench"
+
+// 工作台（xterm、diff）与底部终端在第一次打开时才加载，冷启动只加载聊天需要的代码。
+const WorkbenchPanel = lazy(() =>
+  import("./workbench").then((module) => ({ default: module.WorkbenchPanel })),
+)
+const TerminalDrawer = lazy(() =>
+  import("./terminal-drawer").then((module) => ({ default: module.TerminalDrawer })),
+)
 import { layoutLabels } from "./workbench-labels"
 import {
   addProject,
@@ -81,6 +82,8 @@ export function App({ store, slots, connection, plugins, locale }: AppProps) {
   const [view, setView] = useState<ShellView>("chat")
   const [section, setSection] = useState<SettingsSection>("general")
   const [rightOpen, setRightOpen] = useState(false)
+  // 右栏第一次打开后才挂载（按需加载工作台代码），之后收起只隐藏，终端与浏览器标签保留。
+  const [rightStarted, setRightStarted] = useState(false)
   const [rightMaximized, setRightMaximized] = useState(false)
   const [terminalOpen, setTerminalOpen] = useState(false)
   // 底部终端第一次打开后才挂载，之后收起只隐藏，shell 会话保留到切换线程。
@@ -88,6 +91,10 @@ export function App({ store, slots, connection, plugins, locale }: AppProps) {
   const [panels, setPanels] = useState<Record<string, PanelSurfaceState>>({})
   const [history, setHistory] = useState<NavHistory>(EMPTY_HISTORY)
   const initialLoadDone = useRef(false)
+
+  useEffect(() => {
+    if (rightOpen) setRightStarted(true)
+  }, [rightOpen])
 
   // 每次落到新的位置都记一笔；从历史里跳转时当前位置已经对上，不会重复记录。
   useEffect(() => {
@@ -118,15 +125,20 @@ export function App({ store, slots, connection, plugins, locale }: AppProps) {
     })()
   }, [state.status, connection, store])
 
-  // 当前线程变化时刷新能力与模型列表，驱动按 capability 隐藏控件。
+  // 当前线程或它的 provider 变化时刷新能力，驱动按 capability 隐藏控件。
+  // 只依赖 provider id：线程标题、更新时间这类变化不需要重新查询。
+  const activeThread = state.threads.find((item) => item.id === state.activeThreadId)
+  const activeProviderId = activeThread
+    ? (activeThread.lastProviderId ?? activeThread.defaultProviderId)
+    : null
   useEffect(() => {
-    if (state.status !== "connected") return
-    const thread = state.threads.find((item) => item.id === state.activeThreadId)
+    if (state.status !== "connected" || !activeProviderId) return
+    const thread = store.getSnapshot().threads.find((item) => item.id === state.activeThreadId)
     if (!thread) return
     void loadProviderContext(connection, store, thread).catch((error: unknown) =>
       store.update({ error: messageOf(error) }),
     )
-  }, [state.status, state.activeThreadId, state.threads, connection, store])
+  }, [state.status, state.activeThreadId, activeProviderId, connection, store])
 
   /** 新建会话；没指定项目时放进当前会话所在的项目，再退回第一个项目。 */
   async function createThread(projectId?: string): Promise<void> {
@@ -224,7 +236,10 @@ export function App({ store, slots, connection, plugins, locale }: AppProps) {
       terminalOpen={terminalOpen}
       onToggleTerminal={toggleTerminal}
       {...(maximizable
-        ? { maximized: rightMaximized, onToggleMaximize: () => setRightMaximized((value) => !value) }
+        ? {
+            maximized: rightMaximized,
+            onToggleMaximize: () => setRightMaximized((value) => !value),
+          }
         : {})}
       disabled={!activeThreadId}
     />
@@ -282,27 +297,31 @@ export function App({ store, slots, connection, plugins, locale }: AppProps) {
       rightOpen={rightOpen}
       rightMaximized={rightMaximized}
       rightPanel={
-        activeThreadId ? (
-          <WorkbenchPanel
-            key={activeThreadId}
-            connection={connection}
-            threadId={activeThreadId}
-            panel={panels[activeThreadId] ?? EMPTY_SURFACE_STATE}
-            onPanelChange={(update) => updatePanel(activeThreadId, update)}
-            controls={layoutControls(true)}
-            onError={(message) => store.update({ error: message })}
-          />
+        activeThreadId && (rightStarted || rightOpen) ? (
+          <Suspense fallback={null}>
+            <WorkbenchPanel
+              key={activeThreadId}
+              connection={connection}
+              threadId={activeThreadId}
+              panel={panels[activeThreadId] ?? EMPTY_SURFACE_STATE}
+              onPanelChange={(update) => updatePanel(activeThreadId, update)}
+              controls={layoutControls(true)}
+              onError={(message) => store.update({ error: message })}
+            />
+          </Suspense>
         ) : undefined
       }
       bottomPanel={
         activeThreadId && terminalStarted ? (
-          <TerminalDrawer
-            key={activeThreadId}
-            connection={connection}
-            threadId={activeThreadId}
-            open={terminalOpen}
-            onClose={() => setTerminalOpen(false)}
-          />
+          <Suspense fallback={null}>
+            <TerminalDrawer
+              key={activeThreadId}
+              connection={connection}
+              threadId={activeThreadId}
+              open={terminalOpen}
+              onClose={() => setTerminalOpen(false)}
+            />
+          </Suspense>
         ) : undefined
       }
     >

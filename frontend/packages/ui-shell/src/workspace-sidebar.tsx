@@ -1,5 +1,5 @@
 /** 工作区侧栏：主导航、项目与会话列表；会话可按项目分组或按时间排成一列。 */
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import type { Project, Thread } from "@pigcode/contracts"
 import {
   Button,
@@ -70,6 +70,16 @@ function providerMark(thread: Thread): string {
   return id.slice(0, 2).toUpperCase()
 }
 
+/** 每分钟刷新一次的当前时间，让「刚刚 / 3分钟」这类相对时间跟着走。 */
+function useMinuteClock(): number {
+  const [now, setNow] = useState(() => Date.now())
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 60_000)
+    return () => clearInterval(timer)
+  }, [])
+  return now
+}
+
 /** 「项目」标题旁的排列方式菜单。 */
 function GroupingMenu({
   value,
@@ -132,6 +142,7 @@ export function WorkspaceSidebar({
   const toast = useToast()
   const openFailed = useOpenFailure()
   const [grouping, setGrouping] = useSidebarGrouping()
+  const now = useMinuteClock()
   // 同一时间只有一行在改名；项目与会话的 id 前缀不同，不会撞上。
   const [renamingId, setRenamingId] = useState<string | null>(null)
   const projectNames = new Map(projects.map((project) => [project.id, project.name]))
@@ -196,6 +207,7 @@ export function WorkspaceSidebar({
         rename={renameFor(thread.id, (title) => onRenameThread?.(thread.id, title))}
         actions={threadActions(thread)}
         onOpen={() => onOpenThread(thread.id)}
+        now={now}
       />
     )
   }
