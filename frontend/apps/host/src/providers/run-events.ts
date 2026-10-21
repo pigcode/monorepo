@@ -72,8 +72,12 @@ export function mapProviderEvent(run: ActiveRun, event: ProviderEvent, hooks: Ru
         output: event.output,
         isError: event.isError,
         status: event.isError ? "failed" : "completed",
+        ...(typeof event.exitCode === "number" ? { exitCode: event.exitCode } : {}),
         ...parentField(event.parentToolUseId),
       })
+      return
+    case "tool.outputDelta":
+      run.emitLive?.(event)
       return
     case "subagent.started":
       hooks.append(run.threadId, run.runId, "subagent.started", {

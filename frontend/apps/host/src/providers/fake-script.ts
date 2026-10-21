@@ -27,6 +27,40 @@ function tool(id: string, name: string, input: unknown, output: unknown, waitMs:
   ]
 }
 
+/** 跑一条命令：输出分几段流出来，最后带完整输出与退出码结束。 */
+function command(id: string, cmd: string, chunks: string[], waitMs: number, exitCode = 0): Step[] {
+  return [
+    { type: "tool.started", toolCallId: id, name: "Bash", input: { command: cmd } },
+    ...chunks.flatMap((delta): Step[] => [
+      { wait: waitMs },
+      { type: "tool.outputDelta", toolCallId: id, delta },
+    ]),
+    { wait: waitMs },
+    {
+      type: "tool.completed",
+      toolCallId: id,
+      name: "Bash",
+      output: chunks.join(""),
+      isError: exitCode !== 0,
+      exitCode,
+    },
+  ]
+}
+
+const LINT_OUTPUT = [
+  "\n> demo@0.0.0 lint\n> eslint src\n\n",
+  "src/index.ts\n  1:24  error  Unexpected constant binary expression  no-constant-binary-expression\n\n",
+  "✖ 1 problem (1 error, 0 warnings)\n",
+]
+
+const TEST_OUTPUT = [
+  "\n> demo@0.0.0 test\n> vitest run\n\n",
+  " ✓ src/index.test.ts > answer is 42\n",
+  " ✓ src/index.test.ts > answer is a number\n",
+  " ✓ src/index.test.ts > answer is exported\n",
+  "\n Test Files  1 passed (1)\n      Tests  3 passed (3)\n   Duration  412ms\n",
+]
+
 /** 完整脚本；stepMs 控制每个工具的耗时，测试传 0。 */
 export function fakeScript(stepMs: number): Step[] {
   return [
@@ -65,7 +99,20 @@ export function fakeScript(stepMs: number): Step[] {
       "The file src/index.ts has been updated.",
       stepMs,
     ),
-    ...tool("fake-bash-1", "Bash", { command: "pnpm test" }, "Tests  3 passed (3)\n", stepMs * 2),
+    ...command("fake-lint-1", "pnpm lint", LINT_OUTPUT, stepMs / 3, 1),
+    ...message("lint 不接受常量表达式，换成先声明再导出。"),
+    ...tool(
+      "fake-edit-2",
+      "Edit",
+      {
+        file_path: "src/index.ts",
+        old_string: "export const answer = 41 + 1",
+        new_string: "const base = 41\nexport const answer = base + 1",
+      },
+      "The file src/index.ts has been updated.",
+      stepMs,
+    ),
+    ...command("fake-bash-1", "pnpm lint && pnpm test", TEST_OUTPUT, stepMs / 2),
     {
       type: "plan.updated",
       explanation: "检查并修复示例项目",
@@ -76,7 +123,7 @@ export function fakeScript(stepMs: number): Step[] {
       ],
     },
     ...message(
-      "改好了：`answer` 现在由 `41 + 1` 计算，结果仍是 **42**。\n\n- 修改了 `src/index.ts`\n- `pnpm test` 全部通过",
+      "改好了：`answer` 现在由 `base + 1` 计算，结果仍是 **42**。\n\n- 修改了 `src/index.ts`\n- `pnpm lint` 与 `pnpm test` 全部通过",
     ),
   ]
 }

@@ -160,10 +160,12 @@ describe("turn rendering", () => {
     expect(screen.getByText("Looking around.")).toBeTruthy()
     const explore = screen.getByRole("button", { name: /查阅/ })
     expect(explore.textContent).toContain("2 个文件 · 1 次搜索")
-    const run = screen.getByRole("button", { name: /运行/ })
+    const run = screen.getByRole("button", { name: /终端/ })
     expect(run.textContent).toContain("pnpm test")
+    expect(run.textContent).toContain("1 秒")
 
     await userEvent.click(run)
+    expect(within(run.parentElement!).getByText("pnpm test", { selector: "pre" })).toBeTruthy()
     expect(within(run.parentElement!).getByText("ok")).toBeTruthy()
   })
 
@@ -175,7 +177,9 @@ describe("turn rendering", () => {
     expect(header.querySelector(".dot-matrix")).not.toBeNull()
     expect(screen.getByText("Looking around.")).toBeTruthy()
     expect(screen.getByText("partial answer")).toBeTruthy()
-    // 运行中的 Bash 显示点阵。
-    expect(container.querySelector(".tool-row[data-status='running'] .dot-matrix")).not.toBeNull()
+    // 运行中的命令显示「正在执行」的扫光文字。
+    expect(
+      container.querySelector(".tool-row[data-status='running'] .tool-shimmer")?.textContent,
+    ).toBe("正在执行")
   })
 })

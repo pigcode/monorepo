@@ -74,6 +74,8 @@ export interface ChatViewProps {
   onBackToMain?: (() => void) | undefined
   /** 空会话的文案；子代理会话用它说明共用工作目录。 */
   empty?: EmptyStateText | undefined
+  /** 运行中命令已经流出的输出，按工具调用 id。 */
+  liveOutput?: Readonly<Record<string, string>> | undefined
 }
 
 /** 根据事件流判断当前 run 是否仍在进行。 */
@@ -121,6 +123,7 @@ export function ChatView({
   onOpenSubagent,
   onBackToMain,
   empty,
+  liveOutput,
 }: ChatViewProps) {
   const submit = onSubmit ?? onStart
   const { t } = useLocale()
@@ -166,7 +169,7 @@ export function ChatView({
     if (!pinned) return
     const element = threadRef.current
     if (element) element.scrollTop = element.scrollHeight
-  }, [events, streamingText, pinned, subagent])
+  }, [events, streamingText, liveOutput, pinned, subagent])
 
   function handleScroll(): void {
     const element = threadRef.current
@@ -240,6 +243,7 @@ export function ChatView({
             onViewDiff={onViewDiff}
             onOpenSubagent={onOpenSubagent}
             empty={empty}
+            liveOutput={liveOutput}
           />
         )}
       </div>

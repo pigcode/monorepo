@@ -176,6 +176,7 @@ describe("CodexDriver", () => {
       name: "Bash",
       output: "hi",
       isError: false,
+      exitCode: 0,
     })
     expect(events).toContainEqual({
       type: "tool.completed",

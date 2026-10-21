@@ -25,6 +25,13 @@ export function normalizeCodexNotification(method: string, params: unknown): Pro
       const delta = asString(record.delta)
       return delta === undefined ? [] : [{ type: "message.delta", text: delta }]
     }
+    case "item/commandExecution/outputDelta": {
+      const delta = asString(record.delta)
+      const itemId = asString(record.itemId)
+      return delta === undefined || !itemId
+        ? []
+        : [{ type: "tool.outputDelta", toolCallId: itemId, delta }]
+    }
     case "item/started":
       return normalizeItem(record.item, true)
     case "item/completed":
@@ -66,6 +73,7 @@ function normalizeItem(value: unknown, started: boolean): ProviderEvent[] {
         name: "Bash",
         output: item.aggregatedOutput ?? "",
         isError: isItemError(item),
+        ...(typeof item.exitCode === "number" ? { exitCode: item.exitCode } : {}),
       },
     ]
   }

@@ -28,6 +28,8 @@ export interface MessageListProps {
   onViewDiff?: ((summary: FileChangeSummary) => void) | undefined
   onOpenSubagent?: ((id: string) => void) | undefined
   empty?: EmptyStateText | undefined
+  /** 运行中命令已经流出的输出，按工具调用 id。 */
+  liveOutput?: Readonly<Record<string, string>> | undefined
 }
 
 /** 保持引用不变、调用时总是转给最新回调的包装，避免未变化的轮因回调变化而重渲染。 */
@@ -60,6 +62,7 @@ export function MessageList({
   onViewDiff,
   onOpenSubagent,
   empty,
+  liveOutput,
 }: MessageListProps) {
   const { t } = useLocale()
   const streaming = streamingText.length > 0
@@ -69,15 +72,16 @@ export function MessageList({
   const viewDiff = useStable(onViewDiff)
   const openSubagent = useStable(onOpenSubagent)
   const nameOf = (agentId: string | null) => (agentId ? (agentName?.(agentId) ?? agentId) : null)
-  const streamingKey = useMemo(() => {
-    if (!streaming) return null
+  // 流式文本与命令输出都属于最后一个还没结束的轮；其余轮拿不到它们，不会因此重渲染。
+  const openKey = useMemo(() => {
     const turns = timeline.flatMap((entry) => (entry.kind === "turn" ? [entry.turn] : []))
     return (
       [...turns]
         .reverse()
         .find((turn) => !["completed", "failed", "interrupted"].includes(turn.status))?.key ?? null
     )
-  }, [timeline, streaming])
+  }, [timeline])
+  const streamingKey = streaming ? openKey : null
 
   if (!timeline.some((entry) => entry.kind !== "brief")) {
     return (
@@ -123,6 +127,7 @@ export function MessageList({
             key={entry.turn.key}
             turn={entry.turn}
             streamingText={entry.turn.key === streamingKey ? streamingText : ""}
+            liveOutput={entry.turn.key === openKey ? liveOutput : undefined}
             agentLabel={nameOf(entry.turn.agentId)}
             onApproval={approve}
             onViewTool={viewTool}

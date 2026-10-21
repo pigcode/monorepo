@@ -7,7 +7,9 @@ import { memo, useEffect, useState } from "react"
 import { AlertTriangle, Check, ChevronRight, CircleStop, Copy } from "lucide-react"
 import { DotMatrix, copyText, useLocale } from "@pigcode/ui-primitives"
 import { ApprovalCard, type ApprovalDecision } from "./approval-card"
+import { CommandGroup } from "./command-row"
 import { DiffSummary, type FileChangeSummary } from "./diff-summary"
+import { elapsed, formatDuration, useNow } from "./duration"
 import { MessageText } from "./message-item"
 import { PlanCard } from "./plan-card"
 import { SubagentCard } from "./subagent-card"
@@ -15,45 +17,7 @@ import { ExploreGroup, ToolCard, type ToolCall } from "./tool-card"
 import { TurnActions } from "./turn-actions"
 import { isEnded, type Turn, type WorkItem } from "./turns"
 
-/** 把时长写成「12 秒 / 3 分 5 秒 / 1 时 2 分」，英文为「12s / 3m 5s / 1h 2m」。 */
-export function formatDuration(ms: number, locale: string): string {
-  const total = Math.max(1, Math.round(ms / 1000))
-  const hours = Math.floor(total / 3600)
-  const minutes = Math.floor((total % 3600) / 60)
-  const seconds = total % 60
-  const zh = locale.startsWith("zh")
-  const unit = (value: number, zhUnit: string, enUnit: string) =>
-    zh ? `${value} ${zhUnit}` : `${value}${enUnit}`
-  if (hours > 0)
-    return [unit(hours, "时", "h"), minutes > 0 ? unit(minutes, "分", "m") : null]
-      .filter(Boolean)
-      .join(" ")
-  if (minutes > 0)
-    return [unit(minutes, "分", "m"), seconds > 0 ? unit(seconds, "秒", "s") : null]
-      .filter(Boolean)
-      .join(" ")
-  return unit(seconds, "秒", "s")
-}
-
-/** 运行中每秒刷新一次当前时间；结束后停止计时。 */
-function useNow(active: boolean): number {
-  const [now, setNow] = useState(() => Date.now())
-  useEffect(() => {
-    if (!active) return undefined
-    setNow(Date.now())
-    const timer = setInterval(() => setNow(Date.now()), 1000)
-    return () => clearInterval(timer)
-  }, [active])
-  return now
-}
-
-/** 两个时间点之间的毫秒数；缺任何一个时为 null。 */
-function elapsed(from: string | null, to: string | number | null): number | null {
-  if (!from || to === null) return null
-  const start = Date.parse(from)
-  const end = typeof to === "number" ? to : Date.parse(to)
-  return Number.isFinite(start) && Number.isFinite(end) ? Math.max(0, end - start) : null
-}
+export { formatDuration } from "./duration"
 
 /** 工作区的折叠头。 */
 function WorkHeader({
@@ -136,10 +100,12 @@ function UserActions({ text }: { text: string }) {
 /** 工作区里的一项。 */
 function WorkItemView({
   item,
+  liveOutput,
   onViewTool,
   onOpenSubagent,
 }: {
   item: WorkItem
+  liveOutput: Readonly<Record<string, string>> | undefined
   onViewTool: ((tool: ToolCall) => void) | undefined
   onOpenSubagent: ((id: string) => void) | undefined
 }) {
@@ -151,9 +117,11 @@ function WorkItemView({
         </div>
       )
     case "tool":
-      return <ToolCard tool={item.tool} onView={onViewTool} />
+      return <ToolCard tool={item.tool} live={liveOutput?.[item.tool.id]} onView={onViewTool} />
     case "explore":
       return <ExploreGroup tools={item.tools} onView={onViewTool} />
+    case "commands":
+      return <CommandGroup tools={item.tools} onView={onViewTool} />
     case "plan":
       return <PlanCard plan={item.plan} />
     case "subagent":
@@ -170,11 +138,14 @@ export interface TurnViewProps {
   onViewTool: ((tool: ToolCall) => void) | undefined
   onViewDiff: ((summary: FileChangeSummary) => void) | undefined
   onOpenSubagent?: ((id: string) => void) | undefined
+  /** 运行中命令已经流出的输出；只传给正在运行的那一轮。 */
+  liveOutput?: Readonly<Record<string, string>> | undefined
 }
 
 function TurnViewImpl({
   turn,
   streamingText,
+  liveOutput,
   agentLabel,
   onApproval,
   onViewTool,
@@ -212,6 +183,7 @@ function TurnViewImpl({
               <WorkItemView
                 key={item.key}
                 item={item}
+                liveOutput={liveOutput}
                 onViewTool={onViewTool}
                 onOpenSubagent={onOpenSubagent}
               />
@@ -264,6 +236,7 @@ export const TurnView = memo(
   (previous, next) =>
     previous.turn.signature === next.turn.signature &&
     previous.streamingText === next.streamingText &&
+    previous.liveOutput === next.liveOutput &&
     previous.agentLabel === next.agentLabel &&
     previous.onApproval === next.onApproval &&
     previous.onViewTool === next.onViewTool &&

@@ -67,7 +67,8 @@ function collectTools(events: ThreadEvent[]): Map<string, ToolCall> {
       asText(payload.callId) ??
       `tool-${event.seq}`
     const name = asText(payload.name) ?? asText(payload.tool) ?? asText(payload.title) ?? "tool"
-    const failed = payload.error !== undefined || payload.status === "failed"
+    const failed =
+      payload.error !== undefined || payload.status === "failed" || payload.isError === true
     const status: ToolStatus =
       event.type === "tool.started" ? "running" : failed ? "failed" : "completed"
     const existing = tools.get(id)

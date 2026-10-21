@@ -124,6 +124,11 @@ export function ChatViewContainer({
     : mainId
       ? (state.threadStates[mainId]?.streamingText ?? state.streamingText)
       : state.streamingText
+  const liveOutput = viewChild
+    ? viewState?.liveOutput
+    : mainId
+      ? state.threadStates[mainId]?.liveOutput
+      : undefined
   const viewProviderId = thread ? (thread.lastProviderId ?? thread.defaultProviderId) : null
   const capabilities =
     (viewProviderId ? capabilityMap[viewProviderId] : undefined) ?? state.providerCapabilities
@@ -277,6 +282,7 @@ export function ChatViewContainer({
         thread={thread}
         events={events}
         streamingText={streamingText}
+        liveOutput={liveOutput}
         capabilities={capabilities}
         agents={agents}
         catalog={catalog}

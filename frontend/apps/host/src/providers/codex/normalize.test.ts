@@ -32,6 +32,7 @@ describe("normalizeCodexNotification", () => {
       name: "Bash",
       output: "hi",
       isError: false,
+      exitCode: 0,
     })
   })
 
@@ -52,7 +53,22 @@ describe("normalizeCodexNotification", () => {
       name: "Bash",
       output: "",
       isError: true,
+      exitCode: 1,
     })
+  })
+
+  it("streams command output as live deltas", () => {
+    expect(
+      normalizeCodexNotification("item/commandExecution/outputDelta", {
+        threadId: "th",
+        turnId: "t1",
+        itemId: "i1",
+        delta: "line 1\n",
+      }),
+    ).toEqual([{ type: "tool.outputDelta", toolCallId: "i1", delta: "line 1\n" }])
+    expect(normalizeCodexNotification("item/commandExecution/outputDelta", { delta: "x" })).toEqual(
+      [],
+    )
   })
 
   it("maps started command execution and file changes", () => {

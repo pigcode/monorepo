@@ -46,10 +46,22 @@ describe("fake provider", () => {
       },
     )
     const tools = events.flatMap((event) => (event.type === "tool.started" ? [event.name] : []))
-    expect(tools).toEqual(["Read", "Read", "Grep", "Edit", "Bash"])
-    expect(events.filter((event) => event.type === "tool.completed")).toHaveLength(5)
+    expect(tools).toEqual(["Read", "Read", "Grep", "Edit", "Bash", "Edit", "Bash"])
+    const commands = events.flatMap((event) =>
+      event.type === "tool.completed" && event.name === "Bash" ? [event] : [],
+    )
+    // 第一次 lint 失败（退出码 1），修好后再跑一次；两条命令的输出都按片段流出。
+    expect(commands.map((event) => [event.isError, event.exitCode])).toEqual([
+      [true, 1],
+      [false, 0],
+    ])
+    const deltas = events.filter((event) => event.type === "tool.outputDelta")
+    expect(deltas.map((event) => event.toolCallId)).toEqual([
+      ...Array(3).fill("fake-lint-1"),
+      ...Array(5).fill("fake-bash-1"),
+    ])
     expect(events.filter((event) => event.type === "plan.updated")).toHaveLength(3)
-    expect(events.filter((event) => event.type === "message.completed")).toHaveLength(2)
+    expect(events.filter((event) => event.type === "message.completed")).toHaveLength(3)
     expect(events.at(-1)).toEqual({ type: "run.completed" })
   })
 

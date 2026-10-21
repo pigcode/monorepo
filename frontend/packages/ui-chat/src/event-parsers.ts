@@ -4,7 +4,7 @@ import type { ApprovalDecision, ApprovalRequest } from "./approval-card"
 import type { DiffFile, FileChangeSummary } from "./diff-summary"
 import type { PlanStep, PlanStepStatus, PlanUpdate } from "./plan-card"
 import type { SubagentCall, SubagentStatus } from "./subagent-card"
-import type { ToolCall, ToolStatus } from "./tool-card"
+import type { ToolCall, ToolStatus } from "./tool-meta"
 
 /** 把 unknown payload 收窄为对象。 */
 export function asRecord(value: unknown): Record<string, unknown> | undefined {
@@ -49,6 +49,7 @@ export function toolFromEvent(event: ThreadEvent, status: ToolStatus): ToolCall 
     asText(payload.toolCallId) ??
     asText(payload.callId) ??
     `tool-${event.seq}`
+  const exitCode = asNumber(payload.exitCode)
   return {
     id,
     name,
@@ -58,18 +59,27 @@ export function toolFromEvent(event: ThreadEvent, status: ToolStatus): ToolCall 
       displayValue(payload.command) ??
       displayValue(payload.arguments),
     output: displayValue(payload.output) ?? displayValue(payload.result),
+    ...(event.type === "tool.started" ? { startedAt: event.createdAt } : {}),
+    ...(event.type === "tool.completed" ? { endedAt: event.createdAt } : {}),
+    ...(exitCode === undefined ? {} : { exitCode }),
   }
 }
 
 /** 合并同一工具的 started / completed 事件。 */
 function mergeTool(existing: ToolCall | undefined, next: ToolCall): ToolCall {
   if (!existing) return next
+  const startedAt = existing.startedAt ?? next.startedAt
+  const endedAt = next.endedAt ?? existing.endedAt
+  const exitCode = next.exitCode ?? existing.exitCode
   return {
     id: existing.id,
     name: next.name === "tool" ? existing.name : next.name,
     status: next.status,
     input: next.input ?? existing.input,
     output: next.output ?? existing.output,
+    ...(startedAt ? { startedAt } : {}),
+    ...(endedAt ? { endedAt } : {}),
+    ...(exitCode === undefined ? {} : { exitCode }),
   }
 }
 
@@ -79,7 +89,8 @@ export function collectTools(events: ThreadEvent[]): Map<string, ToolCall> {
   for (const event of events) {
     if (event.type !== "tool.started" && event.type !== "tool.completed") continue
     const payload = asRecord(event.payload)
-    const failed = payload?.error !== undefined || payload?.status === "failed"
+    const failed =
+      payload?.error !== undefined || payload?.status === "failed" || payload?.isError === true
     const status: ToolStatus =
       event.type === "tool.started" ? "running" : failed ? "failed" : "completed"
     const next = toolFromEvent(event, status)

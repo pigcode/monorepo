@@ -146,4 +146,33 @@ describe("AppStore batching", () => {
       lastModelId: "gpt-6.1-sol",
     })
   })
+
+  it("collects a running command's output per frame and drops it once the command ends", () => {
+    const frames = manualSchedule()
+    const store = new AppStore({ schedule: frames.schedule })
+    store.openThread("th_1")
+    let notifications = 0
+    store.subscribe(() => {
+      notifications += 1
+    })
+    store.queueToolOutput("th_1", "c1", "line 1\n")
+    store.queueToolOutput("th_1", "c1", "line 2\n")
+    store.queueToolOutput("th_1", "c2", "other\n")
+    store.queueToolOutput("th_gone", "c9", "late\n")
+    expect(notifications).toBe(0)
+    frames.flush()
+    expect(notifications).toBe(1)
+    expect(store.getSnapshot().threadStates["th_1"]?.liveOutput).toEqual({
+      c1: "line 1\nline 2\n",
+      c2: "other\n",
+    })
+    expect(store.getSnapshot().threadStates["th_gone"]).toBeUndefined()
+
+    // 新事件到达前先写入排队的输出；命令结束后由完整输出取代，run 结束时全部清掉。
+    store.queueToolOutput("th_1", "c1", "line 3\n")
+    store.addEvents([threadEvent("th_1", 1, "tool.completed", { toolCallId: "c1" })])
+    expect(store.getSnapshot().threadStates["th_1"]?.liveOutput).toEqual({ c2: "other\n" })
+    store.addEvents([threadEvent("th_1", 2, "run.completed")])
+    expect(store.getSnapshot().threadStates["th_1"]?.liveOutput).toEqual({})
+  })
 })

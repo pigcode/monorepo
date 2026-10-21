@@ -155,6 +155,9 @@ export class CodexDriver implements ProviderDriver {
       ),
       client.onNotification("item/completed", (params) => emit(runtime, "item/completed", params)),
       client.onNotification("item/started", (params) => emit(runtime, "item/started", params)),
+      client.onNotification("item/commandExecution/outputDelta", (params) =>
+        emit(runtime, "item/commandExecution/outputDelta", params),
+      ),
       client.onNotification("turn/plan/updated", (params) =>
         emit(runtime, "turn/plan/updated", params),
       ),

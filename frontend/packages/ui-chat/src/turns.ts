@@ -19,13 +19,14 @@ import {
 } from "./event-parsers"
 import type { PlanUpdate } from "./plan-card"
 import type { SubagentCall } from "./subagent-card"
-import type { ToolCall, ToolStatus } from "./tool-card"
+import { isCommandTool, type ToolCall, type ToolStatus } from "./tool-meta"
 
 /** 一轮里的一项工作。 */
 export type WorkItem =
   | { kind: "message"; key: string; text: string }
   | { kind: "tool"; key: string; tool: ToolCall }
   | { kind: "explore"; key: string; tools: ToolCall[] }
+  | { kind: "commands"; key: string; tools: ToolCall[] }
   | { kind: "plan"; key: string; plan: PlanUpdate }
   | { kind: "subagent"; key: string; subagent: SubagentCall }
 
@@ -87,24 +88,38 @@ function emptyTurn(key: string, runId: string | null): Turn {
   }
 }
 
-/** 连续的已完成查阅工具合成一组；单个查阅仍按普通工具显示。 */
-function groupExplore(items: WorkItem[]): WorkItem[] {
+type GroupKind = "explore" | "commands"
+
+/** 工具属于哪种可合并的分组：已完成的查阅、已结束的命令；其余不合并。 */
+function groupKind(tool: ToolCall): GroupKind | null {
+  if (isExploreTool(tool.name) && tool.status === "completed") return "explore"
+  if (isCommandTool(tool.name) && tool.status !== "running") return "commands"
+  return null
+}
+
+/** 连续的已完成查阅、连续的已结束命令各自合成一组；只有一个时仍按普通工具显示。 */
+function groupWork(items: WorkItem[]): WorkItem[] {
   const result: WorkItem[] = []
   let run: Array<Extract<WorkItem, { kind: "tool" }>> = []
+  let runKind: GroupKind | null = null
   const flush = () => {
-    if (run.length >= 2) {
+    if (run.length >= 2 && runKind) {
       result.push({
-        kind: "explore",
-        key: `explore-${run[0]?.key ?? ""}`,
+        kind: runKind,
+        key: `${runKind}-${run[0]?.key ?? ""}`,
         tools: run.map((item) => item.tool),
       })
     } else {
       result.push(...run)
     }
     run = []
+    runKind = null
   }
   for (const item of items) {
-    if (item.kind === "tool" && isExploreTool(item.tool.name) && item.tool.status === "completed") {
+    const kind = item.kind === "tool" ? groupKind(item.tool) : null
+    if (item.kind === "tool" && kind) {
+      if (kind !== runKind) flush()
+      runKind = kind
       run.push(item)
       continue
     }
@@ -275,7 +290,7 @@ function finalizeTurn(turn: Turn, texts: Array<{ text: string; at: string; index
     turn.answer = last.text
     turn.work = turn.work.filter((_item, index) => index !== last.index)
   }
-  turn.work = groupExplore(turn.work)
+  turn.work = groupWork(turn.work)
   turn.signature += `|${turn.status}|${turn.approvals.map((entry) => entry.resolved ?? "-").join(",")}`
 }
 

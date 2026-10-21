@@ -85,6 +85,10 @@ test("timeline folds a finished turn's work and the sidebar animates running thr
     )
     await expect(page.getByRole("button", { name: /工作中/ })).toBeVisible()
     await expect(page.locator(".turn-work .tool-row").first()).toBeVisible()
+    // 命令运行中自动展开，输出一段段流进来。
+    const live = page.locator(".cmd-row[data-status='running']")
+    await expect(live.locator(".tool-shimmer")).toHaveText("正在执行")
+    await expect(live.locator(".cmd-output")).toContainText("eslint src")
 
     // 结束后折叠成「已工作」，只留最终回答；展开后看到查阅分组与命令。
     const header = page.getByRole("button", { name: /已工作/ })
@@ -94,10 +98,12 @@ test("timeline folds a finished turn's work and the sidebar animates running thr
     await expect(page.locator(".turn-work")).toHaveCount(0)
     await header.click()
     await expect(page.getByRole("button", { name: /查阅/ })).toContainText("2 个文件 · 1 次搜索")
-    const command = page.getByRole("button", { name: /运行/ })
-    await expect(command).toContainText("pnpm test")
-    await command.click()
-    await expect(page.locator(".tool-row.is-open pre").last()).toContainText("Tests  3 passed")
+    // 第一次 lint 失败显示退出码；修好后的命令展开能看到 `$ 命令` 与完整输出。
+    await expect(page.locator(".cmd-row[data-status='failed']")).toContainText("退出码 1")
+    const command = page.locator(".cmd-row").filter({ hasText: "pnpm lint && pnpm test" })
+    await command.locator(".tool-row-head").click()
+    await expect(command.locator(".cmd-text pre")).toHaveText("pnpm lint && pnpm test")
+    await expect(command.locator(".cmd-output")).toContainText("Tests  3 passed")
   } finally {
     await app.close()
   }

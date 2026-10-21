@@ -66,6 +66,15 @@ export const providerEventSchema = z.discriminatedUnion("type", [
     name: z.string(),
     output: z.unknown(),
     isError: z.boolean(),
+    /** 命令类工具的退出码；provider 不报告时缺省。 */
+    exitCode: z.number().int().nullable().optional(),
+    parentToolUseId: z.string().optional(),
+  }),
+  /** 运行中命令的输出片段；只走实时通道，完整输出在 tool.completed 里落库。 */
+  z.object({
+    type: z.literal("tool.outputDelta"),
+    toolCallId: z.string(),
+    delta: z.string(),
     parentToolUseId: z.string().optional(),
   }),
   z.object({

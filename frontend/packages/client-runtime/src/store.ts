@@ -11,6 +11,8 @@ export type ThreadViewStatus =
 export interface ThreadViewState {
   events: ThreadEvent[]
   streamingText: string
+  /** 运行中命令已经流出的输出，按工具调用 id；命令结束后由完整输出取代。 */
+  liveOutput: Readonly<Record<string, string>>
   status: ThreadViewStatus
   pendingApprovals: number
   lastError: string | null
@@ -45,10 +47,28 @@ function emptyThreadState(): ThreadViewState {
   return {
     events: [],
     streamingText: "",
+    liveOutput: {},
     status: "idle",
     pendingApprovals: 0,
     lastError: null,
   }
+}
+
+const NO_OUTPUT: Readonly<Record<string, string>> = {}
+
+/** 命令结束或 run 结束后丢掉对应的实时输出。 */
+function liveOutputAfter(
+  previous: Readonly<Record<string, string>>,
+  event: ThreadEvent,
+): Readonly<Record<string, string>> {
+  if (RUN_END_EVENTS.has(event.type)) return NO_OUTPUT
+  if (event.type !== "tool.completed") return previous
+  const payload = event.payload as { toolCallId?: unknown; id?: unknown } | null
+  const id = typeof payload?.toolCallId === "string" ? payload.toolCallId : payload?.id
+  if (typeof id !== "string" || !(id in previous)) return previous
+  const next = { ...previous }
+  delete next[id]
+  return next
 }
 
 /** 事件类型到线程状态的映射；未知事件保持原状态。 */
@@ -162,6 +182,7 @@ function applyEvent(
     state: {
       ...previous,
       streamingText: endsStream ? "" : previous.streamingText,
+      liveOutput: liveOutputAfter(previous.liveOutput, event),
       status,
       pendingApprovals: pendingApprovalsAfter(previous, event),
       lastError:
@@ -183,6 +204,7 @@ export class AppStore {
   private state: AppState = initialState
   private readonly listeners = new Set<() => void>()
   private readonly pendingDeltas = new Map<string, string>()
+  private readonly pendingOutput = new Map<string, Map<string, string>>()
   private flushScheduled = false
   private readonly schedule: (callback: () => void) => void
 
@@ -348,17 +370,25 @@ export class AppStore {
    */
   queueDelta(threadId: string, text: string): void {
     this.pendingDeltas.set(threadId, (this.pendingDeltas.get(threadId) ?? "") + text)
-    if (this.flushScheduled) return
-    this.flushScheduled = true
-    this.schedule(() => this.flushDeltas())
+    this.scheduleFlush()
   }
 
-  /** 把排队的流式文本一次写入。 */
+  /** 排队一段命令输出，和流式文本一起按帧写入。 */
+  queueToolOutput(threadId: string, toolCallId: string, delta: string): void {
+    const byTool = this.pendingOutput.get(threadId) ?? new Map<string, string>()
+    byTool.set(toolCallId, (byTool.get(toolCallId) ?? "") + delta)
+    this.pendingOutput.set(threadId, byTool)
+    this.scheduleFlush()
+  }
+
+  /** 把排队的流式文本与命令输出一次写入。 */
   flushDeltas(): void {
     this.flushScheduled = false
-    if (this.pendingDeltas.size === 0) return
+    if (this.pendingDeltas.size === 0 && this.pendingOutput.size === 0) return
     const pending = [...this.pendingDeltas]
+    const output = [...this.pendingOutput]
     this.pendingDeltas.clear()
+    this.pendingOutput.clear()
     const threadStates = { ...this.state.threadStates }
     let streamingText = this.state.streamingText
     let changed = false
@@ -369,9 +399,25 @@ export class AppStore {
       if (this.state.activeThreadId === threadId) streamingText += text
       changed = true
     }
+    for (const [threadId, byTool] of output) {
+      const previous = threadStates[threadId]
+      if (!previous) continue
+      const liveOutput = { ...previous.liveOutput }
+      for (const [toolCallId, delta] of byTool) {
+        liveOutput[toolCallId] = (liveOutput[toolCallId] ?? "") + delta
+      }
+      threadStates[threadId] = { ...previous, liveOutput }
+      changed = true
+    }
     if (!changed) return
     this.state = { ...this.state, threadStates, streamingText }
     this.emit()
+  }
+
+  private scheduleFlush(): void {
+    if (this.flushScheduled) return
+    this.flushScheduled = true
+    this.schedule(() => this.flushDeltas())
   }
 
   /** 写入单个线程状态并通知订阅者。 */
