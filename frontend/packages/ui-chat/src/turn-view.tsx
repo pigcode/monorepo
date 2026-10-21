@@ -12,6 +12,7 @@ import { DiffSummary, type FileChangeSummary } from "./diff-summary"
 import { elapsed, formatDuration, useNow } from "./duration"
 import { MessageText } from "./message-item"
 import { PlanCard } from "./plan-card"
+import { QuestionCard } from "./question-card"
 import { SubagentCard } from "./subagent-card"
 import {
   BrowserGroup,
@@ -45,11 +46,12 @@ function WorkHeader({
   const now = useNow(live && turn.status !== "queued")
   const ms = elapsed(turn.startedAt, live ? now : turn.endedAt)
   const duration = ms === null ? null : formatDuration(ms, locale)
+  const asking = turn.questions.some((entry) => entry.answers === undefined)
   const label =
     turn.status === "queued"
       ? t("tabs.status.queued")
       : turn.status === "waiting"
-        ? t("chat.status.waitingApproval")
+        ? t(asking ? "chat.status.waitingAnswer" : "chat.status.waitingApproval")
         : live
           ? t("chat.work.working").replace("{duration}", duration ?? "")
           : turn.status === "interrupted"
@@ -192,6 +194,8 @@ export interface TurnViewProps {
   onViewTool: ((tool: ToolCall) => void) | undefined
   onViewDiff: ((summary: FileChangeSummary) => void) | undefined
   onOpenSubagent?: ((id: string) => void) | undefined
+  /** 回答 agent 的提问。 */
+  onAnswer?: ((requestId: string, answers: string[]) => void) | undefined
   /** 运行中命令已经流出的输出；只传给正在运行的那一轮。 */
   liveOutput?: Readonly<Record<string, string>> | undefined
 }
@@ -205,6 +209,7 @@ function TurnViewImpl({
   onViewTool,
   onViewDiff,
   onOpenSubagent,
+  onAnswer,
 }: TurnViewProps) {
   const { t } = useLocale()
   const ended = isEnded(turn)
@@ -253,6 +258,14 @@ function TurnViewImpl({
             onApproval={onApproval}
           />
         ))}
+        {turn.questions.map(({ request, answers }) => (
+          <QuestionCard
+            key={`question-${request.id}`}
+            request={request}
+            answers={answers ?? (ended ? [] : undefined)}
+            onAnswer={onAnswer ?? (() => undefined)}
+          />
+        ))}
         {turn.answer ? (
           <div className="msg-ai md">
             <MessageText text={turn.answer} />
@@ -299,5 +312,6 @@ export const TurnView = memo(
     previous.onApproval === next.onApproval &&
     previous.onViewTool === next.onViewTool &&
     previous.onViewDiff === next.onViewDiff &&
-    previous.onOpenSubagent === next.onOpenSubagent,
+    previous.onOpenSubagent === next.onOpenSubagent &&
+    previous.onAnswer === next.onAnswer,
 )

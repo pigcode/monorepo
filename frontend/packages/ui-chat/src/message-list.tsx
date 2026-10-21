@@ -30,6 +30,7 @@ export interface MessageListProps {
   empty?: EmptyStateText | undefined
   /** 运行中命令已经流出的输出，按工具调用 id。 */
   liveOutput?: Readonly<Record<string, string>> | undefined
+  onAnswer?: ((requestId: string, answers: string[]) => void) | undefined
 }
 
 /** 保持引用不变、调用时总是转给最新回调的包装，避免未变化的轮因回调变化而重渲染。 */
@@ -63,6 +64,7 @@ export function MessageList({
   onOpenSubagent,
   empty,
   liveOutput,
+  onAnswer,
 }: MessageListProps) {
   const { t } = useLocale()
   const streaming = streamingText.length > 0
@@ -71,6 +73,7 @@ export function MessageList({
   const viewTool = useStable(onViewTool)
   const viewDiff = useStable(onViewDiff)
   const openSubagent = useStable(onOpenSubagent)
+  const answer = useStable(onAnswer)
   const nameOf = (agentId: string | null) => (agentId ? (agentName?.(agentId) ?? agentId) : null)
   // 流式文本与命令输出都属于最后一个还没结束的轮；其余轮拿不到它们，不会因此重渲染。
   const openKey = useMemo(() => {
@@ -133,6 +136,7 @@ export function MessageList({
             onViewTool={viewTool}
             onViewDiff={viewDiff}
             onOpenSubagent={openSubagent}
+            onAnswer={answer}
           />
         ),
       )}

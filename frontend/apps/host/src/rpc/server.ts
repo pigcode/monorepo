@@ -246,6 +246,21 @@ export class RpcServer {
         )
         return { ok: true }
       }
+      case "run.answerQuestion": {
+        const value = parsed as {
+          threadId: string
+          runId: string
+          requestId: string
+          answers: string[]
+        }
+        this.ctx.providers.answerQuestion(
+          value.threadId,
+          value.runId,
+          value.requestId,
+          value.answers,
+        )
+        return { ok: true }
+      }
       case "provider.detect":
         return this.ctx.providers.detect()
       case "provider.list":

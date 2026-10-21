@@ -3,6 +3,7 @@ import type { ThreadEvent } from "@pigcode/contracts"
 import type { ApprovalDecision, ApprovalRequest } from "./approval-card"
 import type { DiffFile, FileChangeSummary } from "./diff-summary"
 import type { PlanStep, PlanStepStatus, PlanUpdate } from "./plan-card"
+import type { QuestionRequestView, QuestionView } from "./question-card"
 import type { SubagentCall, SubagentStatus } from "./subagent-card"
 import type { ToolCall, ToolStatus } from "./tool-meta"
 
@@ -104,11 +105,14 @@ export function collectTools(events: ThreadEvent[]): Map<string, ToolCall> {
 export function approvalFromEvent(event: ThreadEvent): ApprovalRequest | undefined {
   const payload = asRecord(event.payload)
   if (!payload) return undefined
+  const plan =
+    asText(payload.toolName) === "ExitPlanMode" ? asText(asRecord(payload.input)?.plan) : undefined
   return {
     id: asText(payload.id) ?? asText(payload.requestId) ?? `approval-${event.seq}`,
     title: asText(payload.title),
     description: asText(payload.description) ?? asText(payload.reason) ?? asText(payload.question),
     command: displayValue(payload.command),
+    ...(plan ? { plan } : {}),
   }
 }
 
@@ -144,6 +148,47 @@ export function collectResolved(events: ThreadEvent[]): Map<string, ApprovalDeci
     if (id && decision) resolved.set(id, decision)
   }
   return resolved
+}
+
+/** 解析 question.requested 事件。 */
+export function questionFromEvent(event: ThreadEvent): QuestionRequestView | undefined {
+  const payload = asRecord(event.payload)
+  if (!payload) return undefined
+  const id = asText(payload.id) ?? asText(payload.requestId)
+  if (!id) return undefined
+  const questions: QuestionView[] = []
+  for (const entry of asArray(payload.questions)) {
+    const record = asRecord(entry)
+    const question = asText(record?.question)
+    if (!record || !question) continue
+    questions.push({
+      question,
+      header: asText(record.header),
+      multiSelect: record.multiSelect === true,
+      options: asArray(record.options).flatMap((option) => {
+        const value = asRecord(option)
+        const label = asText(value?.label)
+        return label ? [{ label, description: asText(value?.description) }] : []
+      }),
+    })
+  }
+  return questions.length > 0 ? { id, questions } : undefined
+}
+
+/** 收集已回答的问题：请求 id → 每个问题的答案。 */
+export function collectAnswers(events: ThreadEvent[]): Map<string, string[]> {
+  const answers = new Map<string, string[]>()
+  for (const event of events) {
+    if (event.type !== "question.answered") continue
+    const payload = asRecord(event.payload)
+    const id = asText(payload?.id) ?? asText(payload?.requestId)
+    if (!id) continue
+    answers.set(
+      id,
+      asArray(payload?.answers).map((answer) => (typeof answer === "string" ? answer : "")),
+    )
+  }
+  return answers
 }
 
 /** 归一化计划步骤状态。 */

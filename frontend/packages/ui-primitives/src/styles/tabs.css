@@ -249,3 +249,111 @@
 .turn-brief {
   margin-top: 4px;
 }
+
+/* ─── agent 的提问 ─────────────────────────────────────── */
+.question-card {
+  gap: 12px;
+}
+.question {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.question legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px;
+  margin-bottom: 4px;
+  padding: 0;
+  color: var(--fg);
+  font-size: var(--fs-md);
+}
+.question-header {
+  padding: 1px 6px;
+  border-radius: var(--r-sm);
+  background: var(--warn-soft);
+  color: var(--warn-text);
+  font-size: var(--fs-xs);
+}
+.question-hint {
+  color: var(--muted);
+  font-size: var(--fs-xs);
+}
+.question-option {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 5px 8px;
+  border-radius: var(--r-md);
+  cursor: pointer;
+}
+.question-option:hover {
+  background: var(--hover);
+}
+.question-option input {
+  flex: none;
+  accent-color: var(--accent);
+}
+.question-option-label {
+  color: var(--fg);
+  font-size: var(--fs-md);
+}
+.question-option-desc {
+  color: var(--muted);
+  font-size: var(--fs-sm);
+}
+.question-other {
+  height: 30px;
+  margin: 2px 0 0;
+  padding: 0 10px;
+  border: 0;
+  border-radius: var(--r-md);
+  outline: 0;
+  background: var(--field);
+  color: var(--fg);
+  font: inherit;
+  font-size: var(--fs-sm);
+}
+.question-other:focus {
+  box-shadow:
+    0 0 0 1px var(--border-focus),
+    0 0 0 3px var(--accent-ring);
+}
+.question-done {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  color: var(--muted);
+  font-size: var(--fs-sm);
+}
+.question-done-row {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+.question-done-row .ic {
+  flex: none;
+  align-self: center;
+  color: var(--ok-text);
+}
+.question-done-q {
+  color: var(--fg-2);
+}
+.question-done-a {
+  color: var(--fg);
+  font-weight: 500;
+}
+
+/* 计划模式交出的计划 */
+.plan-approval-body {
+  max-height: 360px;
+  overflow: auto;
+  padding: 2px 2px 0 26px;
+  color: var(--fg);
+  white-space: normal;
+}

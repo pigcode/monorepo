@@ -185,6 +185,14 @@ export function ChatViewContainer({
       .catch(fail)
   }
 
+  function answerQuestion(requestId: string, answers: string[]): void {
+    const runId = latestRunId()
+    if (!runId || !threadId) return
+    void deps.connection
+      .call("run.answerQuestion", { threadId, runId, requestId, answers })
+      .catch(fail)
+  }
+
   /** 切换 agent 与模型；换了 agent 时提示上下文以摘要交接。 */
   function selectModel(agentId: string, modelId: string): void {
     if (!thread) return
@@ -317,6 +325,7 @@ export function ChatViewContainer({
         }}
         onInterrupt={interrupt}
         onApproval={respondApproval}
+        onAnswer={answerQuestion}
         {...(onOpenFile
           ? {
               onViewTool: (tool: ToolCall) => {

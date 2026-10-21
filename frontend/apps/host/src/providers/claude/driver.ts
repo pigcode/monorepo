@@ -26,6 +26,7 @@ import type {
 import { detectClaude, type ClaudeDetection } from "./detect"
 import { claudeModelOption, listClaudeModels, toClaudeEffort } from "./models"
 import { createNormalizeState, normalizeSdkMessage } from "./normalize"
+import { answerRecord, parseQuestions } from "../questions"
 
 /** 可注入的 query 实现，便于测试替换真实 CLI 进程。 */
 export type ClaudeQueryFn = (params: {
@@ -58,7 +59,7 @@ export class ClaudeDriver implements ProviderDriver {
   readonly capabilities: ProviderCapabilities = {
     streaming: true,
     approvals: true,
-    questions: false,
+    questions: true,
     plan: true,
     resume: true,
     fork: false,
@@ -163,6 +164,16 @@ export class ClaudeDriver implements ProviderDriver {
           ? { allowDangerouslySkipPermissions: true }
           : {}),
         canUseTool: async (toolName, toolInput, options) => {
+          // AskUserQuestion 不是要批准的操作，而是要用户作答：答案按问题原文写回工具输入。
+          const questions = toolName === "AskUserQuestion" ? parseQuestions(toolInput) : null
+          if (questions && runtime.askQuestions) {
+            const answers = await runtime.askQuestions({ questions })
+            if (answers.length === 0) return { behavior: "deny", message: "用户没有回答这些问题" }
+            return {
+              behavior: "allow",
+              updatedInput: { ...toolInput, answers: answerRecord(questions, answers) },
+            }
+          }
           const request: ApprovalRequest = { toolName, input: toolInput }
           if (options.title !== undefined) request.title = options.title
           if (options.displayName !== undefined) request.displayName = options.displayName

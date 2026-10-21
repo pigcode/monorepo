@@ -4,11 +4,11 @@ import { describe, expect, it } from "vitest"
 import { ClaudeDriver } from "./claude/driver"
 import { CodexDriver } from "./codex/driver"
 
-/** Claude Code 在 M2 的完整能力快照。 */
+/** Claude Code 的完整能力快照；AskUserQuestion 由提问卡片作答。 */
 const claudeCapabilities: ProviderCapabilities = {
   streaming: true,
   approvals: true,
-  questions: false,
+  questions: true,
   plan: true,
   resume: true,
   fork: false,

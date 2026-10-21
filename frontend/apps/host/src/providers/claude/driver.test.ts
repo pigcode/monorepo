@@ -194,4 +194,71 @@ describe("ClaudeDriver", () => {
     // 真实冒烟依赖 dontAsk：不弹权限提示，未预授权的工具直接拒绝。
     expect(captured?.permissionMode).toBe("dontAsk")
   })
+
+  it("answers AskUserQuestion with the user's choices instead of asking for approval", async () => {
+    let captured: Options | undefined
+    const replay = replayQuery("fixtures/simple.jsonl")
+    const driver = new ClaudeDriver({
+      queryFn: (params) => {
+        captured = params.options
+        return replay(params)
+      },
+    })
+    const session = await driver.createSession({ threadId: "t6", cwd: "/tmp" })
+    const approvals: string[] = []
+    const asked: unknown[] = []
+    let answers: string[] = ["pnpm", "lint, test"]
+    await driver.send(
+      session,
+      { text: "hello" },
+      {
+        signal: new AbortController().signal,
+        emit: () => undefined,
+        requestApproval: async (request) => {
+          approvals.push(request.toolName)
+          return "allow-once"
+        },
+        askQuestions: async (request) => {
+          asked.push(request.questions.map((question) => question.question))
+          return answers
+        },
+      },
+    )
+    const input = {
+      questions: [
+        {
+          question: "用哪个包管理器？",
+          header: "工具",
+          options: [{ label: "pnpm" }],
+          multiSelect: false,
+        },
+        {
+          question: "要哪些检查？",
+          header: "检查",
+          options: [{ label: "lint" }],
+          multiSelect: true,
+        },
+      ],
+    }
+    const options = {
+      signal: new AbortController().signal,
+      toolUseID: "tool_1",
+    } as Parameters<NonNullable<Options["canUseTool"]>>[2]
+    await expect(captured?.canUseTool?.("AskUserQuestion", input, options)).resolves.toEqual({
+      behavior: "allow",
+      updatedInput: {
+        ...input,
+        answers: { "用哪个包管理器？": "pnpm", "要哪些检查？": "lint, test" },
+      },
+    })
+    expect(asked).toEqual([["用哪个包管理器？", "要哪些检查？"]])
+    expect(approvals).toEqual([])
+    answers = []
+    await expect(captured?.canUseTool?.("AskUserQuestion", input, options)).resolves.toMatchObject({
+      behavior: "deny",
+    })
+    // 其他工具仍然走审批。
+    await captured?.canUseTool?.("Bash", { command: "ls" }, options)
+    expect(approvals).toEqual(["Bash"])
+  })
 })

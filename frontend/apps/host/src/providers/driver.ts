@@ -1,5 +1,8 @@
 /** Provider adapter 的 Host 侧契约；应用层只依赖规范化事件。 */
 import type { ProviderCapabilities, ProviderEvent, ReasoningEffort } from "@pigcode/contracts"
+import type { QuestionRequest } from "./questions"
+
+export type { AgentQuestion, QuestionRequest } from "./questions"
 
 /** 审批决议；UI 只提交这三种。 */
 export type ApprovalDecision = "allow-once" | "allow-for-session" | "deny"
@@ -61,6 +64,8 @@ export interface ProviderRuntime {
   signal: AbortSignal
   emit(event: ProviderEvent): void
   requestApproval(request: ApprovalRequest): Promise<ApprovalDecision>
+  /** 向用户提问并等待回答；返回每个问题的答案，用户没答（run 结束）时为空数组。 */
+  askQuestions?(request: QuestionRequest): Promise<string[]>
 }
 
 /** provider 暴露的模型条目；不同 CLI 的目录统一成这个形状。 */

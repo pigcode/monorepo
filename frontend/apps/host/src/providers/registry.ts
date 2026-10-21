@@ -35,6 +35,7 @@ import { ProviderSessionStore } from "./claude/session-store"
 import { PendingRequestStore } from "../storage/pending-request-store"
 import { RunStore } from "../storage/run-store"
 import type { ApprovalHandle, ProvidersService } from "./service"
+import { createQuestionFlow } from "./questions"
 
 export type { ApprovalHandle, ProvidersService, StartRunOptions, StartRunResult } from "./service"
 
@@ -119,9 +120,10 @@ export function apply(ctx: Context, config: ProviderRunConfig = {}): void {
     pump()
   }
 
-  /** 把 run 的未决审批以 deny 结束，避免 driver 永久等待。 */
+  /** 把 run 的未决审批以 deny、未答问题以空答案结束，避免 driver 永久等待。 */
   function settlePending(run: ActiveRun): void {
     for (const requestId of run.approvals) {
+      if (questions.cancel(run, requestId)) continue
       if (!approvals.resolve(requestId, "deny")) continue
       pendingRequests.resolve(requestId)
       append(run.threadId, run.runId, "approval.resolved", {
@@ -133,6 +135,8 @@ export function apply(ctx: Context, config: ProviderRunConfig = {}): void {
     }
     run.approvals.clear()
   }
+
+  const questions = createQuestionFlow({ append, pendingRequests, runs, activeRuns })
 
   /** provider 事件映射所需的 Host 回调。 */
   const runEventHooks: RunEventHooks = {
@@ -201,6 +205,8 @@ export function apply(ctx: Context, config: ProviderRunConfig = {}): void {
         if (activeRuns.get(run.runId) !== run) return Promise.resolve<ApprovalDecision>("deny")
         return requestApproval(run.threadId, run.runId, request).decision
       },
+      askQuestions: (request) =>
+        activeRuns.get(run.runId) === run ? questions.ask(run, request) : Promise.resolve([]),
     }
     try {
       await run.driver.send(run.session, input, runtime)
@@ -393,6 +399,9 @@ export function apply(ctx: Context, config: ProviderRunConfig = {}): void {
         run.approvals.delete(requestId)
       }
     },
+    answerQuestion(threadId, runId, requestId, answers) {
+      questions.answer(threadId, runId, requestId, answers)
+    },
     getRunStatus(runId) {
       const active = activeRuns.get(runId)
       if (active) return active.status
@@ -440,6 +449,7 @@ export function apply(ctx: Context, config: ProviderRunConfig = {}): void {
     activeRuns.clear()
     activeThreads.clear()
     approvals.rejectAll(new Error("host disposed"))
+    questions.dispose()
   })
 }
 apply.inject = inject

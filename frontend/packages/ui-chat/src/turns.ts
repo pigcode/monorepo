@@ -9,15 +9,18 @@ import {
   approvalFromEvent,
   asRecord,
   asText,
+  collectAnswers,
   collectResolved,
   collectSubagents,
   collectTools,
   diffFromEvent,
   isParentScoped,
   planFromEvent,
+  questionFromEvent,
   toolFromEvent,
 } from "./event-parsers"
 import type { PlanUpdate } from "./plan-card"
+import type { QuestionRequestView } from "./question-card"
 import type { SubagentCall } from "./subagent-card"
 import { browserAction, isCommandTool, type ToolCall, type ToolStatus } from "./tool-meta"
 
@@ -45,6 +48,8 @@ export interface Turn {
   endedAt: string | null
   work: WorkItem[]
   approvals: Array<{ request: ApprovalRequest; resolved: ApprovalDecision | undefined }>
+  /** agent 的提问；answers 为 undefined 表示还在等回答。 */
+  questions: Array<{ request: QuestionRequestView; answers: string[] | undefined }>
   /** 结束后的最终回答；运行中为 null，所有文字都算过程。 */
   answer: string | null
   /** 这一轮助手说过的全部文字，复制按钮用。 */
@@ -80,6 +85,7 @@ function emptyTurn(key: string, runId: string | null): Turn {
     endedAt: null,
     work: [],
     approvals: [],
+    questions: [],
     answer: null,
     replyText: "",
     replyAt: null,
@@ -147,6 +153,7 @@ export function buildTimeline(events: readonly ThreadEvent[], streaming = false)
   const sorted = [...events].sort((left, right) => left.seq - right.seq)
   const tools = collectTools(sorted)
   const resolved = collectResolved(sorted)
+  const answered = collectAnswers(sorted)
   const subagents = collectSubagents(sorted)
   const entries: TimelineEntry[] = []
   const turns = new Map<string, Turn>()
@@ -243,6 +250,15 @@ export function buildTimeline(events: readonly ThreadEvent[], streaming = false)
         break
       }
       case "approval.resolved":
+        if (turn.status === "waiting") turn.status = "running"
+        break
+      case "question.requested": {
+        const request = questionFromEvent(event)
+        if (request) turn.questions.push({ request, answers: answered.get(request.id) })
+        if (turn.status === "running") turn.status = "waiting"
+        break
+      }
+      case "question.answered":
         if (turn.status === "waiting") turn.status = "running"
         break
       case "file.changed": {

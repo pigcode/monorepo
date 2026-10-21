@@ -76,6 +76,8 @@ export interface ChatViewProps {
   empty?: EmptyStateText | undefined
   /** 运行中命令已经流出的输出，按工具调用 id。 */
   liveOutput?: Readonly<Record<string, string>> | undefined
+  /** 回答 agent 的提问；容器应调用 run.answerQuestion。 */
+  onAnswer?: ((requestId: string, answers: string[]) => void) | undefined
 }
 
 /** 根据事件流判断当前 run 是否仍在进行。 */
@@ -124,6 +126,7 @@ export function ChatView({
   onBackToMain,
   empty,
   liveOutput,
+  onAnswer,
 }: ChatViewProps) {
   const submit = onSubmit ?? onStart
   const { t } = useLocale()
@@ -244,6 +247,7 @@ export function ChatView({
             onOpenSubagent={onOpenSubagent}
             empty={empty}
             liveOutput={liveOutput}
+            onAnswer={onAnswer}
           />
         )}
       </div>

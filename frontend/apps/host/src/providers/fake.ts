@@ -62,7 +62,7 @@ export class FakeProviderDriver implements ProviderDriver {
   readonly capabilities: ProviderCapabilities = {
     streaming: true,
     approvals: false,
-    questions: false,
+    questions: true,
     plan: false,
     resume: false,
     fork: false,
@@ -118,6 +118,11 @@ export class FakeProviderDriver implements ProviderDriver {
       await runUntilAborted(runtime)
       return
     }
+    if (input.text === FAKE_ASK_TEXT) {
+      await runFakeQuestions(runtime)
+      if (!runtime.signal.aborted) runtime.emit({ type: "run.completed" })
+      return
+    }
     if (input.text.startsWith(FAKE_BROWSER_PREFIX)) {
       await runFakeBrowser(runtime, {
         threadId: session.threadId,
@@ -157,6 +162,43 @@ function envMs(name: string, fallback = 0): number {
   if (raw === undefined) return fallback
   const value = Number(raw)
   return Number.isFinite(value) && value >= 0 ? value : fallback
+}
+
+/** 触发提问脚本的输入。 */
+export const FAKE_ASK_TEXT = "ask"
+
+/** 先问两个问题（一个多选、一个单选），再按回答给出结论。 */
+async function runFakeQuestions(runtime: ProviderRuntime): Promise<void> {
+  runtime.emit({ type: "message.completed", text: "开始之前先确认两件事。" })
+  const answers = runtime.askQuestions
+    ? await runtime.askQuestions({
+        questions: [
+          {
+            question: "这次改动要覆盖哪些平台？",
+            header: "平台",
+            options: [{ label: "macOS" }, { label: "Windows" }, { label: "Linux" }],
+            multiSelect: true,
+          },
+          {
+            question: "测试用哪个框架？",
+            header: "测试",
+            options: [
+              { label: "Vitest", description: "和项目现有配置一致" },
+              { label: "Jest", description: "需要额外安装依赖" },
+            ],
+            multiSelect: false,
+          },
+        ],
+      })
+    : []
+  if (runtime.signal.aborted) return
+  runtime.emit({
+    type: "message.completed",
+    text:
+      answers.length === 0
+        ? "没有收到回答，先不动手。"
+        : `好的：平台 ${answers[0] ?? "未定"}，测试用 ${answers[1] ?? "未定"}。`,
+  })
 }
 
 /** 循环推送增量直到 run 的取消信号到达；中断后不再 emit。 */

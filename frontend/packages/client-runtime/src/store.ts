@@ -77,6 +77,9 @@ const STATUS_AFTER_EVENT: Record<string, ThreadViewStatus> = {
   "run.started": "running",
   "approval.requested": "waiting-approval",
   "approval.resolved": "running",
+  // agent 的提问和审批一样要等用户处理。
+  "question.requested": "waiting-approval",
+  "question.answered": "running",
   "run.completed": "completed",
   "run.failed": "failed",
   "run.interrupted": "interrupted",
@@ -169,10 +172,10 @@ function applyEvent(
   event: ThreadEvent,
 ): { state: ThreadViewState; endsStream: boolean } {
   const mapped = STATUS_AFTER_EVENT[event.type]
-  const status =
-    mapped && !(event.type === "approval.resolved" && TERMINAL_STATUSES.has(previous.status))
-      ? mapped
-      : previous.status
+  const late =
+    (event.type === "approval.resolved" || event.type === "question.answered") &&
+    TERMINAL_STATUSES.has(previous.status)
+  const status = mapped && !late ? mapped : previous.status
   // 主线程的完成消息或 run 终态都会结束流式文本；中断时 Host 已把半截回复落成消息。
   const endsStream =
     (event.type === "message.completed" && !isSubagentMessage(event)) ||
