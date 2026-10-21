@@ -2964,6 +2964,54 @@ body.is-resizing-rows iframe {
   font-size: calc(var(--ui-scale) * 12px);
   font-variant-numeric: tabular-nums;
 }
+/* 右键菜单的触发区只是包住会话行，不参与布局；菜单打开期间标出它针对的那一行 */
+.sess-menu-area {
+  display: block;
+}
+.sess-menu-area[data-popup-open] .sess:not(.is-active) {
+  background: var(--hover);
+}
+/* 按住 ⌘/Ctrl 时，前九个会话右侧的数字快捷键 */
+.sess-kbd {
+  flex: none;
+  height: 20px;
+  padding: 0 7px;
+  border-radius: var(--r-full);
+  background: var(--active);
+  color: var(--muted);
+  font-family: var(--font-ui);
+  font-size: calc(var(--ui-scale) * 11px);
+  line-height: 20px;
+  letter-spacing: 0.02em;
+}
+.sess.is-active .sess-kbd {
+  background: var(--surface-raised);
+}
+.sidebar.show-shortcuts .nav-kbd {
+  opacity: 1;
+}
+/* 重命名时整行换成输入框，状态点留在原位 */
+.sess.is-editing,
+.sess.is-editing:hover {
+  background: var(--active);
+}
+.sess-rename {
+  flex: 1;
+  min-width: 0;
+  height: 22px;
+  margin-left: -5px;
+  padding: 0 5px;
+  border: 0;
+  border-radius: 6px;
+  background: var(--surface-raised);
+  box-shadow:
+    0 0 0 1px var(--border-focus),
+    0 0 0 3px var(--accent-ring);
+  color: var(--fg);
+  font: inherit;
+  font-size: var(--fs-md);
+  outline: none;
+}
 .side-empty {
   padding: 2px 10px 6px 34px;
   color: var(--faint);

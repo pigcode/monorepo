@@ -1,7 +1,9 @@
 /** 工作区侧栏：主导航、项目与会话列表；会话可按项目分组或按时间排成一列。 */
+import { useRef, useState } from "react"
 import type { Project, Thread } from "@pigcode/contracts"
 import {
   Button,
+  ContextMenu,
   Menu,
   formatShortcut,
   useLocale,
@@ -27,6 +29,30 @@ export interface WorkspaceSidebarProps {
   onOpenSchedules?: () => void
   /** 插件入口；不传时不显示。 */
   onOpenPlugins?: () => void
+  /** 右键菜单里的重命名与归档；两个都传时会话行才有右键菜单。 */
+  onRenameThread?: ((threadId: string, title: string) => void) | undefined
+  onArchiveThread?: ((threadId: string) => void) | undefined
+  /** 按住 ⌘/Ctrl 时在前九个会话上显示数字快捷键。 */
+  shortcutHints?: boolean
+}
+
+/** 侧栏里从上到下可见的会话；⌘/Ctrl+数字按这个顺序跳转。 */
+export function visibleThreads(
+  projects: readonly Project[],
+  threads: readonly Thread[],
+  grouping: SidebarGrouping,
+  expandedProjects: Record<string, boolean>,
+): Thread[] {
+  const known = new Set(projects.map((project) => project.id))
+  const live = threads.filter((thread) => thread.archivedAt === null && known.has(thread.projectId))
+  if (grouping === "time") {
+    return [...live].sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))
+  }
+  return projects.flatMap((project) =>
+    (expandedProjects[project.id] ?? true)
+      ? live.filter((thread) => thread.projectId === project.id)
+      : [],
+  )
 }
 
 /** 把 provider id 缩成侧栏可读的短标记。 */
@@ -52,13 +78,65 @@ export function formatThreadTime(value: string, locale: string, now = Date.now()
   return new Intl.DateTimeFormat(locale, { month: "short", day: "numeric" }).format(date)
 }
 
-/** 一行会话：状态点、标题、补充信息（provider 或项目名）与时间。 */
+/** 会话行右键菜单的动作。 */
+interface ThreadActions {
+  onStartRename: () => void
+  onRename: (title: string) => void
+  onCancelRename: () => void
+  onArchive: () => void
+}
+
+/** 改名输入框：回车或失焦提交，Esc 取消；没有改动时等同取消。 */
+function RenameInput({
+  title,
+  onRename,
+  onCancel,
+}: {
+  title: string
+  onRename: (title: string) => void
+  onCancel: () => void
+}) {
+  const { t } = useLocale()
+  const done = useRef(false)
+  function finish(value: string | null): void {
+    if (done.current) return
+    done.current = true
+    const next = value?.trim() ?? ""
+    if (next && next !== title) onRename(next)
+    else onCancel()
+  }
+  return (
+    <input
+      className="sess-rename"
+      defaultValue={title}
+      autoFocus
+      maxLength={120}
+      aria-label={t("sidebar.threadName")}
+      onFocus={(event) => event.currentTarget.select()}
+      onKeyDown={(event) => {
+        if (event.key === "Enter") {
+          event.preventDefault()
+          finish(event.currentTarget.value)
+        } else if (event.key === "Escape") {
+          event.preventDefault()
+          finish(null)
+        }
+      }}
+      onBlur={(event) => finish(event.currentTarget.value)}
+    />
+  )
+}
+
+/** 一行会话：状态点、标题、补充信息（provider 或项目名）与时间；按住 ⌘/Ctrl 时时间换成快捷键。 */
 function ThreadRow({
   thread,
   active,
   status,
   detail,
   detailClass,
+  shortcut,
+  editing,
+  actions,
   onOpen,
 }: {
   thread: Thread
@@ -66,11 +144,22 @@ function ThreadRow({
   status: ThreadStatus
   detail: string
   detailClass: string
+  shortcut: string | null
+  editing: boolean
+  actions: ThreadActions | null
   onOpen: () => void
 }) {
   const { t, locale } = useLocale()
   const statusKey = THREAD_STATUS_MESSAGE[status]
-  return (
+  if (editing && actions) {
+    return (
+      <div className="sess is-editing" data-status={status}>
+        <span className="sess-dot" data-status={status} />
+        <RenameInput title={thread.title} onRename={actions.onRename} onCancel={actions.onCancelRename} />
+      </div>
+    )
+  }
+  const row = (
     <Button
       variant="plain"
       className={active ? "sess is-active" : "sess"}
@@ -82,9 +171,35 @@ function ThreadRow({
       <span className="sess-dot" data-status={status} />
       {statusKey ? <span className="sr-only">{t(statusKey)}</span> : null}
       <span className="sess-title truncate">{thread.title}</span>
-      <span className={`${detailClass} truncate`}>{detail}</span>
-      <time dateTime={thread.updatedAt}>{formatThreadTime(thread.updatedAt, locale)}</time>
+      {shortcut ? (
+        <kbd className="sess-kbd">{shortcut}</kbd>
+      ) : (
+        <>
+          <span className={`${detailClass} truncate`}>{detail}</span>
+          <time dateTime={thread.updatedAt}>{formatThreadTime(thread.updatedAt, locale)}</time>
+        </>
+      )}
     </Button>
+  )
+  if (!actions) return row
+  return (
+    <ContextMenu.Root>
+      <ContextMenu.Trigger className="sess-menu-area">{row}</ContextMenu.Trigger>
+      <ContextMenu.Portal>
+        <ContextMenu.Positioner className="menu-positioner">
+          <ContextMenu.Popup className="menu-popup" finalFocus={false}>
+            <ContextMenu.Item className="menu-item" onClick={actions.onStartRename}>
+              <Icon name="pencil" small />
+              <span className="grow">{t("sidebar.rename")}</span>
+            </ContextMenu.Item>
+            <ContextMenu.Item className="menu-item" onClick={actions.onArchive}>
+              <Icon name="archive" small />
+              <span className="grow">{t("sidebar.archive")}</span>
+            </ContextMenu.Item>
+          </ContextMenu.Popup>
+        </ContextMenu.Positioner>
+      </ContextMenu.Portal>
+    </ContextMenu.Root>
   )
 }
 
@@ -140,24 +255,48 @@ export function WorkspaceSidebar({
   onNewThread,
   onOpenSchedules,
   onOpenPlugins,
+  onRenameThread,
+  onArchiveThread,
+  shortcutHints = false,
 }: WorkspaceSidebarProps) {
   const { t } = useLocale()
   const [grouping, setGrouping] = useSidebarGrouping()
+  const [renamingId, setRenamingId] = useState<string | null>(null)
   const projectNames = new Map(projects.map((project) => [project.id, project.name]))
   const liveThreads = threads.filter(
     (thread) => thread.archivedAt === null && projectNames.has(thread.projectId),
   )
-  const row = (thread: Thread, detail: string, detailClass: string) => (
-    <ThreadRow
-      key={thread.id}
-      thread={thread}
-      active={thread.id === activeThreadId}
-      status={threadStatus[thread.id] ?? "idle"}
-      detail={detail}
-      detailClass={detailClass}
-      onOpen={() => onOpenThread(thread.id)}
-    />
-  )
+  const order = visibleThreads(projects, threads, grouping, expandedProjects)
+  const shortcutIndex = new Map(order.slice(0, 9).map((thread, index) => [thread.id, index + 1]))
+  const actionsFor = (thread: Thread): ThreadActions | null =>
+    onRenameThread && onArchiveThread
+      ? {
+          onStartRename: () => setRenamingId(thread.id),
+          onRename: (title) => {
+            setRenamingId(null)
+            onRenameThread(thread.id, title)
+          },
+          onCancelRename: () => setRenamingId(null),
+          onArchive: () => onArchiveThread(thread.id),
+        }
+      : null
+  const row = (thread: Thread, detail: string, detailClass: string) => {
+    const index = shortcutHints ? shortcutIndex.get(thread.id) : undefined
+    return (
+      <ThreadRow
+        key={thread.id}
+        thread={thread}
+        active={thread.id === activeThreadId}
+        status={threadStatus[thread.id] ?? "idle"}
+        detail={detail}
+        detailClass={detailClass}
+        shortcut={index ? formatShortcut(`Mod+${index}`) : null}
+        editing={renamingId === thread.id}
+        actions={actionsFor(thread)}
+        onOpen={() => onOpenThread(thread.id)}
+      />
+    )
+  }
 
   return (
     <>
@@ -216,9 +355,9 @@ export function WorkspaceSidebar({
           {projects.length > 0 && liveThreads.length === 0 ? (
             <p className="side-empty">{t("sidebar.noThreads")}</p>
           ) : null}
-          {[...liveThreads]
-            .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))
-            .map((thread) => row(thread, projectNames.get(thread.projectId) ?? "", "sess-project"))}
+          {order.map((thread) =>
+            row(thread, projectNames.get(thread.projectId) ?? "", "sess-project"),
+          )}
         </div>
       ) : (
         projects.map((project) => {

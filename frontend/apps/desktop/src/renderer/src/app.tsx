@@ -42,6 +42,7 @@ import { listProviders, loadProviderContext, pickProviderId } from "./providers"
 import { TerminalDrawer } from "./terminal-drawer"
 import { WorkbenchPanel } from "./workbench"
 import { layoutLabels } from "./workbench-labels"
+import { archiveThread, renameThread } from "./workspace-actions"
 
 /** 核心容器共享的依赖。 */
 export interface CoreDeps {
@@ -407,6 +408,18 @@ export function App({ store, slots, connection, plugins, locale }: AppProps) {
       onAddProject={(path, name) => void addProject(path, name)}
       onNewThread={(projectId) => void createThread(projectId)}
       onOpenThread={openThread}
+      onRenameThread={(threadId, title) => {
+        void renameThread(connection, store, threadId, title).catch((error: unknown) =>
+          store.update({ error: messageOf(error) }),
+        )
+      }}
+      onArchiveThread={(threadId) => {
+        void archiveThread(connection, store, threadId)
+          .then((next) => {
+            if (next) openThread(next)
+          })
+          .catch((error: unknown) => store.update({ error: messageOf(error) }))
+      }}
       sidebarExtra={<PluginPanels controller={plugins} />}
       rightOpen={rightOpen}
       rightMaximized={rightMaximized}

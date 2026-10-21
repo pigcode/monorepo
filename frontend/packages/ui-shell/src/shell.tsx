@@ -4,7 +4,7 @@
  */
 import { useEffect, useLayoutEffect, useState, type CSSProperties, type ReactNode } from "react"
 import type { Project, Thread } from "@pigcode/contracts"
-import { Button, formatShortcut, useLocale } from "@pigcode/ui-primitives"
+import { Button, formatShortcut, useLocale, useSidebarGrouping } from "@pigcode/ui-primitives"
 import { AddProjectDialog } from "./add-project-dialog"
 import { CommandPalette } from "./command-palette"
 import { Icon } from "./icon"
@@ -14,8 +14,15 @@ import type { ThreadStatus } from "./thread-status"
 import { TitleBar } from "./title-bar"
 import { titleBarMenus } from "./title-bar-menus"
 import { WindowControls } from "./window-controls"
-import { hasCustomTitleBar, historyStep, nativePlatform, useNarrowWindow } from "./window-state"
-import { WorkspaceSidebar } from "./workspace-sidebar"
+import {
+  hasCustomTitleBar,
+  historyStep,
+  nativePlatform,
+  threadShortcutIndex,
+  useModifierHints,
+  useNarrowWindow,
+} from "./window-state"
+import { WorkspaceSidebar, visibleThreads } from "./workspace-sidebar"
 
 /** 顶层视图：聊天、设置与插件。 */
 export type ShellView = "chat" | "settings" | "plugins"
@@ -55,6 +62,9 @@ export interface ShellProps {
   onToggleProject?: (projectId: string, expanded: boolean) => void
   onNewThread: (projectId?: string) => void
   onOpenThread: (threadId: string) => void
+  /** 会话行右键菜单的重命名与归档；两个都传时才有右键菜单。 */
+  onRenameThread?: (threadId: string, title: string) => void
+  onArchiveThread?: (threadId: string) => void
   /** 侧栏底部扩展区，用于宿主渲染第三方 UI 插件面板。 */
   sidebarExtra?: ReactNode
   children?: ReactNode
@@ -110,6 +120,8 @@ export function Shell({
   onToggleProject,
   onNewThread,
   onOpenThread,
+  onRenameThread,
+  onArchiveThread,
   sidebarExtra,
   children,
 }: ShellProps) {
@@ -123,6 +135,11 @@ export function Shell({
   const platform = nativePlatform()
   const narrow = useNarrowWindow()
   const [drawerOpen, setDrawerOpen] = useState(false)
+  const [grouping] = useSidebarGrouping()
+  const shortcutHints = useModifierHints() && !inSettings
+  const expanded = expandedProjects ?? localExpanded
+  const open = sidebarOpen ?? localSidebarOpen
+  const section: SettingsSection = settingsSection ?? (view === "plugins" ? "plugins" : "general")
 
   // 抽屉只在窄窗口里有意义；变宽后复位，下次变窄时从收起开始。
   useEffect(() => {
@@ -222,9 +239,21 @@ export function Shell({
     return () => window.removeEventListener("mouseup", onMouseUp)
   }, [onBack, onForward])
 
-  const expanded = expandedProjects ?? localExpanded
-  const open = sidebarOpen ?? localSidebarOpen
-  const section: SettingsSection = settingsSection ?? (view === "plugins" ? "plugins" : "general")
+  // ⌘/Ctrl+1…9 打开侧栏里从上往下数的第 n 个会话，输入框里同样生效。
+  useEffect(() => {
+    if (inSettings) return
+    function onKeyDown(event: KeyboardEvent): void {
+      const index = threadShortcutIndex(event)
+      if (index === null) return
+      const target = visibleThreads(projects, threads, grouping, expanded)[index - 1]
+      if (!target) return
+      event.preventDefault()
+      setDrawerOpen(false)
+      onOpenThread(target.id)
+    }
+    window.addEventListener("keydown", onKeyDown)
+    return () => window.removeEventListener("keydown", onKeyDown)
+  }, [inSettings, projects, threads, grouping, expanded, onOpenThread])
 
   /** 宽窗口里收起或展开侧栏；窄窗口里开关抽屉。 */
   function toggleSidebar(): void {
@@ -286,7 +315,10 @@ export function Shell({
         onBack={() => onBack?.()}
         onForward={() => onForward?.()}
       />
-      <aside className="sidebar" aria-label={inSettings ? t("settings.title") : t("nav.projects")}>
+      <aside
+        className={shortcutHints ? "sidebar show-shortcuts" : "sidebar"}
+        aria-label={inSettings ? t("settings.title") : t("nav.projects")}
+      >
         <div className="side-top" />
         <div className="side-scroll">
           {inSettings ? (
@@ -314,6 +346,9 @@ export function Shell({
               }}
               onOpenSchedules={() => selectSection("schedules")}
               onOpenPlugins={() => selectSection("plugins")}
+              onRenameThread={onRenameThread}
+              onArchiveThread={onArchiveThread}
+              shortcutHints={shortcutHints}
             />
           )}
           {sidebarExtra}

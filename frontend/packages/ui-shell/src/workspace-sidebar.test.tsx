@@ -1,12 +1,70 @@
-/** 验证侧栏渲染导航、项目与会话。 */
+/** 验证侧栏渲染导航、项目与会话，以及会话的右键菜单与数字快捷键。 */
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
+import type { ComponentProps } from "react"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import { LocaleProvider } from "@pigcode/ui-primitives"
-import { WorkspaceSidebar, formatThreadTime } from "./workspace-sidebar"
+import { WorkspaceSidebar, formatThreadTime, visibleThreads } from "./workspace-sidebar"
 
 afterEach(cleanup)
+
+const project = (id: string, name: string) => ({
+  id,
+  rootPath: `/tmp/${name}`,
+  name,
+  createdAt: "2026-10-20T00:00:00.000Z",
+})
+
+const thread = (id: string, projectId: string, title: string, updatedAt: string) => ({
+  id,
+  projectId,
+  title,
+  defaultProviderId: "claude",
+  lastProviderId: null,
+  lastModelId: null,
+  permissionMode: "workspace-write" as const,
+  createdAt: updatedAt,
+  updatedAt,
+  archivedAt: null as string | null,
+  lastRunId: null,
+})
+
+function renderSidebar(props: Partial<ComponentProps<typeof WorkspaceSidebar>> = {}) {
+  return render(
+    <LocaleProvider locale="zh-CN">
+      <WorkspaceSidebar
+        projects={[project("p1", "alpha")]}
+        threads={[thread("t1", "p1", "First thread", "2026-10-20T01:00:00.000Z")]}
+        activeThreadId={null}
+        expandedProjects={{}}
+        onAddProject={() => {}}
+        onToggleProject={() => {}}
+        onOpenThread={() => {}}
+        onNewThread={() => {}}
+        {...props}
+      />
+    </LocaleProvider>,
+  )
+}
+
+describe("visibleThreads", () => {
+  it("lists live threads top to bottom as the sidebar shows them", () => {
+    const projects = [project("p1", "alpha"), project("p2", "beta")]
+    const threads = [
+      thread("t1", "p1", "older", "2026-10-20T01:00:00.000Z"),
+      thread("t2", "p2", "newest", "2026-10-20T03:00:00.000Z"),
+      thread("t3", "p1", "middle", "2026-10-20T02:00:00.000Z"),
+      { ...thread("t4", "p1", "archived", "2026-10-20T04:00:00.000Z"), archivedAt: "2026-10-21T00:00:00.000Z" },
+      thread("t5", "gone", "no project", "2026-10-20T05:00:00.000Z"),
+    ]
+    const ids = (list: Array<{ id: string }>) => list.map((item) => item.id)
+
+    expect(ids(visibleThreads(projects, threads, "project", {}))).toEqual(["t1", "t3", "t2"])
+    expect(ids(visibleThreads(projects, threads, "project", { p1: false }))).toEqual(["t2"])
+    expect(ids(visibleThreads(projects, threads, "time", { p1: false }))).toEqual(["t2", "t3", "t1"])
+  })
+})
 
 describe("WorkspaceSidebar", () => {
   it("shows schedules and plugins next to new chat, and a single add-project row when empty", () => {
@@ -41,25 +99,6 @@ describe("WorkspaceSidebar", () => {
 
   it("switches to a single list sorted by time from the filter menu and remembers it", async () => {
     window.localStorage.removeItem("pigcode.sidebarGrouping")
-    const project = (id: string, name: string) => ({
-      id,
-      rootPath: `/tmp/${name}`,
-      name,
-      createdAt: "2026-10-20T00:00:00.000Z",
-    })
-    const thread = (id: string, projectId: string, title: string, updatedAt: string) => ({
-      id,
-      projectId,
-      title,
-      defaultProviderId: "claude",
-      lastProviderId: null,
-      lastModelId: null,
-      permissionMode: "workspace-write" as const,
-      createdAt: updatedAt,
-      updatedAt,
-      archivedAt: null,
-      lastRunId: null,
-    })
     render(
       <LocaleProvider locale="zh-CN">
         <WorkspaceSidebar
@@ -142,5 +181,85 @@ describe("WorkspaceSidebar", () => {
     )
     expect(screen.getByText("demo")).toBeTruthy()
     expect(screen.getByText("First thread")).toBeTruthy()
+  })
+
+  it("renames a thread in place from its context menu", async () => {
+    const onRenameThread = vi.fn()
+    renderSidebar({ onRenameThread, onArchiveThread: vi.fn() })
+
+    fireEvent.contextMenu(screen.getByRole("button", { name: /First thread/ }))
+    await userEvent.click(await screen.findByRole("menuitem", { name: "重命名" }))
+    const input = await screen.findByRole("textbox", { name: "会话名称" })
+    expect(document.activeElement).toBe(input)
+    await userEvent.clear(input)
+    await userEvent.type(input, "  Renamed  {Enter}")
+
+    expect(onRenameThread).toHaveBeenCalledExactlyOnceWith("t1", "Renamed")
+    expect(screen.queryByRole("textbox")).toBeNull()
+    expect(screen.getByRole("button", { name: /First thread/ })).toBeTruthy()
+  })
+
+  it("leaves the title alone on Escape, on an unchanged or empty name", async () => {
+    const onRenameThread = vi.fn()
+    renderSidebar({ onRenameThread, onArchiveThread: vi.fn() })
+    const startRename = async () => {
+      fireEvent.contextMenu(screen.getByRole("button", { name: /First thread/ }))
+      await userEvent.click(await screen.findByRole("menuitem", { name: "重命名" }))
+      return screen.findByRole("textbox", { name: "会话名称" })
+    }
+
+    await userEvent.type(await startRename(), "changed{Escape}")
+    await userEvent.type(await startRename(), "{Enter}")
+    const input = await startRename()
+    await userEvent.clear(input)
+    fireEvent.blur(input)
+
+    expect(onRenameThread).not.toHaveBeenCalled()
+    expect(screen.queryByRole("textbox")).toBeNull()
+  })
+
+  it("archives a thread from its context menu", async () => {
+    const onArchiveThread = vi.fn()
+    renderSidebar({ onRenameThread: vi.fn(), onArchiveThread })
+
+    fireEvent.contextMenu(screen.getByRole("button", { name: /First thread/ }))
+    await userEvent.click(await screen.findByRole("menuitem", { name: "归档" }))
+
+    expect(onArchiveThread).toHaveBeenCalledExactlyOnceWith("t1")
+  })
+
+  it("has no context menu when renaming and archiving are not wired", () => {
+    renderSidebar()
+
+    fireEvent.contextMenu(screen.getByRole("button", { name: /First thread/ }))
+    expect(screen.queryByRole("menu")).toBeNull()
+  })
+
+  it("shows Ctrl+1…9 on the first nine visible threads instead of their time", () => {
+    const threads = Array.from({ length: 10 }, (_, index) =>
+      thread(`t${index}`, "p1", `Thread ${index}`, "2026-10-20T01:00:00.000Z"),
+    )
+    const { rerender } = renderSidebar({ threads, shortcutHints: true })
+    const badges = () => Array.from(document.querySelectorAll(".sess-kbd")).map((node) => node.textContent)
+
+    expect(badges()).toEqual(["Ctrl+1", "Ctrl+2", "Ctrl+3", "Ctrl+4", "Ctrl+5", "Ctrl+6", "Ctrl+7", "Ctrl+8", "Ctrl+9"])
+    expect(document.querySelectorAll(".sess time")).toHaveLength(1)
+
+    rerender(
+      <LocaleProvider locale="zh-CN">
+        <WorkspaceSidebar
+          projects={[project("p1", "alpha")]}
+          threads={threads}
+          activeThreadId={null}
+          expandedProjects={{}}
+          onAddProject={() => {}}
+          onToggleProject={() => {}}
+          onOpenThread={() => {}}
+          onNewThread={() => {}}
+        />
+      </LocaleProvider>,
+    )
+    expect(badges()).toEqual([])
+    expect(document.querySelectorAll(".sess time")).toHaveLength(10)
   })
 })

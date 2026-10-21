@@ -226,4 +226,83 @@ describe("Shell", () => {
     fireEvent.keyDown(window, { key: "j", metaKey: true })
     expect(onToggleRight).toHaveBeenCalledTimes(1)
   })
+
+  describe("thread shortcuts", () => {
+    const projects = [{ id: "p1", rootPath: "/tmp/alpha", name: "alpha", createdAt: "2026-10-20T00:00:00.000Z" }]
+    const threads = ["t1", "t2", "t3"].map((id, index) => ({
+      id,
+      projectId: "p1",
+      title: `Thread ${index + 1}`,
+      defaultProviderId: "fake",
+      lastProviderId: null,
+      lastModelId: null,
+      permissionMode: "workspace-write" as const,
+      createdAt: "2026-10-20T00:00:00.000Z",
+      updatedAt: `2026-10-20T0${index}:00:00.000Z`,
+      archivedAt: null,
+      lastRunId: null,
+    }))
+    const badges = () => Array.from(document.querySelectorAll(".sess-kbd")).map((node) => node.textContent)
+
+    afterEach(() => {
+      vi.useRealTimers()
+    })
+
+    it("shows the numbers while Ctrl is held and opens the n-th thread with Ctrl+n", () => {
+      vi.useFakeTimers()
+      const onOpenThread = vi.fn()
+      const { container } = renderShell({ projects, threads, onOpenThread })
+
+      fireEvent.keyDown(window, { key: "Control", code: "ControlLeft", ctrlKey: true })
+      expect(badges()).toEqual([])
+      act(() => vi.advanceTimersByTime(500))
+      expect(badges()).toEqual(["Ctrl+1", "Ctrl+2", "Ctrl+3"])
+      expect(container.querySelector(".sidebar")?.classList.contains("show-shortcuts")).toBe(true)
+
+      fireEvent.keyDown(window, { key: "2", code: "Digit2", ctrlKey: true })
+      expect(onOpenThread).toHaveBeenCalledExactlyOnceWith("t2")
+      expect(badges()).toHaveLength(3)
+      fireEvent.keyDown(window, { key: "9", code: "Digit9", ctrlKey: true })
+      expect(onOpenThread).toHaveBeenCalledTimes(1)
+
+      fireEvent.keyUp(window, { key: "Control", code: "ControlLeft" })
+      expect(badges()).toEqual([])
+    })
+
+    it("follows the time order when the sidebar is arranged by time", () => {
+      window.localStorage.setItem("pigcode.sidebarGrouping", "time")
+      try {
+        const onOpenThread = vi.fn()
+        renderShell({ projects, threads, onOpenThread })
+        fireEvent.keyDown(window, { key: "1", code: "Digit1", ctrlKey: true })
+        expect(onOpenThread).toHaveBeenCalledExactlyOnceWith("t3")
+      } finally {
+        window.localStorage.removeItem("pigcode.sidebarGrouping")
+      }
+    })
+
+    it("uses ⌘ on macOS and does not flash the numbers for a quick ⌘K", () => {
+      vi.useFakeTimers()
+      mockNative({ platform: "darwin" })
+      const onOpenThread = vi.fn()
+      renderShell({ projects, threads, onOpenThread })
+
+      fireEvent.keyDown(window, { key: "1", code: "Digit1", ctrlKey: true })
+      expect(onOpenThread).not.toHaveBeenCalled()
+      fireEvent.keyDown(window, { key: "3", code: "Digit3", metaKey: true })
+      expect(onOpenThread).toHaveBeenCalledExactlyOnceWith("t3")
+
+      fireEvent.keyDown(window, { key: "Meta", code: "MetaLeft", metaKey: true })
+      fireEvent.keyDown(window, { key: "k", code: "KeyK", metaKey: true })
+      act(() => vi.advanceTimersByTime(500))
+      expect(badges()).toEqual([])
+    })
+
+    it("leaves Ctrl+number alone in settings", () => {
+      const onOpenThread = vi.fn()
+      renderShell({ view: "settings", projects, threads, onOpenThread })
+      fireEvent.keyDown(window, { key: "1", code: "Digit1", ctrlKey: true })
+      expect(onOpenThread).not.toHaveBeenCalled()
+    })
+  })
 })
