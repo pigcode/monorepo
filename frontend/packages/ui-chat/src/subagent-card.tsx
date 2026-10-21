@@ -1,9 +1,9 @@
 /** 子代理卡片；用 details 折叠展示子 agent 的消息与工具调用。 */
 import type { ReactNode } from "react"
 import type { ThreadEvent } from "@pigcode/contracts"
-import { Bot, Wrench } from "lucide-react"
+import { Bot, ChevronRight } from "lucide-react"
 import { useLocale } from "@pigcode/ui-primitives"
-import type { ToolCall, ToolStatus } from "./tool-card"
+import { toolIcon, toolPreview, type ToolCall, type ToolStatus } from "./tool-card"
 
 /** 子 agent 的生命周期状态。 */
 export type SubagentStatus = "running" | "completed" | "failed" | "interrupted"
@@ -110,12 +110,15 @@ function SubagentEvents({ events }: { events: ThreadEvent[] }) {
     renderedTools.add(id)
     const tool = tools.get(id)
     if (!tool) continue
+    const Icon = toolIcon(tool.name)
+    const preview = toolPreview(tool.input)
     nodes.push(
       <div key={`tool-${id}`} className="subagent-line subagent-tool" data-status={tool.status}>
-        <Wrench className="ic ic-sm" aria-hidden="true" />
+        <Icon className="ic ic-sm" aria-hidden="true" />
         <span className="subagent-tool-name">
           {tool.name === "tool" ? t("chat.tool.unknown") : tool.name}
         </span>
+        {preview ? <span className="subagent-tool-preview truncate">{preview}</span> : null}
         <span className={`subagent-tool-status ${tool.status}`}>{t(STATUS_KEYS[tool.status])}</span>
       </div>,
     )
@@ -129,12 +132,16 @@ export function SubagentCard({ subagent }: { subagent: SubagentCall }) {
   return (
     <details className="subagent-card" data-status={subagent.status}>
       <summary className="subagent-head">
-        <Bot className="ic ic-sm" aria-hidden="true" />
+        <ChevronRight className="ic ic-sm chev" aria-hidden="true" />
+        <span className="subagent-icon" aria-hidden="true">
+          <Bot className="ic ic-sm" />
+        </span>
         <span className="subagent-name">{subagent.name}</span>
         {subagent.description ? (
-          <span className="subagent-description">{subagent.description}</span>
-        ) : null}
-        <span className="grow" />
+          <span className="subagent-description truncate">{subagent.description}</span>
+        ) : (
+          <span className="grow" />
+        )}
         <span className={`subagent-status ${subagent.status}`}>
           {t(STATUS_KEYS[subagent.status])}
         </span>

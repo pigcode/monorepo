@@ -1,5 +1,5 @@
 /** 执行计划卡片；步骤状态映射到 ok/warn/muted 三种图标。 */
-import { useState } from "react"
+import { useState, type CSSProperties } from "react"
 import { Check, ChevronRight, Circle, Loader2 } from "lucide-react"
 import { Button, useLocale } from "@pigcode/ui-primitives"
 
@@ -28,6 +28,8 @@ const STATUS_KEYS = {
 export function PlanCard({ plan }: { plan: PlanUpdate }) {
   const { t } = useLocale()
   const [open, setOpen] = useState(true)
+  const done = plan.steps.filter((step) => step.status === "completed").length
+  const total = plan.steps.length
 
   return (
     <div className={`result plan-card${open ? " is-open" : ""}`}>
@@ -39,9 +41,17 @@ export function PlanCard({ plan }: { plan: PlanUpdate }) {
         onClick={() => setOpen((value) => !value)}
       >
         <ChevronRight className="ic ic-sm chev" aria-hidden="true" />
-        <span>{plan.title ?? t("chat.plan.title")}</span>
+        <span className="truncate">{plan.title ?? t("chat.plan.title")}</span>
         <span className="grow" />
-        <span className="muted">{open ? t("chat.hide") : t("chat.view")}</span>
+        <span className="plan-progress" aria-hidden="true">
+          <span className="bar">
+            <i style={{ "--p": `${total ? (done / total) * 100 : 0}%` } as CSSProperties} />
+          </span>
+          <span className="num">
+            {done}/{total}
+          </span>
+        </span>
+        <span className="sr-only">{open ? t("chat.hide") : t("chat.view")}</span>
       </Button>
       {open ? (
         <div className="result-body">

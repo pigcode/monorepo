@@ -1,10 +1,11 @@
 /** 工作台右栏组件的公开入口。 */
+export * from "./browser-view"
 export * from "./checkpoint-panel"
 export * from "./diff-view"
 export * from "./file-preview"
 export * from "./file-tree"
+export * from "./layout-controls"
 export * from "./pr-panel"
-export * from "./preview-panel"
 export * from "./right-panel"
 export * from "./terminal-view"
 export * from "./worktree-picker"

@@ -152,7 +152,7 @@ function ProviderSection({ provider }: { provider: ProviderStatus }) {
       ) : null}
       {provider.capabilities ? (
         <SettingRow title={t("settings.providers.capabilities")}>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 6, justifyContent: "flex-end" }}>
+          <div className="cap-list">
             {capabilityKeys.map((capability) => {
               const enabled = provider.capabilities?.[capability.key] === true
               return (
@@ -196,7 +196,7 @@ export function ProviderPage({
         rows.map((provider) => <ProviderSection key={provider.id} provider={provider} />)
       )}
       {onDetect ? (
-        <div style={{ display: "flex", justifyContent: "flex-end" }}>
+        <div className="page-actions">
           <Button variant="secondary" onClick={() => void onDetect()}>
             {t("settings.providers.detect")}
           </Button>
