@@ -1,7 +1,7 @@
 /** 按事件顺序渲染消息、工具、审批、计划与文件变更。 */
 import type { ReactNode } from "react"
 import type { ThreadEvent } from "@pigcode/contracts"
-import { AlertTriangle, Sparkles } from "lucide-react"
+import { AlertTriangle, CircleStop, Sparkles } from "lucide-react"
 import { formatShortcut, useLocale } from "@pigcode/ui-primitives"
 import { ApprovalCard, type ApprovalDecision, type ApprovalRequest } from "./approval-card"
 import { DiffSummary, type DiffFile, type FileChangeSummary } from "./diff-summary"
@@ -423,6 +423,15 @@ export function MessageList({
     if (event.type === "file.changed") {
       const summary = diffFromEvent(event)
       if (summary) nodes.push(<DiffSummary key={key} summary={summary} onView={onViewDiff} />)
+      continue
+    }
+    if (event.type === "run.interrupted") {
+      nodes.push(
+        <div key={key} className="event-line run-interrupted">
+          <CircleStop className="ic ic-sm" aria-hidden="true" />
+          {t("chat.interrupted")}
+        </div>,
+      )
       continue
     }
     if (event.type === "run.failed") {

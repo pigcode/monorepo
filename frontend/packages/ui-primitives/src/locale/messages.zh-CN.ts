@@ -255,6 +255,7 @@ export const zhCN = {
   "chat.diff.filesChanged": "个文件已更改",
   "chat.composerPlaceholder": "输入消息，@ 引用文件，/ 使用命令",
   "chat.empty": "还没有消息",
+  "chat.interrupted": "已中断",
   "chat.error": "运行失败",
   "chat.streaming": "正在生成",
   "plugins.title": "插件管理",

@@ -47,7 +47,40 @@ const thread = {
   lastRunId: null,
 }
 
+/** 构造一条线程事件。 */
+function event(seq: number, type: string, payload: unknown = {}) {
+  return {
+    seq,
+    threadId: "t1",
+    runId: "run_1",
+    type,
+    payload,
+    schemaVersion: 1,
+    createdAt: "2026-10-20T00:00:00.000Z",
+  } as Parameters<typeof ChatView>[0]["events"][number]
+}
+
 describe("ChatView", () => {
+  it("treats an interrupted run as finished and keeps its partial reply", () => {
+    render(
+      <LocaleProvider locale="zh-CN">
+        <ChatView
+          thread={thread}
+          events={[
+            event(1, "run.started", { text: "long task" }),
+            event(2, "message.completed", { role: "assistant", text: "half an answer", partial: true }),
+            event(3, "run.interrupted"),
+          ]}
+          onInterrupt={() => {}}
+        />
+      </LocaleProvider>,
+    )
+    expect(screen.getByText("half an answer")).toBeTruthy()
+    expect(screen.getByText("已中断")).toBeTruthy()
+    expect(screen.queryByText("运行中")).toBeNull()
+    expect(screen.queryByRole("button", { name: "中断" })).toBeNull()
+  })
+
   it("renders persisted and streaming content", () => {
     render(
       <LocaleProvider locale="zh-CN">

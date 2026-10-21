@@ -3148,7 +3148,8 @@ body.is-resizing-rows iframe {
 .msgs > .result,
 .msgs > .perm,
 .msgs > .perm-done,
-.msgs > .subagent-card {
+.msgs > .subagent-card,
+.msgs > .run-interrupted {
   margin-left: 12px;
 }
 .msgs > .tool-card + .tool-card {

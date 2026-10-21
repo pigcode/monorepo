@@ -122,6 +122,37 @@ describe("run interrupt", () => {
     await ctx.fiber.dispose()
   })
 
+  it("keeps the streamed partial reply as a message before run.interrupted", async () => {
+    const { ctx, thread } = await setup()
+    const { runId, done } = await ctx.providers.startRun(thread.id, "long")
+    await new Promise((resolve) => setTimeout(resolve, 20))
+    ctx.providers.cancelRun(runId)
+    await done
+
+    const events = ctx.sessions.read(thread.id, 0)
+    const partialIndex = events.findIndex(
+      (event) =>
+        event.type === "message.completed" &&
+        (event.payload as { partial?: boolean }).partial === true,
+    )
+    const interruptedIndex = events.findIndex((event) => event.type === "run.interrupted")
+    expect(partialIndex).toBeGreaterThan(-1)
+    expect(partialIndex).toBeLessThan(interruptedIndex)
+    expect((events[partialIndex]?.payload as { text: string }).text).toMatch(/^\.+$/)
+    await ctx.fiber.dispose()
+  })
+
+  it("adds no partial message when a completed run is followed by nothing", async () => {
+    const { ctx, thread } = await setup()
+    const { done } = await ctx.providers.startRun(thread.id, "hello")
+    await done
+    const partials = ctx.sessions
+      .read(thread.id, 0)
+      .filter((event) => (event.payload as { partial?: boolean } | null)?.partial === true)
+    expect(partials).toHaveLength(0)
+    await ctx.fiber.dispose()
+  })
+
   it("allows a new run after the previous one is interrupted", async () => {
     const { ctx, thread } = await setup()
     const first = await ctx.providers.startRun(thread.id, "long")

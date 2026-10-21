@@ -259,6 +259,7 @@ export const enUS = {
   "chat.diff.filesChanged": "files changed",
   "chat.composerPlaceholder": "Type a message, @ to reference files, / for commands",
   "chat.empty": "No messages yet",
+  "chat.interrupted": "Interrupted",
   "chat.error": "Run failed",
   "chat.streaming": "Generating",
   "plugins.title": "Plugin manager",

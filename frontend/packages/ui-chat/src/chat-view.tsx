@@ -92,7 +92,13 @@ function isRunOpen(events: ThreadEvent[]): boolean {
   let running = false
   for (const event of events) {
     if (event.type === "run.started") running = true
-    else if (event.type === "run.completed" || event.type === "run.failed") running = false
+    else if (
+      event.type === "run.completed" ||
+      event.type === "run.failed" ||
+      event.type === "run.interrupted"
+    ) {
+      running = false
+    }
   }
   return running
 }

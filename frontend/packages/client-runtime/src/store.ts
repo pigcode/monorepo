@@ -67,6 +67,9 @@ const STATUS_AFTER_EVENT: Record<string, ThreadViewStatus> = {
 /** 进入终态后，迟到的审批事件不能再把状态改回运行中。 */
 const TERMINAL_STATUSES = new Set<ThreadViewStatus>(["completed", "failed", "interrupted"])
 
+/** run 的终态事件；之后不会再有属于这个 run 的增量。 */
+const RUN_END_EVENTS = new Set<ThreadEvent["type"]>(["run.completed", "run.failed", "run.interrupted"])
+
 /** 子 agent 的完成消息带有 parentToolUseId，不能清空主线程的流式文本。 */
 function isSubagentMessage(event: ThreadEvent): boolean {
   if (typeof event.payload !== "object" || event.payload === null) return false
@@ -200,10 +203,13 @@ export class AppStore {
         ? mapped
         : previous.status
     const subagent = isSubagentMessage(event)
+    // 主线程的完成消息或 run 终态都会结束流式文本；中断时 Host 已把半截回复落成消息。
+    const endsStream =
+      (event.type === "message.completed" && !subagent) || RUN_END_EVENTS.has(event.type)
     const next: ThreadViewState = {
       ...previous,
       events,
-      streamingText: event.type === "message.completed" && !subagent ? "" : previous.streamingText,
+      streamingText: endsStream ? "" : previous.streamingText,
       status,
       pendingApprovals: pendingApprovalsAfter(previous, event),
       lastError:
@@ -227,10 +233,7 @@ export class AppStore {
       threads,
       threadStates,
       events: mirrorActive ? events : this.state.events,
-      streamingText:
-        mirrorActive && event.type === "message.completed" && !subagent
-          ? ""
-          : this.state.streamingText,
+      streamingText: mirrorActive && endsStream ? "" : this.state.streamingText,
     }
     this.emit()
   }

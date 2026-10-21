@@ -42,9 +42,13 @@ export function mapProviderEvent(run: ActiveRun, event: ProviderEvent, hooks: Ru
     case "message.delta":
       // 子 agent 的流式增量不混入主时间线的 streamingText；其完整文本在
       // message.completed 中带 parentToolUseId 持久化。
-      if (event.parentToolUseId === undefined) run.emitLive?.(event)
+      if (event.parentToolUseId === undefined) {
+        run.liveText += event.text
+        run.emitLive?.(event)
+      }
       return
     case "message.completed":
+      if (event.parentToolUseId === undefined) run.liveText = ""
       hooks.append(run.threadId, run.runId, "message.completed", {
         role: "assistant",
         text: event.text,

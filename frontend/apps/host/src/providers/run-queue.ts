@@ -19,6 +19,8 @@ export interface ActiveRun {
   done: Promise<void>
   resolveDone: () => void
   approvals: Set<string>
+  /** 已经流给 UI、还没有被 message.completed 持久化的助手文本。 */
+  liveText: string
 }
 
 /**
