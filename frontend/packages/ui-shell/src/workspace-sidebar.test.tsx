@@ -154,6 +154,26 @@ describe("WorkspaceSidebar", () => {
     expect(formatThreadTime("not a date", "en-US", now)).toBe("")
   })
 
+  it("animates a dot matrix for running threads and keeps a status dot for the rest", () => {
+    renderSidebar({
+      threads: [
+        thread("t1", "p1", "Running thread", "2026-10-20T01:00:00.000Z"),
+        thread("t2", "p1", "Finished thread", "2026-10-20T00:30:00.000Z"),
+      ],
+      threadStatus: { t1: "running", t2: "completed" },
+    })
+    const running = screen.getByRole("button", { name: /Running thread/ })
+    expect(running.querySelector(".sess-indicator .dot-matrix")).not.toBeNull()
+    expect(running.querySelectorAll(".dot-matrix-cell")).toHaveLength(9)
+    expect(running.querySelector(".sess-dot")).toBeNull()
+    expect(running.textContent).toContain("运行中")
+    const finished = screen.getByRole("button", { name: /Finished thread/ })
+    expect(finished.querySelector(".dot-matrix")).toBeNull()
+    expect(finished.querySelector(".sess-dot")?.getAttribute("data-status")).toBe("completed")
+    // 长标题靠渐隐收尾，完整标题放在 title 上。
+    expect(running.querySelector(".sess-title")?.getAttribute("title")).toBe("Running thread")
+  })
+
   it("renders projects and threads", () => {
     render(
       <LocaleProvider locale="zh-CN">

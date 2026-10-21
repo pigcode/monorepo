@@ -1,7 +1,7 @@
 /** 侧栏里的项目行与会话行：右键菜单、就地改名，会话行还有状态点、时间与数字快捷键。 */
 import { Fragment, useRef, type ReactNode } from "react"
 import type { Project, Thread } from "@pigcode/contracts"
-import { Button, ContextMenu, useLocale } from "@pigcode/ui-primitives"
+import { Button, ContextMenu, DotMatrix, useLocale } from "@pigcode/ui-primitives"
 import { Icon } from "./icon"
 import { THREAD_STATUS_MESSAGE, type ThreadStatus } from "./thread-status"
 
@@ -92,6 +92,18 @@ function RenameInput({ value, label, onRename, onCancel }: { value: string; labe
   )
 }
 
+/** 会话的状态标记：运行中是游走的点阵，其余状态是一个彩色圆点。 */
+export function ThreadStatusMark({ status }: { status: ThreadStatus }) {
+  if (status === "running") {
+    return (
+      <span className="sess-indicator" data-status={status}>
+        <DotMatrix />
+      </span>
+    )
+  }
+  return <span className="sess-dot" data-status={status} />
+}
+
 /** 一行会话：状态点、标题、补充信息（provider 或项目名）与时间；按住 ⌘/Ctrl 时时间换成快捷键。 */
 export function ThreadRow({
   thread,
@@ -120,7 +132,7 @@ export function ThreadRow({
   if (rename) {
     return (
       <div className="sess is-editing" data-status={status}>
-        <span className="sess-dot" data-status={status} />
+        <ThreadStatusMark status={status} />
         <RenameInput value={thread.title} label={t("sidebar.threadName")} {...rename} />
       </div>
     )
@@ -135,9 +147,11 @@ export function ThreadRow({
         data-status={status}
         onClick={onOpen}
       >
-        <span className="sess-dot" data-status={status} />
+        <ThreadStatusMark status={status} />
         {statusKey ? <span className="sr-only">{t(statusKey)}</span> : null}
-        <span className="sess-title truncate">{thread.title}</span>
+        <span className="sess-title" title={thread.title}>
+          {thread.title}
+        </span>
         {shortcut ? (
           <kbd className="sess-kbd">{shortcut}</kbd>
         ) : (

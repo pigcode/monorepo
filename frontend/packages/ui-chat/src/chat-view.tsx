@@ -3,7 +3,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react"
 import type { ProviderCapabilities, Thread, ThreadEvent } from "@pigcode/contracts"
 import { ArrowDown, Ellipsis, PanelRight, Square } from "lucide-react"
 import { Composer } from "@pigcode/ui-composer"
-import { Button, formatShortcut, useLocale } from "@pigcode/ui-primitives"
+import { Button, DotMatrix, formatShortcut, useLocale } from "@pigcode/ui-primitives"
 import type { ApprovalDecision } from "./approval-card"
 import type { FileChangeSummary } from "./diff-summary"
 import { EnvironmentDrawer, type EnvironmentInfo } from "./environment-drawer"
@@ -161,7 +161,14 @@ export function ChatView({
             <span className="title-text truncate">{thread.title}</span>
           </div>
         ) : null}
-        {statusClass ? <span className={`status status-pill ${statusClass}`}>{status}</span> : null}
+        {statusClass ? (
+          <span
+            className={`status status-pill ${statusClass}${running && !pendingApproval ? " is-running" : ""}`}
+          >
+            {running && !pendingApproval ? <DotMatrix /> : null}
+            {status}
+          </span>
+        ) : null}
         <span className="spacer" />
         {thread ? openIn : null}
         {running && canInterrupt ? (
