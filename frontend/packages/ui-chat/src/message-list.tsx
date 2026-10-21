@@ -1,7 +1,7 @@
 /** 按事件顺序渲染消息、工具、审批、计划与文件变更。 */
 import type { ReactNode } from "react"
 import type { ThreadEvent } from "@pigcode/contracts"
-import { AlertTriangle } from "lucide-react"
+import { AlertTriangle, Sparkles } from "lucide-react"
 import { useLocale } from "@pigcode/ui-primitives"
 import { ApprovalCard, type ApprovalDecision, type ApprovalRequest } from "./approval-card"
 import { DiffSummary, type DiffFile, type FileChangeSummary } from "./diff-summary"
@@ -336,6 +336,13 @@ export function MessageList({
   const nodes: ReactNode[] = []
   const renderedTools = new Set<string>()
   const renderedSubagents = new Set<string>()
+  // 一轮回复只在第一条助手消息上显示头像和名称；用户消息开启新的一轮。
+  let headShown = false
+  const turn = (): boolean => {
+    const continued = headShown
+    headShown = true
+    return continued
+  }
 
   for (const event of sorted) {
     const key = `${event.seq}-${event.type}`
@@ -354,20 +361,29 @@ export function MessageList({
     if (event.type === "subagent.completed") continue
     if (event.type === "run.started") {
       const text = asText(payload?.text)
-      if (text) nodes.push(<UserMessage key={key} text={text} />)
+      if (text) {
+        nodes.push(<UserMessage key={key} text={text} />)
+        headShown = false
+      }
       continue
     }
     if (event.type === "message.completed") {
       const text = asText(payload?.text)
       if (!text) continue
+      if (asText(payload?.role) === "user") {
+        nodes.push(<UserMessage key={key} text={text} />)
+        headShown = false
+        continue
+      }
       nodes.push(
-        asText(payload?.role) === "user" ? (
-          <UserMessage key={key} text={text} />
-        ) : (
-          <AssistantMessage key={key} name={assistantName} initial={assistantInitial}>
-            <MessageText text={text} />
-          </AssistantMessage>
-        ),
+        <AssistantMessage
+          key={key}
+          name={assistantName}
+          initial={assistantInitial}
+          continued={turn()}
+        >
+          <MessageText text={text} />
+        </AssistantMessage>,
       )
       continue
     }
@@ -411,7 +427,12 @@ export function MessageList({
     }
     if (event.type === "run.failed") {
       nodes.push(
-        <AssistantMessage key={key} name={assistantName} initial={assistantInitial}>
+        <AssistantMessage
+          key={key}
+          name={assistantName}
+          initial={assistantInitial}
+          continued={turn()}
+        >
           <div className="event-line t-bad">
             <AlertTriangle className="ic ic-sm" aria-hidden="true" />
             {asText(payload?.message) ?? t("chat.error")}
@@ -423,7 +444,12 @@ export function MessageList({
 
   if (streamingText) {
     nodes.push(
-      <AssistantMessage key="streaming" name={assistantName} initial={assistantInitial}>
+      <AssistantMessage
+        key="streaming"
+        name={assistantName}
+        initial={assistantInitial}
+        continued={turn()}
+      >
         <MessageText text={streamingText} />
         <span className="stream-cursor" aria-label={t("chat.streaming")} />
       </AssistantMessage>,
@@ -435,7 +461,7 @@ export function MessageList({
       <div className="msgs">
         <div className="chat-empty">
           <span className="empty-mark" aria-hidden="true">
-            ✦
+            <Sparkles className="ic" />
           </span>
           <h2>{t("chat.empty.title")}</h2>
           <p>{t("chat.empty.hint")}</p>

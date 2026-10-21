@@ -186,8 +186,15 @@ export function ChatView({
         <div className="title">
           <Folder className="ic muted" aria-hidden="true" />
           <span className="title-copy">
-            <span className="truncate">{thread?.title ?? t("nav.newThread")}</span>
-            {projectName ? <small className="truncate">{projectName}</small> : null}
+            {projectName ? (
+              <>
+                <span className="title-project truncate">{projectName}</span>
+                <span className="title-sep" aria-hidden="true">
+                  /
+                </span>
+              </>
+            ) : null}
+            <span className="title-text truncate">{thread?.title ?? t("nav.newThread")}</span>
           </span>
         </div>
         <span className="spacer" />
