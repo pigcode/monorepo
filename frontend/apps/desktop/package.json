@@ -1,0 +1,47 @@
+{
+  "name": "@pigcode/desktop",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./out/main/index.js",
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "rebuild:native": "electron-rebuild -f -w node-pty"
+  },
+  "dependencies": {
+    "@base-ui/react": "1.9.0",
+    "@pigcode/client-runtime": "workspace:*",
+    "@pigcode/contracts": "workspace:*",
+    "@pigcode/plugin-sdk": "workspace:*",
+    "@pigcode/ui-chat": "workspace:*",
+    "@pigcode/ui-composer": "workspace:*",
+    "@pigcode/ui-plugin-manager": "workspace:*",
+    "@pigcode/ui-primitives": "workspace:*",
+    "@pigcode/ui-settings": "workspace:*",
+    "@pigcode/ui-shell": "workspace:*",
+    "@pigcode/ui-workbench": "workspace:*",
+    "@tiptap/extension-placeholder": "3.32.0",
+    "@tiptap/extension-typography": "3.32.0",
+    "@tiptap/react": "3.32.0",
+    "@tiptap/starter-kit": "3.32.0",
+    "better-sqlite3": "13.0.3",
+    "node-pty": "1.1.0",
+    "react": "19.2.3",
+    "react-dom": "19.2.3"
+  },
+  "devDependencies": {
+    "@electron/rebuild": "4.2.1",
+    "@playwright/test": "1.64.1",
+    "@types/react": "19.2.2",
+    "@types/react-dom": "19.2.2",
+    "electron": "43.4.1",
+    "electron-vite": "5.0.0",
+    "esbuild": "^0.28.2",
+    "typescript": "5.9.3",
+    "vite": "7.1.12",
+    "vitest": "4.0.16"
+  }
+}
