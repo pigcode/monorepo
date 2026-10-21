@@ -234,6 +234,7 @@ export const enUS = {
   "chat.plan.step.inProgress": "In progress",
   "chat.plan.step.completed": "Completed",
   "chat.diff.filesChanged": "files changed",
+  "chat.diff.showMore": "Show more",
   "chat.composerPlaceholder": "Type a message, @ to reference files, / for commands",
   "chat.empty": "No messages yet",
   "chat.error": "Run failed",

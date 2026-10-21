@@ -27,7 +27,10 @@ const RIGHT_STORAGE_KEY = "pigcode.rightWidth"
 
 /** 把右栏宽度限制在窗口可承受范围内。 */
 function clampRightWidth(width: number): number {
-  const max = Math.max(RIGHT_MIN, Math.round((typeof window === "undefined" ? 1200 : window.innerWidth) * RIGHT_MAX_RATIO))
+  const max = Math.max(
+    RIGHT_MIN,
+    Math.round((typeof window === "undefined" ? 1200 : window.innerWidth) * RIGHT_MAX_RATIO),
+  )
   return Math.min(max, Math.max(RIGHT_MIN, Math.round(width)))
 }
 
@@ -256,26 +259,18 @@ export function Shell({
         onForward={() => onForward?.()}
       />
       <aside className="sidebar" aria-label={inSettings ? t("settings.title") : t("nav.projects")}>
-        <div className="side-top" />
+        <div className="side-top">
+          <button
+            type="button"
+            className="icon-btn side-top-search"
+            aria-label={t("palette.placeholder")}
+            title={`${t("palette.placeholder")} ⌘K`}
+            onClick={() => setPaletteOpen(true)}
+          >
+            <Icon name="search" small />
+          </button>
+        </div>
         <div className="side-scroll">
-          <div className="side-brand">
-            <span className="brand-mark" aria-hidden="true">
-              <Icon name="snout" />
-            </span>
-            <span className="brand-copy">
-              <strong>Pigcode</strong>
-              <small>Claude · Codex</small>
-            </span>
-            <button
-              type="button"
-              className="brand-command"
-              aria-label={t("palette.placeholder")}
-              title={`${t("palette.placeholder")} ⌘K`}
-              onClick={() => setPaletteOpen(true)}
-            >
-              <Icon name="search" small />
-            </button>
-          </div>
           {inSettings ? (
             <SettingsSidebar
               activeSection={section}
@@ -283,37 +278,73 @@ export function Shell({
               onExit={() => onView("chat")}
             />
           ) : (
-            <WorkspaceSidebar
-              projects={projects}
-              threads={threads}
-              activeThreadId={activeThreadId}
-              threadStatus={threadStatus}
-              expandedProjects={expanded}
-              onAddProject={() => setDialogOpen(true)}
-              onToggleProject={toggleProject}
-              onOpenThread={onOpenThread}
-              onNewThread={onNewThread}
-              onOpenSettings={() => onView("settings")}
-              onSearch={() => setPaletteOpen(true)}
-            />
+            <>
+              <nav className="side-nav" aria-label={t("nav.newThread")}>
+                <Button
+                  variant="plain"
+                  className={activeThreadId === null ? "side-row is-active" : "side-row"}
+                  type="button"
+                  aria-label={t("nav.newThread")}
+                  title={`${t("nav.newThread")} ⌘N`}
+                  onClick={() => onNewThread()}
+                >
+                  <Icon name="chat" small />
+                  <span className="grow">{t("nav.newThread")}</span>
+                  <span className="nav-kbd">⌘N</span>
+                </Button>
+                <Button
+                  variant="plain"
+                  className="side-row"
+                  type="button"
+                  onClick={() => selectSection("schedules")}
+                >
+                  <Icon name="clock" small />
+                  <span className="grow">{t("settings.schedules")}</span>
+                </Button>
+                <Button
+                  variant="plain"
+                  className="side-row"
+                  type="button"
+                  onClick={() => onView("plugins")}
+                >
+                  <Icon name="cube" small />
+                  <span className="grow">{t("settings.plugins")}</span>
+                </Button>
+              </nav>
+              <WorkspaceSidebar
+                projects={projects}
+                threads={threads}
+                activeThreadId={activeThreadId}
+                threadStatus={threadStatus}
+                expandedProjects={expanded}
+                onAddProject={() => setDialogOpen(true)}
+                onToggleProject={toggleProject}
+                onOpenThread={onOpenThread}
+                onNewThread={onNewThread}
+                onOpenSettings={() => onView("settings")}
+              />
+            </>
           )}
           {sidebarExtra}
-          {!inSettings ? (
-            <div className="side-foot">
-              <Button
-                variant="plain"
-                className="side-settings"
-                type="button"
-                aria-label={t("settings.title")}
-                onClick={() => onView("settings")}
-              >
-                <Icon name="gear" />
-                <span className="grow">{t("settings.title")}</span>
-                <span className="nav-kbd">⌘,</span>
-              </Button>
-            </div>
-          ) : null}
         </div>
+        {!inSettings ? (
+          <div className="side-foot">
+            <span className="side-avatar" aria-hidden="true">
+              <Icon name="snout" small />
+            </span>
+            <span className="side-foot-name truncate">Pigcode</span>
+            <Button
+              variant="plain"
+              className="icon-btn side-foot-gear"
+              type="button"
+              aria-label={t("settings.title")}
+              title={`${t("settings.title")} ⌘,`}
+              onClick={() => onView("settings")}
+            >
+              <Icon name="gear" small />
+            </Button>
+          </div>
+        ) : null}
       </aside>
       <main className="panel">{children}</main>
       {showRight ? (

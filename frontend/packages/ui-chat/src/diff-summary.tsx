@@ -1,6 +1,6 @@
-/** 文件变更摘要；沿用 pigclaude 的 result / diff 结构与类名。 */
+/** 文件变更摘要：一张「N 个文件已更改」卡片，列出文件与各自的增删数，点击「查看」展开 diff。 */
 import { useState } from "react"
-import { ChevronRight, FileText } from "lucide-react"
+import { FileText } from "lucide-react"
 import { Button, useLocale } from "@pigcode/ui-primitives"
 
 /** 单个文件的 diff 行。 */
@@ -15,6 +15,9 @@ export interface FileChangeSummary {
   additions: number
   deletions: number
 }
+
+/** 默认只列出前几个文件，其余折叠在「显示更多」后面。 */
+const VISIBLE_FILES = 4
 
 /** 根据行首字符给出 diff 行样式。 */
 function lineClass(line: string): string {
@@ -42,6 +45,13 @@ function fileCounts(file: DiffFile): { additions: number; deletions: number } | 
   return { additions, deletions }
 }
 
+/** 路径的最后一段作为文件名，目录放在后面变灰。 */
+function splitPath(path: string): { name: string; dir: string } {
+  const index = path.lastIndexOf("/")
+  if (index < 0) return { name: path, dir: "" }
+  return { name: path.slice(index + 1), dir: path.slice(0, index) }
+}
+
 /** 渲染文件变更摘要；点击查看展开 diff。 */
 export function DiffSummary({
   summary,
@@ -52,6 +62,9 @@ export function DiffSummary({
 }) {
   const { t } = useLocale()
   const [open, setOpen] = useState(false)
+  const [showAll, setShowAll] = useState(false)
+  const files = open || showAll ? summary.files : summary.files.slice(0, VISIBLE_FILES)
+  const hidden = summary.files.length - files.length
 
   function toggle(): void {
     onView?.(summary)
@@ -60,22 +73,56 @@ export function DiffSummary({
 
   return (
     <div className={`result diff-summary${open ? " is-open" : ""}`}>
-      <Button
-        variant="plain"
-        className="result-head"
-        type="button"
-        aria-expanded={open}
-        onClick={toggle}
-      >
-        <ChevronRight className="ic ic-sm chev" aria-hidden="true" />
-        <span>
+      <div className="diff-summary-head">
+        <span className="diff-summary-title">
           {summary.files.length} {t("chat.diff.filesChanged")}
         </span>
         <span className="num t-ok">+{summary.additions}</span>
         <span className="num t-bad">−{summary.deletions}</span>
         <span className="grow" />
-        <span className="muted">{open ? t("chat.hide") : t("chat.view")}</span>
-      </Button>
+        <Button
+          variant="plain"
+          className="link-btn"
+          type="button"
+          aria-expanded={open}
+          onClick={toggle}
+        >
+          {open ? t("chat.hide") : t("chat.view")}
+        </Button>
+      </div>
+      <ul className="diff-summary-files">
+        {files.map((file) => {
+          const counts = fileCounts(file)
+          const { name, dir } = splitPath(file.path)
+          return (
+            <li className="diff-summary-file" key={file.path} title={file.path}>
+              <FileText className="ic ic-sm" aria-hidden="true" />
+              <span className="diff-summary-name truncate">
+                {name}
+                {dir ? <span className="diff-summary-dir"> {dir}</span> : null}
+              </span>
+              {counts ? (
+                <span className="diff-path-counts num">
+                  <span className="t-ok">+{counts.additions}</span>
+                  <span className="t-bad">−{counts.deletions}</span>
+                </span>
+              ) : null}
+            </li>
+          )
+        })}
+        {hidden > 0 ? (
+          <li className="diff-summary-more">
+            <Button
+              variant="plain"
+              className="link-btn"
+              type="button"
+              onClick={() => setShowAll(true)}
+            >
+              {t("chat.diff.showMore")} ({hidden})
+            </Button>
+          </li>
+        ) : null}
+      </ul>
       {open ? (
         <div className="result-body">
           {summary.files.map((file) => (
@@ -83,15 +130,6 @@ export function DiffSummary({
               <div className="diff-path">
                 <FileText className="ic ic-sm" aria-hidden="true" />
                 <span className="truncate">{file.path}</span>
-                {(() => {
-                  const counts = fileCounts(file)
-                  return counts ? (
-                    <span className="diff-path-counts num">
-                      <span className="t-ok">+{counts.additions}</span>
-                      <span className="t-bad">−{counts.deletions}</span>
-                    </span>
-                  ) : null
-                })()}
               </div>
               {file.lines.length > 0 ? (
                 <div className="diff">

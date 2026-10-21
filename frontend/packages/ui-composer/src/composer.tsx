@@ -4,16 +4,16 @@ import { EditorContent, useEditor, useEditorState } from "@tiptap/react"
 import StarterKit from "@tiptap/starter-kit"
 import {
   ArrowUp,
-  AtSign,
   Check,
   ChevronDown,
   Hand,
   Infinity as InfinityIcon,
   ListChecks,
+  Plus,
   Square,
   type LucideIcon,
 } from "lucide-react"
-import { useEffect, useMemo, useRef } from "react"
+import { useEffect, useMemo, useRef, type ReactNode } from "react"
 import { Button, Menu, useLocale, type MessageKey } from "@pigcode/ui-primitives"
 import {
   getComposerKeyAction,
@@ -85,6 +85,12 @@ export interface ComposerProps {
   smartPunctuation?: boolean
   /** 空会话首次出现时自动聚焦输入区。 */
   autoFocus?: boolean
+  /** 输入框外侧那一行的开头，通常是 provider 切换入口。 */
+  footerStart?: ReactNode
+  /** 输入框外侧那一行的末尾，通常是运行状态。 */
+  footerEnd?: ReactNode
+  /** 外侧那一行放在输入框上方还是下方；空会话居中时放上方。 */
+  footerPosition?: "above" | "below"
 }
 
 /** 绘制 TipTap 输入区并保证空内容不可提交。 */
@@ -107,6 +113,9 @@ export function Composer({
   onDepth,
   smartPunctuation = true,
   autoFocus = false,
+  footerStart,
+  footerEnd,
+  footerPosition = "below",
 }: ComposerProps) {
   const { t } = useLocale()
   const label = placeholder ?? t("composer.placeholder")
@@ -137,7 +146,11 @@ export function Composer({
         codeBlock: false,
         horizontalRule: false,
       }),
-      Placeholder.configure({ placeholder: () => placeholderRef.current }),
+      Placeholder.configure({
+        placeholder: () => placeholderRef.current,
+        // 没有会话时输入区是禁用的，但占位文案仍然要说明这里能做什么。
+        showOnlyWhenEditable: false,
+      }),
       smartExtension,
     ],
     editorProps: {
@@ -186,141 +199,146 @@ export function Composer({
     if (text) onSubmit(text)
   }
 
+  const permissionMenu = (
+    <Menu.Root>
+      <Menu.Trigger className="chip-btn chip-mode" type="button">
+        <PermissionIcon className="ic" aria-hidden="true" />
+        {permissionLabel}
+        <ChevronDown className="ic chip-caret" aria-hidden="true" />
+      </Menu.Trigger>
+      <Menu.Portal>
+        <Menu.Positioner className="menu-positioner" side={menuSide} align="start" sideOffset={6}>
+          <Menu.Popup className="menu-popup">
+            {availablePermissionModes.map((id) => {
+              const ItemIcon = permissionIcons[id]
+              return (
+                <Menu.Item key={id} className="menu-item" onClick={() => onPermissionMode?.(id)}>
+                  <ItemIcon className="ic" aria-hidden="true" />
+                  <span className="grow">
+                    <span>{t(permissionKeys[id].label)}</span>
+                    <span className="muted" style={{ display: "block", fontSize: 12 }}>
+                      {t(permissionKeys[id].description)}
+                    </span>
+                  </span>
+                  {id === permissionMode ? (
+                    <Check className="ic check-mark" aria-hidden="true" />
+                  ) : null}
+                </Menu.Item>
+              )
+            })}
+          </Menu.Popup>
+        </Menu.Positioner>
+      </Menu.Portal>
+    </Menu.Root>
+  )
+
+  const depthMenu = (
+    <Menu.Root>
+      <Menu.Trigger className="chip-btn" type="button" title={t("composer.depth.label")}>
+        <span className="chip-label-optional">{t("composer.depth.label")}</span>
+        {depthLabel}
+        <ChevronDown className="ic chip-caret" aria-hidden="true" />
+      </Menu.Trigger>
+      <Menu.Portal>
+        <Menu.Positioner className="menu-positioner" side={menuSide} align="start" sideOffset={6}>
+          <Menu.Popup className="menu-popup">
+            {thinkingDepths.map((id) => (
+              <Menu.Item key={id} className="menu-item" onClick={() => onDepth?.(id)}>
+                {t(depthKeys[id])}
+                {id === depth ? <Check className="ic check-mark" aria-hidden="true" /> : null}
+              </Menu.Item>
+            ))}
+          </Menu.Popup>
+        </Menu.Positioner>
+      </Menu.Portal>
+    </Menu.Root>
+  )
+
+  // 输入框外侧的一行：provider、权限、思考深度在左，运行状态在右。
+  const foot = (
+    <div className="composer-foot">
+      {footerStart}
+      {permissionMenu}
+      {depthMenu}
+      <span className="grow" />
+      {footerEnd}
+    </div>
+  )
+
   return (
-    <div className={tall ? "composer is-tall" : "composer"} data-running={running || undefined}>
-      <div className="composer-context">
-        <Button
-          variant="plain"
-          className="context-chip"
-          type="button"
-          title={t("composer.attach")}
-          disabled={disabled}
-        >
-          <AtSign className="ic ic-sm" aria-hidden="true" />
-          <span>{t("composer.addContext")}</span>
-        </Button>
-      </div>
-      <EditorContent editor={editor} />
-      <div className="composer-bar">
-        <div className="composer-side">
-          <Menu.Root>
-            <Menu.Trigger className="chip-btn chip-mode" type="button">
-              <PermissionIcon className="ic" aria-hidden="true" />
-              {permissionLabel}
-              <ChevronDown className="ic chip-caret" aria-hidden="true" />
-            </Menu.Trigger>
-            <Menu.Portal>
-              <Menu.Positioner
-                className="menu-positioner"
-                side={menuSide}
-                align="start"
-                sideOffset={6}
-              >
-                <Menu.Popup className="menu-popup">
-                  {availablePermissionModes.map((id) => {
-                    const ItemIcon = permissionIcons[id]
-                    return (
-                      <Menu.Item
-                        key={id}
-                        className="menu-item"
-                        onClick={() => onPermissionMode?.(id)}
-                      >
-                        <ItemIcon className="ic" aria-hidden="true" />
-                        <span className="grow">
-                          <span>{t(permissionKeys[id].label)}</span>
-                          <span className="muted" style={{ display: "block", fontSize: 12 }}>
-                            {t(permissionKeys[id].description)}
-                          </span>
-                        </span>
-                        {id === permissionMode ? (
-                          <Check className="ic check-mark" aria-hidden="true" />
-                        ) : null}
-                      </Menu.Item>
-                    )
-                  })}
-                </Menu.Popup>
-              </Menu.Positioner>
-            </Menu.Portal>
-          </Menu.Root>
-        </div>
-        <div className="composer-side end">
-          {showModel ? (
-            <Menu.Root>
-              <Menu.Trigger className="chip-btn" type="button">
-                {model}
-                <ChevronDown className="ic chip-caret" aria-hidden="true" />
-              </Menu.Trigger>
-              <Menu.Portal>
-                <Menu.Positioner
-                  className="menu-positioner"
-                  side={menuSide}
-                  align="end"
-                  sideOffset={6}
-                >
-                  <Menu.Popup className="menu-popup">
-                    {models.map((item) => (
-                      <Menu.Item key={item} className="menu-item" onClick={() => onModel?.(item)}>
-                        {item}
-                        {item === model ? (
-                          <Check className="ic check-mark" aria-hidden="true" />
-                        ) : null}
-                      </Menu.Item>
-                    ))}
-                  </Menu.Popup>
-                </Menu.Positioner>
-              </Menu.Portal>
-            </Menu.Root>
-          ) : null}
-          <Menu.Root>
-            <Menu.Trigger className="chip-btn" type="button" title={t("composer.depth.label")}>
-              <span className="chip-label-optional">{t("composer.depth.label")}</span>
-              {depthLabel}
-              <ChevronDown className="ic chip-caret" aria-hidden="true" />
-            </Menu.Trigger>
-            <Menu.Portal>
-              <Menu.Positioner
-                className="menu-positioner"
-                side={menuSide}
-                align="end"
-                sideOffset={6}
-              >
-                <Menu.Popup className="menu-popup">
-                  {thinkingDepths.map((id) => (
-                    <Menu.Item key={id} className="menu-item" onClick={() => onDepth?.(id)}>
-                      {t(depthKeys[id])}
-                      {id === depth ? <Check className="ic check-mark" aria-hidden="true" /> : null}
-                    </Menu.Item>
-                  ))}
-                </Menu.Popup>
-              </Menu.Positioner>
-            </Menu.Portal>
-          </Menu.Root>
-          {running && canInterrupt ? (
+    <div className="composer-stack" data-foot={footerPosition}>
+      {footerPosition === "above" ? foot : null}
+      <div className={tall ? "composer is-tall" : "composer"} data-running={running || undefined}>
+        <EditorContent editor={editor} />
+        <div className="composer-bar">
+          <div className="composer-side">
             <Button
               variant="plain"
-              className="send is-stop"
+              className="composer-plus"
               type="button"
-              aria-label={t("chat.interrupt")}
-              title={t("chat.interrupt")}
-              onClick={onStop}
+              aria-label={t("composer.attach")}
+              title={t("composer.attach")}
+              disabled={disabled}
             >
-              <Square className="ic" aria-hidden="true" />
+              <Plus className="ic" aria-hidden="true" />
             </Button>
-          ) : running ? null : (
-            <Button
-              variant="plain"
-              className="send"
-              type="button"
-              aria-label={t("chat.send")}
-              title={t("chat.sendHint")}
-              aria-disabled={empty || disabled ? true : undefined}
-              onClick={submit}
-            >
-              <ArrowUp className="ic" aria-hidden="true" />
-            </Button>
-          )}
+          </div>
+          <div className="composer-side end">
+            {showModel ? (
+              <Menu.Root>
+                <Menu.Trigger className="chip-btn chip-model" type="button">
+                  {model}
+                  <ChevronDown className="ic chip-caret" aria-hidden="true" />
+                </Menu.Trigger>
+                <Menu.Portal>
+                  <Menu.Positioner
+                    className="menu-positioner"
+                    side={menuSide}
+                    align="end"
+                    sideOffset={6}
+                  >
+                    <Menu.Popup className="menu-popup">
+                      {models.map((item) => (
+                        <Menu.Item key={item} className="menu-item" onClick={() => onModel?.(item)}>
+                          {item}
+                          {item === model ? (
+                            <Check className="ic check-mark" aria-hidden="true" />
+                          ) : null}
+                        </Menu.Item>
+                      ))}
+                    </Menu.Popup>
+                  </Menu.Positioner>
+                </Menu.Portal>
+              </Menu.Root>
+            ) : null}
+            {running && canInterrupt ? (
+              <Button
+                variant="plain"
+                className="send is-stop"
+                type="button"
+                aria-label={t("chat.interrupt")}
+                title={t("chat.interrupt")}
+                onClick={onStop}
+              >
+                <Square className="ic" aria-hidden="true" />
+              </Button>
+            ) : running ? null : (
+              <Button
+                variant="plain"
+                className="send"
+                type="button"
+                aria-label={t("chat.send")}
+                title={t("chat.sendHint")}
+                aria-disabled={empty || disabled ? true : undefined}
+                onClick={submit}
+              >
+                <ArrowUp className="ic" aria-hidden="true" />
+              </Button>
+            )}
+          </div>
         </div>
       </div>
+      {footerPosition === "below" ? foot : null}
     </div>
   )
 }

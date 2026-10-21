@@ -58,20 +58,6 @@ const TAB_ICONS: Record<RightPanelTab, ReactNode> = {
 export function RightPanel({ threadId, tabs, active, onTab, onClose, labels }: RightPanelProps) {
   return (
     <aside className="right-panel" aria-label="工作台" data-thread-id={threadId}>
-      <div className="right-panel-head">
-        <span className="right-panel-title">工作台</span>
-        {onClose ? (
-          <button
-            type="button"
-            className="right-panel-close"
-            aria-label="关闭右栏"
-            title="关闭右栏"
-            onClick={onClose}
-          >
-            ×
-          </button>
-        ) : null}
-      </div>
       <div className="right-panel-header">
         <div className="right-panel-tabs" role="tablist" aria-label="工作台视图">
           {RIGHT_PANEL_TABS.map((tab) => {
@@ -93,6 +79,17 @@ export function RightPanel({ threadId, tabs, active, onTab, onClose, labels }: R
             )
           })}
         </div>
+        {onClose ? (
+          <button
+            type="button"
+            className="right-panel-close"
+            aria-label="关闭右栏"
+            title="关闭右栏"
+            onClick={onClose}
+          >
+            ×
+          </button>
+        ) : null}
       </div>
       <div
         className="right-panel-body"

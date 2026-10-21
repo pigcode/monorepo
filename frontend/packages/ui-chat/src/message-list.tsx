@@ -8,6 +8,7 @@ import { DiffSummary, type DiffFile, type FileChangeSummary } from "./diff-summa
 import { AssistantMessage, MessageText, UserMessage } from "./message-item"
 import { PlanCard, type PlanStep, type PlanStepStatus, type PlanUpdate } from "./plan-card"
 import { SubagentCard, type SubagentCall, type SubagentStatus } from "./subagent-card"
+import { formatFull, formatRelative } from "./time"
 import { ToolCard, type ToolCall, type ToolStatus } from "./tool-card"
 
 /** 消息列表需要的线程事件与交互回调。 */
@@ -317,13 +318,6 @@ function collectSubagents(events: ThreadEvent[]): Map<string, SubagentCall> {
   return subagents
 }
 
-/** 把事件时间格式化成「HH:mm」；非法时间不显示。 */
-function formatClock(value: string, locale: string): string | undefined {
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return undefined
-  return new Intl.DateTimeFormat(locale, { hour: "2-digit", minute: "2-digit" }).format(date)
-}
-
 /** 判断线程是否还有未处理的审批请求。 */
 export function hasPendingApproval(events: ThreadEvent[]): boolean {
   const resolved = collectResolved(events)
@@ -358,8 +352,12 @@ export function MessageList({
   for (const event of sorted) {
     const key = `${event.seq}-${event.type}`
     const payload = asRecord(event.payload)
-    const time = formatClock(event.createdAt, locale)
-    const timeProp = time ? { time } : {}
+    const time = formatRelative(event.createdAt, locale)
+    const timeTitle = formatFull(event.createdAt, locale)
+    const timeProp = {
+      ...(time ? { time } : {}),
+      ...(timeTitle ? { timeTitle: `${assistantName} · ${timeTitle}` } : {}),
+    }
     // 子 agent 的消息与工具已在卡片内部按 seq 渲染，跳过顶层重复展示。
     if (isParentScoped(event.type) && asText(payload?.parentToolUseId)) continue
     if (event.type === "subagent.started") {
@@ -384,7 +382,13 @@ export function MessageList({
         asText(payload?.role) === "user" ? (
           <UserMessage key={key} text={text} />
         ) : (
-          <AssistantMessage key={key} name={assistantName} initial={assistantInitial} {...timeProp}>
+          <AssistantMessage
+            key={key}
+            name={assistantName}
+            initial={assistantInitial}
+            text={text}
+            {...timeProp}
+          >
             <MessageText text={text} />
           </AssistantMessage>
         ),

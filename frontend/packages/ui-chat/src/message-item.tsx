@@ -53,11 +53,13 @@ export function UserMessage({ text }: { text: string }) {
   )
 }
 
-/** 助手消息：正文直接落在时间线上；来源与时间作为悬停可见的脚注。 */
+/** 助手消息：正文直接落在时间线上；下方一行是复制与时间。 */
 export function AssistantMessage({
   children,
   name = "Assistant",
   time,
+  timeTitle,
+  text,
 }: {
   children: ReactNode
   name?: string
@@ -65,14 +67,24 @@ export function AssistantMessage({
   initial?: string
   /** 已格式化的时间文本；流式消息没有时间。 */
   time?: string
+  /** 悬停时显示的完整时间。 */
+  timeTitle?: string
+  /** 原始正文；提供时显示复制按钮。 */
+  text?: string
 }) {
   return (
     <div className="msg-ai">
       <div className="msg-ai-body">{children}</div>
-      <div className="msg-ai-meta">
-        <span className="msg-ai-name">{name}</span>
-        {time ? <time className="msg-ai-time num">{time}</time> : null}
-      </div>
+      {text || time ? (
+        <div className="msg-ai-actions">
+          {text ? <CopyButton text={text} className="msg-ai-copy" /> : null}
+          {time ? (
+            <time className="msg-ai-time num" title={timeTitle ?? `${name}`}>
+              {time}
+            </time>
+          ) : null}
+        </div>
+      ) : null}
     </div>
   )
 }

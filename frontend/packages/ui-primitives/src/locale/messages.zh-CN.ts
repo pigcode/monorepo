@@ -228,6 +228,7 @@ export const zhCN = {
   "chat.plan.step.inProgress": "进行中",
   "chat.plan.step.completed": "已完成",
   "chat.diff.filesChanged": "个文件已更改",
+  "chat.diff.showMore": "显示更多",
   "chat.composerPlaceholder": "输入消息，@ 引用文件，/ 使用命令",
   "chat.empty": "还没有消息",
   "chat.error": "运行失败",

@@ -5,10 +5,10 @@ import {
   ArrowDown,
   Check,
   ChevronDown,
+  Folder,
   Loader2,
   PanelRight,
   PanelRightOpen,
-  Square,
 } from "lucide-react"
 import { Composer } from "@pigcode/ui-composer"
 import { Button, Menu, useLocale } from "@pigcode/ui-primitives"
@@ -64,21 +64,24 @@ function HeaderMenu({
   items,
   selected,
   onSelect,
+  disabled = false,
 }: {
   label: string
   title: string
   items: ReadonlyArray<{ id: string; label: string }>
   selected: string | null
   onSelect: (id: string) => void
+  /** 运行中不允许切换，但仍显示当前值。 */
+  disabled?: boolean
 }) {
   return (
     <Menu.Root>
-      <Menu.Trigger className="chip-btn" type="button" title={title}>
+      <Menu.Trigger className="chip-btn" type="button" title={title} disabled={disabled}>
         {label}
         <ChevronDown className="ic chip-caret" aria-hidden="true" />
       </Menu.Trigger>
       <Menu.Portal>
-        <Menu.Positioner className="menu-positioner" side="bottom" align="end" sideOffset={6}>
+        <Menu.Positioner className="menu-positioner" side="top" align="start" sideOffset={6}>
           <Menu.Popup className="menu-popup">
             {items.map((item) => (
               <Menu.Item key={item.id} className="menu-item" onClick={() => onSelect(item.id)}>
@@ -191,62 +194,47 @@ export function ChatView({
     element?.scrollTo({ top: element.scrollHeight, behavior: "smooth" })
   }
 
+  const empty = visibleEvents.length === 0 && !streamingText
+  const providerMenu =
+    thread && providers.length > 0 && onSwitchProvider ? (
+      <HeaderMenu
+        label={providerName}
+        title={t("chat.environment.provider")}
+        items={providers.map((provider) => ({
+          id: provider.id,
+          label: provider.displayName,
+        }))}
+        selected={providerId}
+        onSelect={onSwitchProvider}
+        disabled={running}
+      />
+    ) : null
+  const statusNode =
+    pendingApproval || running ? (
+      <span className={`status status-pill ${statusClass}`.trim()} role="status">
+        {running && !pendingApproval ? (
+          <Loader2 className="ic ic-sm spin" aria-hidden="true" />
+        ) : null}
+        {status}
+      </span>
+    ) : null
+
   return (
-    <section className="view">
-      {tabs}
+    <section className={empty ? "view is-empty" : "view"}>
       <div className="panel-top">
-        <div className="title">
-          <span className="title-copy">
-            <span className="truncate">{thread?.title ?? t("nav.newThread")}</span>
-            {projectName ? (
-              <small className="truncate" title={cwd}>
-                {projectName}
-              </small>
-            ) : null}
-          </span>
-        </div>
+        {tabs ?? (
+          <div className="title">
+            <span className="title-copy">
+              <span className="truncate">{thread?.title ?? t("nav.newThread")}</span>
+              {projectName ? (
+                <small className="truncate" title={cwd}>
+                  {projectName}
+                </small>
+              ) : null}
+            </span>
+          </div>
+        )}
         <span className="spacer" />
-        <span
-          className={`status status-pill ${statusClass}`.trim()}
-          data-running={running || undefined}
-        >
-          {running && !pendingApproval ? (
-            <Loader2 className="ic ic-sm spin" aria-hidden="true" />
-          ) : null}
-          {status}
-        </span>
-        {!running && thread && providers.length > 0 && onSwitchProvider ? (
-          <HeaderMenu
-            label={providerName}
-            title={t("chat.environment.provider")}
-            items={providers.map((provider) => ({
-              id: provider.id,
-              label: provider.displayName,
-            }))}
-            selected={providerId}
-            onSelect={onSwitchProvider}
-          />
-        ) : null}
-        {!running && thread && canSelectModel && models.length > 0 && onSwitchModel ? (
-          <HeaderMenu
-            label={modelId ?? t("chat.environment.model")}
-            title={t("chat.environment.model")}
-            items={models.map((id) => ({ id, label: id }))}
-            selected={modelId}
-            onSelect={onSwitchModel}
-          />
-        ) : null}
-        {running && canInterrupt ? (
-          <Button
-            variant="plain"
-            size="icon"
-            type="button"
-            aria-label={t("chat.interrupt")}
-            onClick={onInterrupt}
-          >
-            <Square className="ic" aria-hidden="true" />
-          </Button>
-        ) : null}
         {onToggleRight ? (
           <Button
             variant="plain"
@@ -271,24 +259,27 @@ export function ChatView({
         </Button>
       </div>
       <div className="thread" ref={threadRef} onScroll={handleScroll}>
-        <MessageList
-          events={visibleEvents}
-          streamingText={streamingText}
-          assistantName={providerName}
-          assistantInitial={assistantInitial}
-          running={running && !pendingApproval}
-          onApproval={onApproval ?? (() => undefined)}
-          onViewTool={onViewTool}
-          onViewDiff={onViewDiff}
-        />
+        {empty ? null : (
+          <MessageList
+            events={visibleEvents}
+            streamingText={streamingText}
+            assistantName={providerName}
+            assistantInitial={assistantInitial}
+            running={running && !pendingApproval}
+            onApproval={onApproval ?? (() => undefined)}
+            onViewTool={onViewTool}
+            onViewDiff={onViewDiff}
+          />
+        )}
       </div>
-      {!pinned ? (
+      {!pinned && !empty ? (
         <button type="button" className="jump-latest" onClick={jumpToLatest}>
           <ArrowDown className="ic ic-sm" aria-hidden="true" />
           {t("chat.jumpLatest")}
         </button>
       ) : null}
       <div className="composer-wrap">
+        {empty && !thread ? <p className="composer-intro">{t("chat.empty.hint")}</p> : null}
         <Composer
           onSubmit={(text) => submit?.(text)}
           onStop={onInterrupt ?? (() => undefined)}
@@ -300,7 +291,32 @@ export function ChatView({
           {...(onSwitchModel ? { onModel: onSwitchModel } : {})}
           canPlan={canPlan}
           canInterrupt={canInterrupt}
+          footerStart={
+            <>
+              {projectName ? (
+                <span className="chip-static" title={cwd}>
+                  <Folder className="ic" aria-hidden="true" />
+                  {projectName}
+                </span>
+              ) : null}
+              {providerMenu}
+            </>
+          }
+          footerEnd={statusNode}
+          footerPosition={empty ? "above" : "below"}
         />
+        {empty ? (
+          <div className="empty-hints">
+            <span>
+              <kbd>⌘K</kbd>
+              {t("chat.empty.command")}
+            </span>
+            <span>
+              <kbd>⌘N</kbd>
+              {t("chat.empty.newThread")}
+            </span>
+          </div>
+        ) : null}
       </div>
       <EnvironmentDrawer
         open={drawerOpen}
