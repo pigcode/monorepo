@@ -27,4 +27,29 @@ describe("rpc server", () => {
     expect(response).toMatchObject({ jsonrpc: "2.0", id: "1", result: [] })
     await ctx.fiber.dispose()
   })
+
+  it("adds a project with the given name, or the folder name when none is given", async () => {
+    const { ctx, transport } = await createServer()
+    transport.client.send({
+      jsonrpc: "2.0",
+      id: "1",
+      method: "project.add",
+      params: { rootPath: "/tmp/pigcode-named", name: "  客户门户  " },
+    })
+    expect(await transport.client.next()).toMatchObject({
+      id: "1",
+      result: { rootPath: "/tmp/pigcode-named", name: "客户门户" },
+    })
+    transport.client.send({
+      jsonrpc: "2.0",
+      id: "2",
+      method: "project.add",
+      params: { rootPath: "/tmp/pigcode-plain/" },
+    })
+    expect(await transport.client.next()).toMatchObject({
+      id: "2",
+      result: { name: "pigcode-plain" },
+    })
+    await ctx.fiber.dispose()
+  })
 })

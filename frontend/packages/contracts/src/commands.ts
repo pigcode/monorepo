@@ -3,7 +3,11 @@ import { z } from "zod"
 
 /** 命令方法到参数 schema 的映射。 */
 export const commandSchemas = {
-  "project.add": z.object({ rootPath: z.string().min(1) }),
+  "project.add": z.object({
+    rootPath: z.string().min(1),
+    /** 展示名；缺省时取文件夹名。 */
+    name: z.string().trim().min(1).max(120).optional(),
+  }),
   "project.list": z.object({}),
   "thread.create": z.object({
     projectId: z.string().min(1),
