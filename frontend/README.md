@@ -4,6 +4,12 @@ Pigcode 桌面端的 pnpm monorepo，包含 `apps/`（desktop、host）与 `pack
 
 ## UI and shortcuts
 
+- Window buttons are always the system's own. On macOS the native traffic lights sit in the
+  sidebar's top row. On Windows and Linux the app draws a title bar with File, Edit, View, and
+  Help (each opens a native menu), and the system minimize, maximize, and close buttons overlay
+  it on whichever side the desktop puts them.
+- Shortcut hints read `⌘` on macOS and `Ctrl` on Windows and Linux; the shortcuts below accept
+  either modifier.
 - `⌘K` opens the command palette for actions, thread switching, and projects.
 - `⌘N` creates a new session; `⌘B` toggles the sidebar; `⌘J` toggles the workbench;
   `⌘,` opens settings.
