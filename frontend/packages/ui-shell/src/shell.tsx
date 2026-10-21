@@ -87,7 +87,8 @@ export interface ShellProps {
   onForward?: () => void
   onView: (view: ShellView) => void
   onSettingsSection?: (section: SettingsSection) => void
-  onAddProject: (path: string) => void
+  /** 创建项目；name 为 undefined 时用文件夹名。 */
+  onAddProject: (path: string, name?: string) => void
   onToggleProject?: (projectId: string, expanded: boolean) => void
   onNewThread: (projectId?: string) => void
   onOpenThread: (threadId: string) => void
@@ -393,7 +394,7 @@ export function Shell({
       <AddProjectDialog
         open={dialogOpen}
         onOpenChange={setDialogOpen}
-        onAdd={(path) => onAddProject(path)}
+        onAdd={(path, name) => onAddProject(path, name)}
       />
       <CommandPalette
         open={paletteOpen}

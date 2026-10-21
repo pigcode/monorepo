@@ -23,6 +23,7 @@
   --active: oklch(21% 0.006 286 / 0.075);
   --popover: oklch(100% 0 0);
   --scrim: oklch(20% 0.006 286 / 0.2);
+  --scrim-strong: oklch(0% 0 0 / 0.55);
 
   /* 文字与细线 */
   --fg: oklch(27.4% 0.006 286);
@@ -118,6 +119,7 @@
   --active: oklch(100% 0 0 / 0.085);
   --popover: oklch(23% 0 0);
   --scrim: oklch(0% 0 0 / 0.5);
+  --scrim-strong: oklch(0% 0 0 / 0.6);
 
   --fg: oklch(96% 0 0);
   --fg-2: oklch(84% 0.003 286);

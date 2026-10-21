@@ -242,9 +242,12 @@ export function App({ store, slots, connection, plugins, locale }: AppProps) {
     )
   }, [state.status, state.activeThreadId, state.threads, connection, store])
 
-  async function addProject(path: string): Promise<void> {
+  async function addProject(path: string, name?: string): Promise<void> {
     try {
-      const project = (await connection.call("project.add", { rootPath: path })) as Project
+      const project = (await connection.call(
+        "project.add",
+        name ? { rootPath: path, name } : { rootPath: path },
+      )) as Project
       const current = store.getSnapshot()
       store.update({
         projects: [...current.projects, project],
@@ -342,7 +345,7 @@ export function App({ store, slots, connection, plugins, locale }: AppProps) {
       settingsSection={effectiveSection}
       onView={setView}
       onSettingsSection={setSection}
-      onAddProject={(path) => void addProject(path)}
+      onAddProject={(path, name) => void addProject(path, name)}
       onNewThread={(projectId) => void createThread(projectId)}
       onOpenThread={openThread}
       sidebarExtra={<PluginPanels controller={plugins} />}
