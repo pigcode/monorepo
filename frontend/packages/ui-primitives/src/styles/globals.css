@@ -4100,6 +4100,7 @@ body.is-resizing {
 .composer:focus-within .composer-hint {
   opacity: 1;
   transform: none;
+  color: var(--muted);
 }
 
 /* 线程头状态：运行中的状态点同步脉冲 */
@@ -4155,7 +4156,7 @@ body.is-resizing {
 }
 .thread-tab {
   flex: 0 1 auto;
-  min-width: 72px;
+  min-width: 124px;
 }
 .tab-new {
   align-self: flex-end;
@@ -4347,6 +4348,9 @@ body.is-resizing {
   border-radius: 10px;
   background: var(--surface-raised);
   box-shadow: var(--shadow-raised);
+}
+.checkpoint-item > .btn {
+  align-self: flex-start;
 }
 .checkpoint-phase {
   font-weight: 500;

@@ -138,23 +138,31 @@ export function CodeBlock({ code, lang }: { code: string; lang: string }) {
   )
 }
 
-/** 把正文拆成段落与代码块；单段内的换行由 CSS 保留。 */
-export function MessageText({ text }: { text: string }) {
+/**
+ * 把正文拆成段落与代码块；单段内的换行由 CSS 保留。
+ * trailing（如流式光标）接在最后一个段落的行尾；最后一段是代码块时放在其后。
+ */
+export function MessageText({ text, trailing }: { text: string; trailing?: ReactNode }) {
   const segments = splitMessage(text)
+  const lastIndex = segments.length - 1
+  const lastIsText = segments[lastIndex]?.kind === "text"
   return (
     <>
-      {segments.map((segment, index) =>
-        segment.kind === "code" ? (
-          <CodeBlock key={index} code={segment.code} lang={segment.lang} />
-        ) : (
-          segment.text
-            .split(/\n{2,}/)
-            .filter((paragraph) => paragraph.trim().length > 0)
-            .map((paragraph, paragraphIndex) => (
-              <p key={`${index}-${paragraphIndex}`}>{renderInline(paragraph)}</p>
-            ))
-        ),
-      )}
+      {segments.map((segment, index) => {
+        if (segment.kind === "code") {
+          return <CodeBlock key={index} code={segment.code} lang={segment.lang} />
+        }
+        const paragraphs = segment.text
+          .split(/\n{2,}/)
+          .filter((paragraph) => paragraph.trim().length > 0)
+        return paragraphs.map((paragraph, paragraphIndex) => (
+          <p key={`${index}-${paragraphIndex}`}>
+            {renderInline(paragraph)}
+            {index === lastIndex && paragraphIndex === paragraphs.length - 1 ? trailing : null}
+          </p>
+        ))
+      })}
+      {trailing && !lastIsText ? trailing : null}
     </>
   )
 }

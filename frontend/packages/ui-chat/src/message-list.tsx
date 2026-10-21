@@ -441,8 +441,10 @@ export function MessageList({
   if (streamingText) {
     nodes.push(
       <AssistantMessage key="streaming" name={assistantName} initial={assistantInitial}>
-        <MessageText text={streamingText} />
-        <span className="stream-cursor" aria-label={t("chat.streaming")} />
+        <MessageText
+          text={streamingText}
+          trailing={<span className="stream-cursor" aria-label={t("chat.streaming")} />}
+        />
       </AssistantMessage>,
     )
   }

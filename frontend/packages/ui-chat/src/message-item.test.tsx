@@ -41,6 +41,26 @@ describe("MessageText", () => {
     expect(container.querySelector(".msg-code pre code")?.textContent).toBe("pnpm test")
   })
 
+  it("keeps the trailing node on the last paragraph line", () => {
+    const { container, rerender } = render(
+      <LocaleProvider locale="zh-CN">
+        <MessageText text={"first\n\nsecond"} trailing={<span data-testid="cursor" />} />
+      </LocaleProvider>,
+    )
+    const paragraphs = container.querySelectorAll("p")
+    expect(paragraphs).toHaveLength(2)
+    expect(paragraphs[1]?.querySelector("[data-testid='cursor']")).not.toBeNull()
+
+    rerender(
+      <LocaleProvider locale="zh-CN">
+        <MessageText text={"```\ncode"} trailing={<span data-testid="cursor" />} />
+      </LocaleProvider>,
+    )
+    // 最后一段是代码块时光标放在代码块后面，而不是塞进 pre 里。
+    expect(container.querySelector(".msg-code [data-testid='cursor']")).toBeNull()
+    expect(container.querySelector("[data-testid='cursor']")).not.toBeNull()
+  })
+
   it("copies the block to the clipboard and confirms", async () => {
     const writeText = vi.fn(() => Promise.resolve())
     Object.defineProperty(navigator, "clipboard", {
