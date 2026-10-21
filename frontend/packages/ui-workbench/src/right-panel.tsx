@@ -341,15 +341,16 @@ export function RightPanel({
     surfaces: { ...DEFAULT_RIGHT_PANEL_LABELS.surfaces, ...overrides?.surfaces },
   }
   const tablist = useRef<HTMLDivElement | null>(null)
+  const activeTitle = surfaces.find((surface) => surface.id === activeId)?.title
 
-  // 标签多到需要横向滚动时，保证当前标签可见。
+  // 标签多到需要横向滚动时，保证当前标签可见；标题变长（浏览器换成主机名）也要重新滚动。
   useEffect(() => {
     if (!activeId) return
     const tab = Array.from(tablist.current?.children ?? []).find((element) =>
       element.querySelector(`[id="surface-tab-${activeId}"]`),
     )
     tab?.scrollIntoView?.({ block: "nearest", inline: "nearest" })
-  }, [activeId, surfaces.length])
+  }, [activeId, activeTitle, surfaces.length])
 
   return (
     <aside className="right-panel" aria-label={labels.panel} data-thread-id={threadId}>
