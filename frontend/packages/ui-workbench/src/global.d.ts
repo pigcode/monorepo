@@ -21,7 +21,12 @@ interface Window {
     openFolder?(path: string): Promise<void>
     /** 本机装了的文件管理器、编辑器与终端；icon 是 data URL，取不到时为 null。 */
     listOpenApps?(): Promise<
-      Array<{ id: string; name: string; kind: "file-manager" | "editor" | "terminal"; icon: string | null }>
+      Array<{
+        id: string
+        name: string
+        kind: "file-manager" | "editor" | "terminal"
+        icon: string | null
+      }>
     >
     /** 用指定应用打开文件夹；不是已存在的目录或应用不在本机时拒绝。 */
     openWithApp?(appId: string, path: string): Promise<void>

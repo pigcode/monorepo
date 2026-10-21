@@ -197,7 +197,8 @@ export const enUS = {
   "composer.model.favorite": "Add to favorites",
   "composer.model.unfavorite": "Remove from favorites",
   "composer.model.notInstalled": "Not installed",
-  "composer.model.locked": "The model can't change while running; thinking applies to the next message",
+  "composer.model.locked":
+    "The model can't change while running; thinking applies to the next message",
   "composer.effort.label": "Thinking",
   "composer.effort.minimal": "Minimal",
   "composer.effort.low": "Low",
@@ -211,11 +212,13 @@ export const enUS = {
   "composer.permission.plan": "Plan mode",
   "composer.permission.plan.description": "Plan first, change no files until you approve",
   "composer.permission.readOnly": "Read only",
-  "composer.permission.readOnly.description": "Read the project; no edits, no commands with side effects",
+  "composer.permission.readOnly.description":
+    "Read the project; no edits, no commands with side effects",
   "composer.permission.full": "Full access",
   "composer.permission.full.description": "Edit files and run commands without asking",
   "composer.permission.full.confirmTitle": "Turn on full access?",
-  "composer.permission.full.confirmText": "The agent will edit project files and run any command without asking. Only turn this on for tasks and projects you trust; it applies from the next message.",
+  "composer.permission.full.confirmText":
+    "The agent will edit project files and run any command without asking. Only turn this on for tasks and projects you trust; it applies from the next message.",
   "composer.permission.full.confirm": "Turn on full access",
   "composer.command.model": "Switch agent and model",
   "composer.suggest.files": "Files",

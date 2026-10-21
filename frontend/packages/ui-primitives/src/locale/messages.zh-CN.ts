@@ -211,7 +211,8 @@ export const zhCN = {
   "composer.permission.full": "完全访问",
   "composer.permission.full.description": "不再询问，直接改文件和运行命令",
   "composer.permission.full.confirmTitle": "开启完全访问？",
-  "composer.permission.full.confirmText": "Agent 将不经询问直接修改项目文件、运行任意命令。只在你信任当前任务和项目时开启，下一条消息起生效。",
+  "composer.permission.full.confirmText":
+    "Agent 将不经询问直接修改项目文件、运行任意命令。只在你信任当前任务和项目时开启，下一条消息起生效。",
   "composer.permission.full.confirm": "开启完全访问",
   "composer.command.model": "切换 agent 与模型",
   "composer.suggest.files": "文件",

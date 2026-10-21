@@ -24,7 +24,12 @@ contextBridge.exposeInMainWorld("pigcodeNative", {
     ipcRenderer.invoke("pigcode:pick-folder", labels),
   openFolder: (path: string): Promise<void> => ipcRenderer.invoke("pigcode:open-folder", path),
   listOpenApps: (): Promise<
-    Array<{ id: string; name: string; kind: "file-manager" | "editor" | "terminal"; icon: string | null }>
+    Array<{
+      id: string
+      name: string
+      kind: "file-manager" | "editor" | "terminal"
+      icon: string | null
+    }>
   > => ipcRenderer.invoke("pigcode:list-open-apps"),
   openWithApp: (appId: string, path: string): Promise<void> =>
     ipcRenderer.invoke("pigcode:open-with-app", appId, path),

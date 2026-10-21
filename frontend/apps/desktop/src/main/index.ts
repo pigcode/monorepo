@@ -6,7 +6,13 @@ import { startHostProcess, type HostProcess } from "./host-process"
 import { popupNativeMenu, readMenuPosition, readNativeMenu } from "./native-menu"
 import { appIcon } from "./app-icons"
 import { appDefsFor, detectApps } from "./open-apps"
-import { launchCommand, launchDetached, readDirectory, settleOpenPath, type OpenAppInfo } from "./open-in"
+import {
+  launchCommand,
+  launchDetached,
+  readDirectory,
+  settleOpenPath,
+  type OpenAppInfo,
+} from "./open-in"
 import { registerAppProtocol, registerPluginProtocol, registerPrivilegedSchemes } from "./protocol"
 import { closePreview, isAllowedPreviewUrl, openPreview } from "./preview"
 import {
