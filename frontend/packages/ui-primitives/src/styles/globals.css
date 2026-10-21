@@ -2827,8 +2827,13 @@ body.is-resizing {
   cursor: col-resize;
   user-select: none;
 }
-.app.is-collapsed .panel-top {
+.app.is-collapsed .panel-top,
+.app.is-collapsed .thread-tabs {
   padding-left: calc(var(--controls-w) - var(--gap));
+}
+/* 有标签栏时由标签栏给窗口按钮让位，标题栏回到常规缩进。 */
+.app.is-collapsed .panel:has(.thread-tabs) .panel-top {
+  padding-left: 18px;
 }
 .window-controls .icon-btn {
   border-radius: var(--r-md);
@@ -5020,6 +5025,12 @@ body.is-resizing {
 
 /* ─── 窄窗口 ───────────────────────────────────────────── */
 @media (max-width: 960px) {
+  .app,
+  .app.is-collapsed,
+  .app.has-right,
+  .app.has-right.is-collapsed {
+    grid-template-columns: minmax(0, 1fr);
+  }
   .panel,
   .app.is-collapsed .panel,
   .app.has-right .panel {
@@ -5041,8 +5052,14 @@ body.is-resizing {
     background: var(--window);
   }
   .panel-top,
-  .app.is-collapsed .panel-top {
+  .app.is-collapsed .panel-top,
+  .thread-tabs,
+  .app.is-collapsed .thread-tabs {
     padding-left: calc(var(--controls-w) - var(--gap));
+  }
+  .panel:has(.thread-tabs) .panel-top,
+  .app.is-collapsed .panel:has(.thread-tabs) .panel-top {
+    padding-left: 18px;
   }
 }
 @media (max-width: 720px) {
