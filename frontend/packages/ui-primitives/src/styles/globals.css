@@ -264,13 +264,15 @@ a.item,
   align-items: center;
   gap: 2px;
   padding: 0 10px 0 16px;
-  -webkit-app-region: drag;
 }
+/* 拖动区按文档顺序叠加，后出现的覆盖先出现的；顶栏只让空白的 spacer 可拖动，
+   避免侧栏收起后压住固定在左上角的顶行按钮 */
 .panel-top > * {
   -webkit-app-region: no-drag;
 }
 .panel-top .spacer {
   flex: 1;
+  align-self: stretch;
   -webkit-app-region: drag;
 }
 .panel-scroll {
@@ -328,7 +330,6 @@ a.item,
 .side-top {
   height: 44px;
   flex: none;
-  -webkit-app-region: drag;
 }
 .side-scroll {
   flex: 1;
@@ -2620,7 +2621,8 @@ body {
 }
 
 /* 侧栏顶行按钮固定在窗口左上角：展开时左边开关、右边搜索与前进后退；
-   侧栏收起后挨在一起，排进内容区顶栏的左端 */
+   侧栏收起后挨在一起，排进内容区顶栏的左端。这一行的拖动区由它自己提供，
+   下面的 .side-top 只占位，不再声明拖动区，否则会盖住按钮 */
 .window-controls {
   position: fixed;
   top: var(--titlebar-h);
@@ -4166,11 +4168,13 @@ body.is-resizing-rows iframe {
   height: var(--topbar-h);
   flex: none;
   padding: 0 8px 0 10px;
-  -webkit-app-region: drag;
   user-select: none;
 }
 .right-panel-bar > :not(.right-panel-drag) {
   -webkit-app-region: no-drag;
+}
+.right-panel-drag {
+  -webkit-app-region: drag;
 }
 .right-panel-drag {
   flex: 1;
