@@ -1,10 +1,17 @@
 /** Electron main：单实例、窗口、Host utilityProcess、原生桥与端口转交。 */
-import { app, BrowserWindow, ipcMain, nativeTheme } from "electron"
+import { app, BrowserWindow, ipcMain, Menu, nativeTheme } from "electron"
 import { join } from "node:path"
 import { startHostProcess, type HostProcess } from "./host-process"
+import { popupNativeMenu, readMenuPosition, readNativeMenu } from "./native-menu"
 import { registerAppProtocol, registerPluginProtocol, registerPrivilegedSchemes } from "./protocol"
 import { closePreview, isAllowedPreviewUrl, openPreview } from "./preview"
-import { createMainWindowOptions, readThemeSource } from "./window-options"
+import {
+  TITLE_BAR_HEIGHT,
+  createMainWindowOptions,
+  readThemeSource,
+  readTitleBarColors,
+  usesTitleBarOverlay,
+} from "./window-options"
 
 registerPrivilegedSchemes()
 
@@ -39,6 +46,25 @@ function registerNativeBridge(): void {
   ipcMain.handle("pigcode:is-maximized", (event) => {
     return BrowserWindow.fromWebContents(event.sender)?.isMaximized() ?? false
   })
+  ipcMain.handle("pigcode:is-full-screen", (event) => {
+    return BrowserWindow.fromWebContents(event.sender)?.isFullScreen() ?? false
+  })
+  // 原生窗口按钮的底色与图标色跟随页面当前外观；macOS 的交通灯不需要。
+  ipcMain.handle("pigcode:title-bar", (event, value: unknown) => {
+    const colors = readTitleBarColors(value)
+    const window = BrowserWindow.fromWebContents(event.sender)
+    if (!colors || !window || !usesTitleBarOverlay(process.platform)) return
+    window.setTitleBarOverlay({ ...colors, height: TITLE_BAR_HEIGHT })
+  })
+  // 标题栏菜单由页面描述、主进程弹出原生菜单；返回被点击的命令 id。
+  ipcMain.handle("pigcode:menu", (event, items: unknown, position: unknown) => {
+    const window = BrowserWindow.fromWebContents(event.sender)
+    const menu = readNativeMenu(items, { allowDevRoles: !app.isPackaged })
+    const at = readMenuPosition(position)
+    if (!window || !menu || !at) return null
+    const zoom = event.sender.getZoomFactor()
+    return popupNativeMenu(Menu, window, menu, { x: at.x * zoom, y: at.y * zoom })
+  })
   // 预览窗口：URL 合法性由 preview.ts 统一校验，IPC 只做类型收敛。
   ipcMain.handle("pigcode:preview-open", (_event, url: unknown) => {
     if (typeof url !== "string") throw new Error("PREVIEW_URL_NOT_ALLOWED")
@@ -71,9 +97,13 @@ export async function createWindow(): Promise<BrowserWindow> {
       platform: process.platform,
       preloadPath: resolveAppPath("out/preload/index.cjs"),
       isPackaged: app.isPackaged,
+      dark: nativeTheme.shouldUseDarkColors,
     }),
   )
   window.once("ready-to-show", () => window.show())
+  // macOS 全屏时交通灯隐藏，页面据此收回为交通灯预留的空间。
+  window.on("enter-full-screen", () => window.webContents.send("pigcode:full-screen", true))
+  window.on("leave-full-screen", () => window.webContents.send("pigcode:full-screen", false))
   // 右侧浏览器用 iframe 内嵌本机页面；子框架的跳转与重定向同样只能留在 loopback。
   const guardFrame = (event: { isMainFrame: boolean; url: string; preventDefault: () => void }) => {
     if (!event.isMainFrame && /^https?:/i.test(event.url) && !isAllowedPreviewUrl(event.url)) {
