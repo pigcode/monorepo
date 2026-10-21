@@ -110,7 +110,7 @@ const glassOverlayBases: Record<Tone, Partial<Record<OverlayName, number>>> = {
 const glassAvatarAlpha: Record<Tone, number> = { light: 0.08, dark: 0.1 }
 
 // pigclaude 只改了 fg 时，用来推出次级文字色的背景
-const pigclaudeBg: Record<Tone, Hex> = { light: "#FFFFFF", dark: "#151515" }
+const pigclaudeBg: Record<Tone, Hex> = { light: "#F7F7F7", dark: "#151515" }
 
 const defaultContrast = 45
 const white: Hex = "#FFFFFF"

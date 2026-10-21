@@ -1,8 +1,9 @@
 /*
   Pigcode 设计系统 · tokens（v6：与 Cursor 对齐的工作区）
   所有颜色只在本文件定义。页面与组件只引用语义变量，不写死色值。
-  结构：窗口底色承载侧栏；聊天与右侧面板共用一张圆角内容卡片，中间只有一条细线。
-  中性色是几乎无彩的锌灰；强调色是靛蓝，只出现在主按钮、开关、链接与焦点上。
+  结构：窗口底色承载标题栏与侧栏；聊天与右侧面板平铺在略亮一层的内容区里，
+  用户消息与输入区是再亮一层的卡片。浅色下 macOS 的侧栏更深一些，接近系统侧栏材质。
+  中性色是几乎无彩的灰；强调色是靛蓝，只出现在开关、链接与焦点上。
   悬停、选中、细线一律用带透明度的墨色，叠在任何底色上都成立。
 */
 
@@ -10,13 +11,13 @@
 [data-theme="light"] {
   color-scheme: light;
 
-  /* 窗口与表面：window 承载侧栏，bg 是内容卡片 */
-  --window: oklch(97.6% 0.0015 286);
-  --wall-1: oklch(97.6% 0.0015 286 / 0);
-  --wall-2: oklch(97.6% 0.0015 286 / 0);
-  --sidebar: oklch(97.6% 0.0015 286 / 0.6);
-  --bg: oklch(100% 0 0);
-  --surface: oklch(100% 0 0);
+  /* 窗口与表面：window 承载标题栏与侧栏，bg 是内容区，surface 是卡片 */
+  --window: oklch(95.8% 0 0);
+  --wall-1: oklch(95.8% 0 0 / 0);
+  --wall-2: oklch(95.8% 0 0 / 0);
+  --sidebar: oklch(95.8% 0 0 / 0.6);
+  --bg: oklch(97.6% 0 0);
+  --surface: oklch(99% 0 0);
   --panel: oklch(21% 0.006 286 / 0.035);
   --hover: oklch(21% 0.006 286 / 0.045);
   --active: oklch(21% 0.006 286 / 0.075);
@@ -35,7 +36,6 @@
   --field: oklch(21% 0.006 286 / 0.04);
   --popover-glass: oklch(100% 0 0 / 0.9);
   --scroll-thumb: oklch(21% 0.006 286 / 0.18);
-  --tl-glyph: oklch(0% 0 0 / 0.5);
 
   /* 操作：主按钮、开关、链接与焦点用靛蓝，其余界面保持中性 */
   --primary: oklch(48.8% 0.217 264);
@@ -51,7 +51,7 @@
   --accent-text: oklch(46% 0.19 264);
   --accent-2: oklch(52% 0.2 264);
   --on-accent: oklch(100% 0 0);
-  --surface-raised: oklch(100% 0 0);
+  --surface-raised: oklch(99% 0 0);
   --surface-sunken: oklch(21% 0.006 286 / 0.03);
   --bubble: oklch(96.7% 0.0015 286);
 
@@ -75,19 +75,14 @@
   --chart-2: oklch(78% 0.09 264);
   --chart-3: oklch(76% 0.006 286);
   --chart-4: oklch(87% 0.004 286);
-  --avatar: oklch(92% 0.004 286);
-
-  --tl-close: oklch(68% 0.2 27);
-  --tl-min: oklch(83% 0.16 85);
-  --tl-max: oklch(74% 0.18 145);
+  --avatar: oklch(91% 0 0);
 
   /* 终端与代码块：与 terminal-view 的 xterm 主题保持同一组值 */
   --term-bg: #ffffff;
   --term-fg: #27272a;
-  --code-bg: oklch(97.5% 0.0015 286);
+  --code-bg: oklch(96% 0.0015 286);
 
   --field-hl: oklch(100% 0 0 / 0.5);
-  --tl-edge: oklch(0% 0 0 / 0.12);
   --knob: oklch(100% 0 0);
   --shadow-knob: 0 0 0 0.5px oklch(0% 0 0 / 0.06), 0 1px 3px oklch(0% 0 0 / 0.2);
   --shadow-btn: 0 1px 1.5px oklch(21% 0.006 286 / 0.06);
@@ -135,7 +130,6 @@
   --field: oklch(100% 0 0 / 0.05);
   --popover-glass: oklch(23% 0 0 / 0.9);
   --scroll-thumb: oklch(100% 0 0 / 0.18);
-  --tl-glyph: oklch(0% 0 0 / 0.55);
 
   --primary: oklch(57.1% 0.21 264);
   --primary-hover: oklch(62% 0.19 264);
@@ -179,7 +173,6 @@
   --code-bg: oklch(17% 0 0);
 
   --field-hl: oklch(100% 0 0 / 0);
-  --tl-edge: oklch(0% 0 0 / 0.3);
   --knob: oklch(97% 0 0);
   --shadow-knob: 0 1px 2px oklch(0% 0 0 / 0.4);
   --shadow-btn: 0 1px 1.5px oklch(0% 0 0 / 0.3);
@@ -194,6 +187,15 @@
   --composer-ring-focus: oklch(100% 0 0 / 0.2);
   --shadow-composer: 0 8px 24px oklch(0% 0 0 / 0.3);
   --shadow-composer-focus: 0 8px 24px oklch(0% 0 0 / 0.34);
+}
+
+/* macOS 浅色：侧栏接近系统侧栏材质的深度，内容区随之略暗 */
+:root[data-platform="darwin"]:not([data-theme="dark"]) {
+  --window: oklch(93.1% 0 0);
+  --wall-1: oklch(93.1% 0 0 / 0);
+  --wall-2: oklch(93.1% 0 0 / 0);
+  --sidebar: oklch(93.1% 0 0 / 0.6);
+  --bg: oklch(96.4% 0 0);
 }
 
 :root {
@@ -231,13 +233,13 @@
   --r-full: 999px;
 
   --hair: 0.5px;
-  --sidebar-w: 248px;
+  --sidebar-w: 260px;
   --col: 720px;
   --col-narrow: 640px;
   --chat-col: 740px;
-  /* 内容卡片与窗口边缘的间距；右侧面板标签栏高度 */
+  /* 浮层与窗口边缘的间距；顶行高度（侧栏顶行、线程头与右侧面板标签栏，交通灯竖直居中其中） */
   --gap: 8px;
-  --topbar-h: 44px;
+  --topbar-h: 40px;
 
   /* 颜色选择器的色域：白到透明、黑到透明、色相彩虹和拖柄白圈，与主题无关 */
   --picker-white: oklch(100% 0 0);
