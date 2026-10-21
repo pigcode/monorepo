@@ -10,6 +10,8 @@ Pigcode 桌面端的 pnpm monorepo，包含 `apps/`（desktop、host）与 `pack
   it on whichever side the desktop puts them.
 - Shortcut hints read `⌘` on macOS and `Ctrl` on Windows and Linux; the shortcuts below accept
   either modifier.
+- Add project opens the create-project dialog. The source folder is chosen with the system file
+  manager (Finder, Explorer, or the GTK chooser); a blank project name uses the folder name.
 - `⌘K` opens the command palette for actions, thread switching, and projects.
 - `⌘N` creates a new session; `⌘B` toggles the sidebar; `⌘J` toggles the workbench;
   `⌘,` opens settings.
