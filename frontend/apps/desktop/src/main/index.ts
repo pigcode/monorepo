@@ -1,6 +1,7 @@
 /** Electron main：单实例、窗口、Host utilityProcess、原生桥与端口转交。 */
-import { app, BrowserWindow, ipcMain, Menu, nativeTheme } from "electron"
+import { app, BrowserWindow, dialog, ipcMain, Menu, nativeTheme } from "electron"
 import { join } from "node:path"
+import { pickFolder, readFolderPickerLabels } from "./folder-picker"
 import { startHostProcess, type HostProcess } from "./host-process"
 import { popupNativeMenu, readMenuPosition, readNativeMenu } from "./native-menu"
 import { registerAppProtocol, registerPluginProtocol, registerPrivilegedSchemes } from "./protocol"
@@ -64,6 +65,16 @@ function registerNativeBridge(): void {
     if (!window || !menu || !at) return null
     const zoom = event.sender.getZoomFactor()
     return popupNativeMenu(Menu, window, menu, { x: at.x * zoom, y: at.y * zoom })
+  })
+  // 创建项目时用系统文件管理器选择源文件夹；返回路径，取消时为 null。
+  ipcMain.handle("pigcode:pick-folder", (event, labels: unknown) => {
+    const window = BrowserWindow.fromWebContents(event.sender)
+    if (!window) return null
+    return pickFolder(
+      (parent, options) => dialog.showOpenDialog(parent, options),
+      window,
+      readFolderPickerLabels(labels),
+    )
   })
   // 预览窗口：URL 合法性由 preview.ts 统一校验，IPC 只做类型收敛。
   ipcMain.handle("pigcode:preview-open", (_event, url: unknown) => {

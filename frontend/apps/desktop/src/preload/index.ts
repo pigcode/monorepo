@@ -20,6 +20,8 @@ contextBridge.exposeInMainWorld("pigcodeNative", {
     ipcRenderer.invoke("pigcode:title-bar", colors),
   popupMenu: (items: unknown[], position: { x: number; y: number }): Promise<string | null> =>
     ipcRenderer.invoke("pigcode:menu", items, position),
+  pickFolder: (labels?: { title?: string; buttonLabel?: string }): Promise<string | null> =>
+    ipcRenderer.invoke("pigcode:pick-folder", labels),
   previewOpen: (url: string): Promise<{ id: string }> =>
     ipcRenderer.invoke("pigcode:preview-open", url),
   previewClose: (id?: string): void => {

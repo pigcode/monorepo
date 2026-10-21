@@ -16,6 +16,7 @@ interface Window {
       >,
       position: { x: number; y: number },
     ): Promise<string | null>
+    pickFolder?(labels?: { title?: string; buttonLabel?: string }): Promise<string | null>
     previewOpen(url: string): Promise<{ id: string }>
     previewClose(id?: string): void
   }
