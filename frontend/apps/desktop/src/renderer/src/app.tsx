@@ -14,9 +14,11 @@ import type { SettingsSection, ShellView, ThreadStatus } from "@pigcode/ui-shell
 import {
   EMPTY_SURFACE_STATE,
   PanelLayoutControls,
+  updateSurface,
   type PanelLayoutControlsProps,
   type PanelSurfaceState,
 } from "@pigcode/ui-workbench"
+import { BrowserHost } from "./browser-host"
 import { PluginPanels } from "./client-plugins"
 import type { ChatSlotProps, CoreDeps } from "./chat-container"
 import { ConnectionBanner } from "./connection-banner"
@@ -256,6 +258,58 @@ export function App({ store, slots, connection, plugins, locale }: AppProps) {
     }))
   }
 
+  // agent 调用浏览器工具时，main 让这里给它的线程开（或亮出）浏览器标签；正在看这个线程时展开右栏。
+  const openState = useRef({ panels, activeThreadId: state.activeThreadId, view })
+  openState.current = { panels, activeThreadId: state.activeThreadId, view }
+  useEffect(
+    () =>
+      window.pigcodeNative?.browser?.onOpen(({ threadId, url }) => {
+        const existing = openState.current.panels[threadId]?.surfaces
+          .filter((surface) => surface.kind === "browser")
+          .at(-1)
+        const id = existing?.id ?? `browser-${crypto.randomUUID()}`
+        setPanels((current) => {
+          const panel = current[threadId] ?? EMPTY_SURFACE_STATE
+          return {
+            ...current,
+            [threadId]: panel.surfaces.some((surface) => surface.id === id)
+              ? { ...panel, activeId: id }
+              : {
+                  surfaces: [
+                    ...panel.surfaces,
+                    {
+                      id,
+                      kind: "browser",
+                      title: url ? new URL(url).host : locale === "en-US" ? "Browser" : "浏览器",
+                      ...(url ? { url } : {}),
+                    },
+                  ],
+                  activeId: id,
+                },
+          }
+        })
+        const { activeThreadId, view: currentView } = openState.current
+        if (threadId === activeThreadId && currentView === "chat") {
+          setRightOpen(true)
+          setRightMaximized(false)
+        }
+      }),
+    [locale],
+  )
+
+  const browsers = useMemo(() => {
+    const live = new Set(
+      state.threads.filter((thread) => thread.archivedAt === null).map((thread) => thread.id),
+    )
+    return Object.entries(panels).flatMap(([threadId, panel]) =>
+      live.has(threadId)
+        ? panel.surfaces
+            .filter((surface) => surface.kind === "browser")
+            .map((surface) => ({ id: surface.id, threadId, initialUrl: surface.url }))
+        : [],
+    )
+  }, [panels, state.threads])
+
   const layoutControls = (maximizable: boolean) => (
     <LayoutControls
       rightOpen={rightOpen}
@@ -353,6 +407,14 @@ export function App({ store, slots, connection, plugins, locale }: AppProps) {
       }
     >
       <ConnectionBanner store={store} />
+      <BrowserHost
+        browsers={browsers}
+        onNavigate={(browser, url) =>
+          updatePanel(browser.threadId, (panel) =>
+            updateSurface(panel, browser.id, { title: new URL(url).host, url }),
+          )
+        }
+      />
       {view === "chat" ? (
         <SlotHost<ChatSlotProps>
           registry={slots}

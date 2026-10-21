@@ -4,20 +4,25 @@
  * 连续的查阅合成一行。
  */
 import { memo } from "react"
-import { ChevronRight, Telescope } from "lucide-react"
+import { ChevronRight, Globe, Telescope } from "lucide-react"
 import { useLocale } from "@pigcode/ui-primitives"
 import { CommandRow } from "./command-row"
 import {
+  baseToolName,
+  browserPreview,
   diffStats,
   isCommandTool,
   toolIcon,
   toolKind,
+  toolOutputParts,
   toolPreview,
   type ToolCall,
 } from "./tool-meta"
 import { useToolOpen } from "./tool-open"
 
 export {
+  browserAction,
+  browserPreview,
   commandText,
   diffStats,
   isCommandTool,
@@ -57,13 +62,19 @@ function GenericToolRow({
   onView?: ((tool: ToolCall) => void) | undefined
 }) {
   const { t } = useLocale()
-  const [open, setOpen] = useToolOpen(tool.id, false)
+  const output = toolOutputParts(tool.output)
+  // 截图这类带图的结果默认展开，直接看到 agent 看到的画面。
+  const [open, setOpen] = useToolOpen(tool.id, output.images.length > 0)
   const hasDetails = Boolean(tool.input || tool.output)
   const Icon = toolIcon(tool.name)
   const kind = toolKind(tool.name)
-  const preview = toolPreview(tool.input)
+  const preview = browserPreview(tool) ?? toolPreview(tool.input)
   const stats = diffStats(tool)
-  const label = kind ? t(kind) : tool.name === "tool" ? t("chat.tool.unknown") : tool.name
+  const label = kind
+    ? t(kind)
+    : tool.name === "tool"
+      ? t("chat.tool.unknown")
+      : baseToolName(tool.name)
   const running = tool.status === "running"
 
   function toggle(): void {
@@ -112,10 +123,17 @@ function GenericToolRow({
               <pre>{tool.input}</pre>
             </>
           ) : null}
-          {tool.output ? (
+          {output.images.length > 0 ? (
+            <div className="tool-row-images">
+              {output.images.map((src, index) => (
+                <img key={index} src={src} alt={t("chat.tool.screenshot")} loading="lazy" />
+              ))}
+            </div>
+          ) : null}
+          {output.text ? (
             <>
               <div className="tool-row-label">{t("chat.tool.output")}</div>
-              <pre>{tool.output}</pre>
+              <pre>{output.text}</pre>
             </>
           ) : null}
         </div>
@@ -123,6 +141,51 @@ function GenericToolRow({
     </div>
   )
 }
+
+/** 连续的浏览器操作合成一行「浏览器 · 网址 · N 步」，展开后逐步列出。 */
+export const BrowserGroup = memo(function BrowserGroup({
+  tools,
+  onView,
+}: {
+  tools: readonly ToolCall[]
+  onView?: ((tool: ToolCall) => void) | undefined
+}) {
+  const { t } = useLocale()
+  const [open, setOpen] = useToolOpen(`browser-${tools[0]?.id ?? ""}`, false)
+  const failed = tools.some((tool) => tool.status === "failed")
+  const site = tools
+    .filter((tool) => /browser_(open|navigate)$/.test(tool.name))
+    .map((tool) => browserPreview(tool))
+    .find(Boolean)
+  const summary = [site, t("chat.tool.browser.steps").replace("{count}", String(tools.length))]
+    .filter(Boolean)
+    .join(" · ")
+  return (
+    <div
+      className={open ? "tool-row tool-group is-open" : "tool-row tool-group"}
+      data-status={failed ? "failed" : "completed"}
+    >
+      <button
+        type="button"
+        className="tool-row-head"
+        aria-expanded={open}
+        onClick={() => setOpen(!open)}
+      >
+        <Globe className="ic ic-sm tool-row-icon" aria-hidden="true" />
+        <span className="tool-row-kind">{t("chat.tool.browser")}</span>
+        <span className="tool-row-target truncate">{summary}</span>
+        <ChevronRight className="ic ic-sm tool-row-chev" aria-hidden="true" />
+      </button>
+      {open ? (
+        <div className="tool-group-body">
+          {tools.map((tool) => (
+            <ToolCard key={tool.id} tool={tool} onView={onView} />
+          ))}
+        </div>
+      ) : null}
+    </div>
+  )
+})
 
 /** 连续的查阅（读文件、搜索、列目录）合成一行，展开后逐条列出。 */
 export const ExploreGroup = memo(function ExploreGroup({

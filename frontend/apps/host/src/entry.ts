@@ -41,5 +41,6 @@ async function bootstrap(event: ParentPortMessageEvent): Promise<void> {
   await ctx.plugin(pluginsPlugin, { profileDir })
   await writeBootGraph(profileDir)
   new RpcServer(ctx, new MessagePortTransport(appPort)).start()
-  control?.on("message", () => {})
+  // 控制端口目前只承载内置浏览器的动作：agent 的 browser_* 工具经它交给 main 执行。
+  if (control) ctx.get("browser")?.attach(control)
 }

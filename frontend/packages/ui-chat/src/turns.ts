@@ -19,7 +19,7 @@ import {
 } from "./event-parsers"
 import type { PlanUpdate } from "./plan-card"
 import type { SubagentCall } from "./subagent-card"
-import { isCommandTool, type ToolCall, type ToolStatus } from "./tool-meta"
+import { browserAction, isCommandTool, type ToolCall, type ToolStatus } from "./tool-meta"
 
 /** 一轮里的一项工作。 */
 export type WorkItem =
@@ -27,6 +27,7 @@ export type WorkItem =
   | { kind: "tool"; key: string; tool: ToolCall }
   | { kind: "explore"; key: string; tools: ToolCall[] }
   | { kind: "commands"; key: string; tools: ToolCall[] }
+  | { kind: "browser"; key: string; tools: ToolCall[] }
   | { kind: "plan"; key: string; plan: PlanUpdate }
   | { kind: "subagent"; key: string; subagent: SubagentCall }
 
@@ -88,12 +89,13 @@ function emptyTurn(key: string, runId: string | null): Turn {
   }
 }
 
-type GroupKind = "explore" | "commands"
+type GroupKind = "explore" | "commands" | "browser"
 
-/** 工具属于哪种可合并的分组：已完成的查阅、已结束的命令；其余不合并。 */
+/** 工具属于哪种可合并的分组：已完成的查阅、已结束的命令与浏览器操作；其余不合并。 */
 function groupKind(tool: ToolCall): GroupKind | null {
   if (isExploreTool(tool.name) && tool.status === "completed") return "explore"
   if (isCommandTool(tool.name) && tool.status !== "running") return "commands"
+  if (browserAction(tool.name) && tool.status !== "running") return "browser"
   return null
 }
 

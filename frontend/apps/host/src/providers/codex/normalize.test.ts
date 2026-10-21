@@ -57,6 +57,44 @@ describe("normalizeCodexNotification", () => {
     })
   })
 
+  it("maps MCP tool calls with the same mcp__server__tool names as Claude", () => {
+    const item = {
+      id: "m1",
+      type: "mcpToolCall",
+      server: "pigcode",
+      tool: "browser_click",
+      arguments: { ref: "e3" },
+      status: "inProgress",
+    }
+    expect(normalizeCodexNotification("item/started", { item })).toEqual([
+      {
+        type: "tool.started",
+        toolCallId: "m1",
+        name: "mcp__pigcode__browser_click",
+        input: { ref: "e3" },
+      },
+    ])
+    const content = [{ type: "text", text: 'Clicked button "登录".' }]
+    expect(
+      normalizeCodexNotification("item/completed", {
+        item: { ...item, status: "completed", result: { content } },
+      }),
+    ).toEqual([
+      {
+        type: "tool.completed",
+        toolCallId: "m1",
+        name: "mcp__pigcode__browser_click",
+        output: content,
+        isError: false,
+      },
+    ])
+    expect(
+      normalizeCodexNotification("item/completed", {
+        item: { ...item, status: "failed", error: { message: "No element matches e3." } },
+      }),
+    ).toMatchObject([{ output: "No element matches e3.", isError: true }])
+  })
+
   it("streams command output as live deltas", () => {
     expect(
       normalizeCodexNotification("item/commandExecution/outputDelta", {

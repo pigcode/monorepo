@@ -38,6 +38,36 @@ contextBridge.exposeInMainWorld("pigcodeNative", {
   previewClose: (id?: string): void => {
     void ipcRenderer.invoke("pigcode:preview-close", id).catch(() => undefined)
   },
+  browser: {
+    register: (sessionId: string, threadId: string, webContentsId: number): Promise<void> =>
+      ipcRenderer.invoke("pigcode:browser-register", sessionId, threadId, webContentsId),
+    unregister: (sessionId: string): void => {
+      void ipcRenderer.invoke("pigcode:browser-unregister", sessionId).catch(() => undefined)
+    },
+    onOpen: (listener: (request: { threadId: string; url: string | null }) => void) => {
+      const handler = (_event: unknown, value: { threadId: string; url: string | null }) =>
+        listener(value)
+      ipcRenderer.on("pigcode:browser-open", handler)
+      return () => {
+        ipcRenderer.removeListener("pigcode:browser-open", handler)
+      }
+    },
+    onActivity: (
+      listener: (activity: {
+        threadId: string
+        sessionId: string
+        action: string
+        detail: string
+        point?: { x: number; y: number }
+      }) => void,
+    ) => {
+      const handler = (_event: unknown, value: Parameters<typeof listener>[0]) => listener(value)
+      ipcRenderer.on("pigcode:browser-activity", handler)
+      return () => {
+        ipcRenderer.removeListener("pigcode:browser-activity", handler)
+      }
+    },
+  },
 })
 
 ipcRenderer.on("pigcode:port", (event) => {

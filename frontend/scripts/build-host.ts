@@ -31,6 +31,7 @@ const coreEntries: Record<string, string> = {
   threads: join(root, "apps/host/src/services/threads.ts"),
   sessions: join(root, "apps/host/src/services/sessions.ts"),
   "mcp-bridge": join(root, "apps/host/src/services/mcp-bridge.ts"),
+  browser: join(root, "apps/host/src/services/browser.ts"),
   providers: join(root, "apps/host/src/providers/registry.ts"),
   workspace: join(root, "apps/host/src/services/workspace.ts"),
   git: join(root, "apps/host/src/services/git.ts"),

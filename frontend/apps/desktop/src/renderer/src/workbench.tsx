@@ -5,7 +5,6 @@ import type { Connection } from "@pigcode/client-runtime"
 import type { PullRequestInfo } from "@pigcode/contracts"
 import { Button, useLocale } from "@pigcode/ui-primitives"
 import {
-  BrowserView,
   CheckpointPanel,
   DiffView,
   FilePreview,
@@ -15,13 +14,13 @@ import {
   WorktreePicker,
   addSurface,
   closeSurface,
-  updateSurface,
   type CheckpointPhase,
   type FilePreviewFile,
   type PanelSurfaceState,
   type PrCreateInput,
   type SurfaceKind,
 } from "@pigcode/ui-workbench"
+import { BrowserSurface } from "./browser-surface"
 import { TerminalSurface } from "./terminal-surface"
 import { browserLabels, prPanelLabels, rightPanelLabels, surfaceTitle } from "./workbench-labels"
 
@@ -333,10 +332,6 @@ export function WorkbenchPanel({
     onPanelChange((state) => closeSurface(state, id))
   }
 
-  function recordNavigation(id: string, url: string): void {
-    onPanelChange((state) => updateSurface(state, id, { title: new URL(url).host, url }))
-  }
-
   const content: Record<"files" | "diff" | "checkpoint" | "pr", ReactNode> = {
     files: (
       <div className="workbench-files">
@@ -470,11 +465,7 @@ export function WorkbenchPanel({
           if (surface.kind === "browser") {
             return (
               <div key={surface.id} className="surface-pane" hidden={!active}>
-                <BrowserView
-                  initialUrl={surface.url}
-                  labels={webLabels}
-                  onNavigate={(url) => recordNavigation(surface.id, url)}
-                />
+                <BrowserSurface id={surface.id} labels={webLabels} />
               </div>
             )
           }

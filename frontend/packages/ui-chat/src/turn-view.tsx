@@ -13,7 +13,7 @@ import { elapsed, formatDuration, useNow } from "./duration"
 import { MessageText } from "./message-item"
 import { PlanCard } from "./plan-card"
 import { SubagentCard } from "./subagent-card"
-import { ExploreGroup, ToolCard, type ToolCall } from "./tool-card"
+import { BrowserGroup, ExploreGroup, ToolCard, type ToolCall } from "./tool-card"
 import { TurnActions } from "./turn-actions"
 import { isEnded, type Turn, type WorkItem } from "./turns"
 
@@ -122,6 +122,8 @@ function WorkItemView({
       return <ExploreGroup tools={item.tools} onView={onViewTool} />
     case "commands":
       return <CommandGroup tools={item.tools} onView={onViewTool} />
+    case "browser":
+      return <BrowserGroup tools={item.tools} onView={onViewTool} />
     case "plan":
       return <PlanCard plan={item.plan} />
     case "subagent":

@@ -65,6 +65,22 @@ export function browserLabels(t: Translate): BrowserViewLabels {
     emptyHint: t("browser.emptyHint"),
     invalid: t("preview.invalid"),
     bridgeMissing: t("preview.bridgeMissing"),
+    agent: t("browser.agent"),
+    actions: {
+      open: t("browser.action.open"),
+      navigate: t("browser.action.navigate"),
+      back: t("browser.action.back"),
+      forward: t("browser.action.forward"),
+      reload: t("browser.action.reload"),
+      snapshot: t("browser.action.snapshot"),
+      click: t("browser.action.click"),
+      type: t("browser.action.type"),
+      press: t("browser.action.press"),
+      scroll: t("browser.action.scroll"),
+      wait: t("browser.action.wait"),
+      evaluate: t("browser.action.evaluate"),
+      screenshot: t("browser.action.screenshot"),
+    },
   }
 }
 

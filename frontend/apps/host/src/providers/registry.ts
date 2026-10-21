@@ -52,7 +52,13 @@ export function apply(ctx: Context, config: ProviderRunConfig = {}): void {
   const maxConcurrentRuns = config.maxConcurrentRuns ?? 4
   const maxQueuedRuns = config.maxQueuedRuns ?? 32
   const drivers = new Map<string, ProviderDriver>()
-  const fake = new FakeProviderDriver()
+  const fake = new FakeProviderDriver({
+    callTool: (threadId, name, input) => {
+      const bridge = ctx.reflect.get("mcpBridge")
+      if (!bridge) return Promise.reject(new Error("MCP tools are not available"))
+      return bridge.callTool(threadId, name, input)
+    },
+  })
   drivers.set(fake.id, fake)
   const claude = new ClaudeDriver()
   drivers.set(claude.id, claude)

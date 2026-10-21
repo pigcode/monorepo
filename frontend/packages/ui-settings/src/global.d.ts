@@ -32,5 +32,20 @@ interface Window {
     openWithApp?(appId: string, path: string): Promise<void>
     previewOpen(url: string): Promise<{ id: string }>
     previewClose(id?: string): void
+    /** 右栏内置浏览器：登记 webview，接收 agent 打开浏览器与操作的通知。 */
+    browser?: {
+      register(sessionId: string, threadId: string, webContentsId: number): Promise<void>
+      unregister(sessionId: string): void
+      onOpen(listener: (request: { threadId: string; url: string | null }) => void): () => void
+      onActivity(
+        listener: (activity: {
+          threadId: string
+          sessionId: string
+          action: string
+          detail: string
+          point?: { x: number; y: number }
+        }) => void,
+      ): () => void
+    }
   }
 }

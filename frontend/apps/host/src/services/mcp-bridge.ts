@@ -127,10 +127,7 @@ export function apply(ctx: Context): void {
         inputSchema: shapeFromJsonSchema(tool.inputSchema),
         handler: async (input: unknown) => {
           try {
-            const result = await callTool(threadId, tool.name, input)
-            return {
-              content: [{ type: "text" as const, text: JSON.stringify(result) ?? "null" }],
-            }
+            return toolResultContent(await callTool(threadId, tool.name, input))
           } catch (error) {
             return {
               content: [{ type: "text" as const, text: errorMessage(error) }],
@@ -233,7 +230,11 @@ export function apply(ctx: Context): void {
     })
   }
 
-  async function handleLine(socket: net.Socket, line: string, state: ConnectionState): Promise<void> {
+  async function handleLine(
+    socket: net.Socket,
+    line: string,
+    state: ConnectionState,
+  ): Promise<void> {
     const message = parseRecord(line)
     if (!message) {
       send(socket, { type: "error", message: "invalid JSON payload" })
@@ -326,6 +327,29 @@ export function apply(ctx: Context): void {
       if (process.platform !== "win32") void rm(address, { force: true }).catch(() => undefined)
     })
   })
+}
+
+/** MCP 内容块：文字或图片。 */
+type McpContent = { type: "text"; text: string } | { type: "image"; data: string; mimeType: string }
+
+/**
+ * 工具结果转成 MCP 内容：已经是 `{ content: [...] }` 的原样交出（例如截图），
+ * 其余结果序列化成一段 JSON 文字。
+ */
+export function toolResultContent(result: unknown): { content: McpContent[]; isError?: true } {
+  if (isRecord(result) && Array.isArray(result.content)) {
+    const content = result.content.filter(
+      (item): item is McpContent =>
+        isRecord(item) &&
+        ((item.type === "text" && typeof item.text === "string") ||
+          (item.type === "image" &&
+            typeof item.data === "string" &&
+            typeof item.mimeType === "string")),
+    )
+    if (content.length > 0)
+      return { content, ...(result.isError === true ? { isError: true } : {}) }
+  }
+  return { content: [{ type: "text", text: JSON.stringify(result) ?? "null" }] }
 }
 
 /** socket 地址：Windows 使用命名管道，其余平台使用临时目录下的 Unix socket。 */

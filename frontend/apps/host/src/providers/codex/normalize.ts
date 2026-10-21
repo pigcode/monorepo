@@ -95,6 +95,24 @@ function normalizeItem(value: unknown, started: boolean): ProviderEvent[] {
     ]
   }
 
+  if (type === "mcpToolCall") {
+    // 名字与 Claude 的 MCP 工具一致（mcp__server__tool），时间线按同一套规则展示。
+    const name = `mcp__${asString(item.server) ?? "mcp"}__${asString(item.tool) ?? "tool"}`
+    if (started)
+      return [{ type: "tool.started", toolCallId: id, name, input: item.arguments ?? null }]
+    const result = asRecord(item.result)
+    const error = asRecord(item.error)
+    return [
+      {
+        type: "tool.completed",
+        toolCallId: id,
+        name,
+        output: result?.content ?? asString(error?.message) ?? "",
+        isError: item.status === "failed" || error !== undefined,
+      },
+    ]
+  }
+
   if (type === "subAgentActivity") {
     return normalizeSubagentActivity(item, id)
   }

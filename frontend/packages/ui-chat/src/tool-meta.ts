@@ -1,9 +1,13 @@
 /** 工具调用的元信息：图标与动作文案、摘要、命令文本与改动行数。 */
 import {
+  Camera,
   FilePen,
   FileText,
   Globe,
+  Keyboard,
   ListChecks,
+  MousePointerClick,
+  ScanText,
   Search,
   SquareTerminal,
   Wrench,
@@ -43,13 +47,42 @@ const TOOL_KINDS: Array<[RegExp, LucideIcon, MessageKey]> = [
   [/^(todo|plan|task)/i, ListChecks, "chat.tool.kind.task"],
 ]
 
+/** MCP 工具名 `mcp__server__tool` 里的工具部分；其他名字原样返回。 */
+export function baseToolName(name: string): string {
+  if (!name.startsWith("mcp__")) return name
+  return name.split("__").slice(2).join("__") || name
+}
+
+const BROWSER_ACTIONS: Record<string, [LucideIcon, MessageKey]> = {
+  open: [Globe, "chat.tool.browser.open"],
+  navigate: [Globe, "chat.tool.browser.navigate"],
+  snapshot: [ScanText, "chat.tool.browser.snapshot"],
+  click: [MousePointerClick, "chat.tool.browser.click"],
+  type: [Keyboard, "chat.tool.browser.type"],
+  press: [Keyboard, "chat.tool.browser.press"],
+  scroll: [Globe, "chat.tool.browser.scroll"],
+  wait_for: [Globe, "chat.tool.browser.wait"],
+  evaluate: [Globe, "chat.tool.browser.evaluate"],
+  screenshot: [Camera, "chat.tool.browser.screenshot"],
+}
+
+/** 内置浏览器工具的动作名（open、click…）；不是浏览器工具时返回 null。 */
+export function browserAction(name: string): string | null {
+  const base = baseToolName(name)
+  return base.startsWith("browser_") ? base.slice("browser_".length) : null
+}
+
 /** 选出工具图标。 */
 export function toolIcon(name: string): LucideIcon {
+  const action = browserAction(name)
+  if (action) return BROWSER_ACTIONS[action]?.[0] ?? Globe
   return TOOL_KINDS.find(([pattern]) => pattern.test(name))?.[1] ?? Wrench
 }
 
 /** 工具的动作文案；未知工具返回 null，界面直接显示工具名。 */
 export function toolKind(name: string): MessageKey | null {
+  const action = browserAction(name)
+  if (action) return BROWSER_ACTIONS[action]?.[1] ?? null
   return TOOL_KINDS.find(([pattern]) => pattern.test(name))?.[2] ?? null
 }
 
@@ -71,6 +104,84 @@ function parseJson(text: string | undefined): Record<string, unknown> | undefine
       : undefined
   } catch {
     return undefined
+  }
+}
+
+/** 工具输出里的文字与图片（MCP 或 Anthropic 的内容块数组）；不是内容块时文字就是原输出。 */
+export function toolOutputParts(output: string | undefined): { text: string; images: string[] } {
+  if (!output?.trim().startsWith("[")) return { text: output ?? "", images: [] }
+  let blocks: unknown
+  try {
+    blocks = JSON.parse(output)
+  } catch {
+    return { text: output, images: [] }
+  }
+  if (!Array.isArray(blocks)) return { text: output, images: [] }
+  const texts: string[] = []
+  const images: string[] = []
+  for (const block of blocks as Array<Record<string, unknown> | null>) {
+    if (block?.type === "text" && typeof block.text === "string") texts.push(block.text)
+    if (block?.type !== "image") continue
+    const source = block.source as Record<string, unknown> | undefined
+    const data = typeof block.data === "string" ? block.data : source?.data
+    const mime = typeof block.mimeType === "string" ? block.mimeType : source?.media_type
+    if (typeof data === "string" && typeof mime === "string" && /^image\//.test(mime)) {
+      images.push(`data:${mime};base64,${data}`)
+    }
+  }
+  if (texts.length === 0 && images.length === 0) return { text: output, images: [] }
+  return { text: texts.join("\n"), images }
+}
+
+function hostOf(url: string): string {
+  try {
+    const parsed = new URL(url)
+    return `${parsed.host}${parsed.pathname === "/" ? "" : parsed.pathname}`
+  } catch {
+    return url
+  }
+}
+
+/** 浏览器工具的一行摘要：打开的网址、点击的元素、输入的文字…… */
+export function browserPreview(
+  tool: Pick<ToolCall, "name" | "input" | "output">,
+): string | undefined {
+  const action = browserAction(tool.name)
+  if (!action) return undefined
+  const value = parseJson(tool.input) ?? {}
+  const pick = (...keys: string[]) => {
+    for (const key of keys) {
+      const candidate = value[key]
+      if (typeof candidate === "string" && candidate.trim()) return candidate.trim()
+    }
+    return undefined
+  }
+  switch (action) {
+    case "open":
+    case "navigate": {
+      const url = pick("url")
+      return url ? hostOf(url) : pick("action")
+    }
+    case "click":
+      return pick("text", "selector", "ref")
+    case "type": {
+      const text = pick("text")
+      const target = pick("ref", "selector")
+      return text ? `"${text}"${target ? ` → ${target}` : ""}` : target
+    }
+    case "press":
+      return pick("key")
+    case "scroll":
+      return pick("ref", "selector", "direction") ?? "down"
+    case "wait_for":
+      return pick("text", "selector", "url")
+    case "evaluate":
+      return pick("expression")?.split("\n")[0]
+    default: {
+      const text = toolOutputParts(tool.output).text
+      const url = /(?:URL: |Screenshot of )(\S+)/.exec(text)?.[1]
+      return url ? hostOf(url) : undefined
+    }
   }
 }
 

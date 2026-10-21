@@ -16,6 +16,7 @@ import {
   fakeSubagentScript,
   runFakeScript,
 } from "./fake-script"
+import { FAKE_BROWSER_PREFIX, runFakeBrowser, type FakeToolCaller } from "./fake-browser"
 
 /** fake provider 固定输出的文本分片。 */
 const CHUNKS = ["Hello", " from", " fake", " provider"]
@@ -50,6 +51,8 @@ export interface FakeProviderOptions {
   delayMs?: number
   /** 脚本化回复里每个工具的耗时；缺省时读取 PIGCODE_FAKE_STEP_MS。 */
   stepMs?: number
+  /** 以线程身份调用 MCP 工具；浏览器脚本用它操作内置浏览器。 */
+  callTool?: FakeToolCaller
 }
 
 /** 不依赖外部进程的确定性 provider 实现。 */
@@ -75,10 +78,12 @@ export class FakeProviderDriver implements ProviderDriver {
 
   private readonly delayMs: number
   private readonly stepMs: number
+  private readonly callTool: FakeToolCaller | undefined
 
   constructor(options: FakeProviderOptions = {}) {
     this.delayMs = options.delayMs ?? envMs("PIGCODE_FAKE_DELAY_MS")
     this.stepMs = options.stepMs ?? envMs("PIGCODE_FAKE_STEP_MS", 600)
+    this.callTool = options.callTool
   }
 
   /** 创建一个仅存在于内存中的 provider 会话句柄。 */
@@ -100,7 +105,7 @@ export class FakeProviderDriver implements ProviderDriver {
 
   /** 依次推送开始、分片、完成事件；`long` 输入持续输出直到被 abort，`tools` 输入走脚本。 */
   async send(
-    _session: ProviderSessionHandle,
+    session: ProviderSessionHandle,
     input: UserInput,
     runtime: ProviderRuntime,
   ): Promise<void> {
@@ -111,6 +116,16 @@ export class FakeProviderDriver implements ProviderDriver {
     }
     if (input.text === FAKE_LONG_RUN_TEXT) {
       await runUntilAborted(runtime)
+      return
+    }
+    if (input.text.startsWith(FAKE_BROWSER_PREFIX)) {
+      await runFakeBrowser(runtime, {
+        threadId: session.threadId,
+        url: input.text.slice(FAKE_BROWSER_PREFIX.length).trim(),
+        stepMs: this.stepMs,
+        callTool: this.callTool,
+      })
+      if (!runtime.signal.aborted) runtime.emit({ type: "run.completed" })
       return
     }
     const script =

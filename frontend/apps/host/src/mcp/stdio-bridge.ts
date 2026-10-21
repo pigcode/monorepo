@@ -144,9 +144,7 @@ async function dispatch(
           name: params.name,
           arguments: params.arguments ?? {},
         })
-        return {
-          content: [{ type: "text", text: JSON.stringify(response.result) ?? "null" }],
-        }
+        return resultContent(response.result)
       } catch (error) {
         return {
           content: [{ type: "text", text: error instanceof Error ? error.message : String(error) }],
@@ -157,6 +155,15 @@ async function dispatch(
     default:
       throw new BridgeError(`unknown method: ${String(method)}`, -32601)
   }
+}
+
+/** 已经是 MCP 内容（`{ content: [...] }`，例如截图）的结果原样交出，其余序列化成文字。 */
+function resultContent(result: unknown): { content: unknown[] } {
+  if (typeof result === "object" && result !== null) {
+    const content = (result as { content?: unknown }).content
+    if (Array.isArray(content) && content.length > 0) return { content }
+  }
+  return { content: [{ type: "text", text: JSON.stringify(result) ?? "null" }] }
 }
 
 /** 逐行处理 stdin 上的 MCP 消息；通知不产生响应。 */

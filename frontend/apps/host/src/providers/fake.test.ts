@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest"
 import type { ProviderEvent } from "@pigcode/contracts"
 import type { ProviderRuntime } from "./driver"
 import { FAKE_MODELS, FAKE_SCRIPT_TEXT, FAKE_SUBAGENT_TEXT, FakeProviderDriver } from "./fake"
+import { FAKE_BROWSER_PREFIX } from "./fake-browser"
 
 describe("fake provider", () => {
   it("streams a deterministic response", async () => {
@@ -62,6 +63,94 @@ describe("fake provider", () => {
     ])
     expect(events.filter((event) => event.type === "plan.updated")).toHaveLength(3)
     expect(events.filter((event) => event.type === "message.completed")).toHaveLength(3)
+    expect(events.at(-1)).toEqual({ type: "run.completed" })
+  })
+
+  it("drives the built-in browser through MCP tools like an agent would", async () => {
+    const calls: Array<{ threadId: string; name: string; input: unknown }> = []
+    const snapshot = [
+      "URL: http://127.0.0.1:4173/",
+      "Interactive elements (pass ref to browser_click / browser_type):",
+      '[e1] textbox "邮箱"',
+      '[e2] textbox "密码" (password)',
+      '[e3] button "登录"',
+    ].join("\n")
+    const driver = new FakeProviderDriver({
+      stepMs: 0,
+      callTool: async (threadId, name, input) => {
+        calls.push({ threadId, name, input })
+        if (name === "browser_snapshot") return { content: [{ type: "text", text: snapshot }] }
+        if (name === "browser_screenshot") {
+          return {
+            content: [
+              { type: "image", data: "AAAA", mimeType: "image/jpeg" },
+              { type: "text", text: "Screenshot" },
+            ],
+          }
+        }
+        return { content: [{ type: "text", text: "ok" }] }
+      },
+    })
+    const session = await driver.createSession({ threadId: "th_9", cwd: "/tmp" })
+    const events: ProviderEvent[] = []
+    await driver.send(
+      session,
+      { text: `${FAKE_BROWSER_PREFIX}http://127.0.0.1:4173/` },
+      {
+        signal: new AbortController().signal,
+        emit: (event) => events.push(event),
+        requestApproval: async () => "deny",
+      },
+    )
+    expect(calls.map((call) => [call.threadId, call.name])).toEqual([
+      ["th_9", "browser_open"],
+      ["th_9", "browser_snapshot"],
+      ["th_9", "browser_type"],
+      ["th_9", "browser_type"],
+      ["th_9", "browser_click"],
+      ["th_9", "browser_wait_for"],
+      ["th_9", "browser_screenshot"],
+    ])
+    expect(calls[2]?.input).toEqual({ ref: "e1", text: "demo@pigcode.dev", clear: true })
+    expect(calls[4]?.input).toEqual({ ref: "e3" })
+    const started = events.flatMap((event) => (event.type === "tool.started" ? [event.name] : []))
+    expect(started[0]).toBe("mcp__pigcode__browser_open")
+    const shot = events.filter((event) => event.type === "tool.completed").at(-1)
+    expect(shot).toMatchObject({
+      name: "mcp__pigcode__browser_screenshot",
+      output: [
+        { type: "image", data: "AAAA", mimeType: "image/jpeg" },
+        { type: "text", text: "Screenshot" },
+      ],
+    })
+    expect(events.at(-1)).toEqual({ type: "run.completed" })
+  })
+
+  it("reports a browser failure instead of hanging", async () => {
+    const driver = new FakeProviderDriver({
+      stepMs: 0,
+      callTool: async () => {
+        throw new Error("The built-in browser is only available in the Pigcode desktop app.")
+      },
+    })
+    const session = await driver.createSession({ threadId: "th_9", cwd: "/tmp" })
+    const events: ProviderEvent[] = []
+    await driver.send(
+      session,
+      { text: `${FAKE_BROWSER_PREFIX}localhost:3000` },
+      {
+        signal: new AbortController().signal,
+        emit: (event) => events.push(event),
+        requestApproval: async () => "deny",
+      },
+    )
+    expect(events.find((event) => event.type === "tool.completed")).toMatchObject({
+      isError: true,
+    })
+    const messages = events.flatMap((event) =>
+      event.type === "message.completed" ? [event.text] : [],
+    )
+    expect(messages.at(-1)).toContain("浏览器操作失败")
     expect(events.at(-1)).toEqual({ type: "run.completed" })
   })
 

@@ -13,6 +13,7 @@ import {
   settleOpenPath,
   type OpenAppInfo,
 } from "./open-in"
+import { setupBrowser } from "./browser-host"
 import { registerAppProtocol, registerPluginProtocol, registerPrivilegedSchemes } from "./protocol"
 import { closePreview, isAllowedPreviewUrl, openPreview } from "./preview"
 import {
@@ -28,6 +29,7 @@ registerPrivilegedSchemes()
 let host: HostProcess | undefined
 let mainWindow: BrowserWindow | undefined
 let quitting = false
+const browser = setupBrowser(() => mainWindow)
 
 /** 把应用内相对路径解析到 app.getAppPath() 之下。 */
 export function resolveAppPath(...segments: string[]): string {
@@ -132,6 +134,7 @@ registerNativeBridge()
 
 function startHost(): HostProcess {
   const next = startHostProcess(resolveAppPath("out/host/index.mjs"), profileDir())
+  browser.attachControlPort(next.controlPort)
   next.child.on("exit", () => {
     if (quitting) return
     host = startHost()

@@ -64,7 +64,11 @@ test("workbench files, terminal, checkpoint, and diff", async () => {
   // 恢复后从文件标签读取 a.txt，确认工作区回到 checkpoint 的内容。
   await page.getByRole("button", { name: "添加面板" }).click()
   await page.getByRole("menuitem", { name: /文件/ }).click()
-  await expect(page.getByRole("tab")).toHaveText(["终端 1", "检查点", "文件"])
+  await expect(page.locator(".right-panel").getByRole("tab")).toHaveText([
+    "终端 1",
+    "检查点",
+    "文件",
+  ])
   await page.getByRole("button", { name: "a.txt", exact: true }).click()
   await expect(page.getByRole("region", { name: "文件预览 a.txt" })).toContainText("one")
   await app.close()
