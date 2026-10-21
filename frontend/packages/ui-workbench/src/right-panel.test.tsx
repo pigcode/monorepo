@@ -9,7 +9,7 @@ import {
   RightPanel,
   addSurface,
   closeSurface,
-  renameSurface,
+  updateSurface,
   type PanelSurface,
 } from "./right-panel"
 
@@ -51,13 +51,28 @@ describe("surface state", () => {
     expect(state).toEqual(EMPTY_SURFACE_STATE)
   })
 
-  it("keeps the active tab when another one closes and renames in place", () => {
+  it("keeps the active tab when another one closes and updates in place", () => {
     let state = addSurface(EMPTY_SURFACE_STATE, "browser", "a", (i) => `浏览器 ${i}`)
     state = addSurface(state, "terminal", "b", terminalTitle)
 
     state = closeSurface(state, "a")
     expect(state.activeId).toBe("b")
-    expect(renameSurface(state, "b", "zsh").surfaces[0]?.title).toBe("zsh")
+    expect(updateSurface(state, "b", { title: "zsh" }).surfaces[0]?.title).toBe("zsh")
+  })
+
+  it("remembers the browser address next to its title", () => {
+    const state = addSurface(EMPTY_SURFACE_STATE, "browser", "a", () => "浏览器")
+    const next = updateSurface(state, "a", {
+      title: "localhost:3000",
+      url: "http://localhost:3000/",
+    })
+
+    expect(next.surfaces[0]).toEqual({
+      id: "a",
+      kind: "browser",
+      title: "localhost:3000",
+      url: "http://localhost:3000/",
+    })
   })
 })
 

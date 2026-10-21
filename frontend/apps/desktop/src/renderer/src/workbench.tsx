@@ -15,7 +15,7 @@ import {
   WorktreePicker,
   addSurface,
   closeSurface,
-  renameSurface,
+  updateSurface,
   type CheckpointPhase,
   type FilePreviewFile,
   type PanelSurfaceState,
@@ -333,8 +333,8 @@ export function WorkbenchPanel({
     onPanelChange((state) => closeSurface(state, id))
   }
 
-  function retitleBrowser(id: string, url: string): void {
-    onPanelChange((state) => renameSurface(state, id, new URL(url).host))
+  function recordNavigation(id: string, url: string): void {
+    onPanelChange((state) => updateSurface(state, id, { title: new URL(url).host, url }))
   }
 
   const content: Record<"files" | "diff" | "checkpoint" | "pr", ReactNode> = {
@@ -471,8 +471,9 @@ export function WorkbenchPanel({
             return (
               <div key={surface.id} className="surface-pane" hidden={!active}>
                 <BrowserView
+                  initialUrl={surface.url}
                   labels={webLabels}
-                  onNavigate={(url) => retitleBrowser(surface.id, url)}
+                  onNavigate={(url) => recordNavigation(surface.id, url)}
                 />
               </div>
             )

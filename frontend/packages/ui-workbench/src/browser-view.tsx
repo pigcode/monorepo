@@ -82,7 +82,7 @@ function openError(error: unknown, labels: BrowserViewLabels): string {
 
 /** 浏览器属性。 */
 export interface BrowserViewProps {
-  initialUrl?: string
+  initialUrl?: string | undefined
   /** 每次导航后回调，容器用主机名更新标签标题。 */
   onNavigate?: (url: string) => void
   openExternal?: PreviewOpen

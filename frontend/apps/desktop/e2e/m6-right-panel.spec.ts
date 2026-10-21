@@ -93,6 +93,19 @@ test("right panel surfaces, embedded browser, maximize and bottom terminal", asy
     await page.getByRole("tab", { name: new URL(base).host }).click()
     await expect(frame.getByRole("heading", { name: "second page" })).toBeVisible()
 
+    // 标签按线程保存：新线程显示启动器；切回来后浏览器按地址栏最近的地址恢复页面。
+    await page
+      .locator(".proj-block")
+      .filter({ hasText: "pigcode-m6-e2e" })
+      .locator(".proj-add")
+      .click()
+    await expect(page.getByLabel("打开一个面板")).toBeVisible()
+    await page.locator('.sess:not([aria-current="page"])').click()
+    await expect(page.getByRole("tab")).toHaveText([new URL(base).host, "终端 1", "终端 2"])
+    await page.getByRole("tab", { name: new URL(base).host }).click()
+    await expect(frame.getByRole("heading", { name: "local home" })).toBeVisible()
+    await expect(page.getByRole("textbox", { name: /输入本地地址/ })).toHaveValue(`${base}/`)
+
     // 关闭当前标签激活右侧邻居。
     await page.getByRole("button", { name: `关闭 ${new URL(base).host}` }).click()
     await expect(page.getByRole("tab", { name: "终端 1" })).toHaveAttribute("aria-selected", "true")

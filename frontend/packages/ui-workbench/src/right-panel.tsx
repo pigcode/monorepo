@@ -46,6 +46,8 @@ export interface PanelSurface {
   id: string
   kind: SurfaceKind
   title: string
+  /** 浏览器最近一次导航的地址；面板随会话重新挂载时用它恢复页面。 */
+  url?: string
 }
 
 /** 一组标签与当前激活的标签；没有标签时 activeId 为 null，面板显示启动器。 */
@@ -92,16 +94,16 @@ export function closeSurface(state: PanelSurfaceState, id: string): PanelSurface
   return { surfaces, activeId: next?.id ?? null }
 }
 
-/** 修改某个标签的标题，例如浏览器加载页面后显示主机名。 */
-export function renameSurface(
+/** 修改某个标签的标题或地址，例如浏览器加载页面后显示主机名。 */
+export function updateSurface(
   state: PanelSurfaceState,
   id: string,
-  title: string,
+  patch: Partial<Pick<PanelSurface, "title" | "url">>,
 ): PanelSurfaceState {
   return {
     ...state,
     surfaces: state.surfaces.map((surface) =>
-      surface.id === id ? { ...surface, title } : surface,
+      surface.id === id ? { ...surface, ...patch } : surface,
     ),
   }
 }
