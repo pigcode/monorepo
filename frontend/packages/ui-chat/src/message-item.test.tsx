@@ -4,7 +4,7 @@ import { cleanup, render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { LocaleProvider } from "@pigcode/ui-primitives"
 import { afterEach, describe, expect, it, vi } from "vitest"
-import { AssistantMessage, MessageText, splitMessage } from "./message-item"
+import { AssistantMessage, MessageText, splitBlocks, splitMessage } from "./message-item"
 
 afterEach(cleanup)
 
@@ -29,7 +29,31 @@ describe("splitMessage", () => {
   })
 })
 
+describe("splitBlocks", () => {
+  it("recognises headings, bullet and numbered lists between paragraphs", () => {
+    expect(splitBlocks("## 结论\n\n先看两点：\n- 第一\n- 第二\n\n1. 一\n2. 二\n收尾")).toEqual([
+      { kind: "heading", level: 2, text: "结论" },
+      { kind: "paragraph", text: "先看两点：" },
+      { kind: "list", ordered: false, items: ["第一", "第二"] },
+      { kind: "list", ordered: true, items: ["一", "二"] },
+      { kind: "paragraph", text: "收尾" },
+    ])
+  })
+})
+
 describe("MessageText", () => {
+  it("renders lists, headings and bold inline text", () => {
+    const { container } = render(
+      <LocaleProvider locale="zh-CN">
+        <MessageText text={"### 步骤\n- 用 **pnpm** 安装\n- 运行测试"} />
+      </LocaleProvider>,
+    )
+    expect(container.querySelector("h5.msg-heading")?.textContent).toBe("步骤")
+    const items = container.querySelectorAll("ul.msg-list li")
+    expect(items).toHaveLength(2)
+    expect(items[0]?.querySelector("strong")?.textContent).toBe("pnpm")
+  })
+
   it("renders code blocks with a language label and inline code", () => {
     const { container } = render(
       <LocaleProvider locale="zh-CN">

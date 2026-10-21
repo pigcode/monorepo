@@ -1,4 +1,4 @@
-/** 验证工具行：耗时格式、摘要与展开，以及 MessageList 合并开始/结束时间。 */
+/** 验证工具步骤：动词与对象、命令卡片、耗时格式与展开，以及 MessageList 合并开始/结束时间。 */
 // @vitest-environment jsdom
 import { cleanup, render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
@@ -6,7 +6,7 @@ import type { ThreadEvent } from "@pigcode/contracts"
 import { LocaleProvider } from "@pigcode/ui-primitives"
 import { afterEach, describe, expect, it } from "vitest"
 import { MessageList } from "./message-list"
-import { ToolCard, formatDuration, toolDuration } from "./tool-card"
+import { ToolCard, formatDuration, toolDuration, toolKind, toolTarget } from "./tool-card"
 
 afterEach(cleanup)
 
@@ -31,34 +31,80 @@ describe("formatDuration", () => {
   })
 })
 
+describe("toolKind / toolTarget", () => {
+  it("classifies Claude Code and Codex tool names", () => {
+    expect(toolKind("Read")).toBe("read")
+    expect(toolKind("MultiEdit")).toBe("edit")
+    expect(toolKind("apply_patch")).toBe("edit")
+    expect(toolKind("Bash")).toBe("command")
+    expect(toolKind("shell")).toBe("command")
+    expect(toolKind("Grep")).toBe("search")
+    expect(toolKind("Glob")).toBe("find")
+    expect(toolKind("Task")).toBe("subagent")
+    expect(toolKind("mystery")).toBe("other")
+  })
+
+  it("pulls the most telling field out of JSON input and falls back to the first line", () => {
+    expect(toolTarget('{"file_path":"src/a.ts","limit":20}')).toBe("src/a.ts")
+    expect(toolTarget('{"command":"pnpm test\\n--watch"}')).toBe("pnpm test")
+    expect(toolTarget('{"command":["git","status"]}')).toBe("git status")
+    expect(toolTarget("ls -la\n/tmp")).toBe("ls -la")
+    expect(toolTarget(undefined)).toBe("")
+  })
+})
+
 describe("ToolCard", () => {
-  it("shows the first input line as a summary and expands on click", async () => {
+  it("renders a verb plus target and expands on click", async () => {
     render(
       <LocaleProvider locale="zh-CN">
         <ToolCard
           tool={{
             id: "t1",
-            name: "Bash",
+            name: "Read",
             status: "completed",
-            input: "ls -la\n/tmp",
-            output: "total 0",
+            input: '{"file_path":"src/auth/session.ts"}',
+            output: "export const a = 1",
             startedAt: "2026-10-20T00:00:00.000Z",
             completedAt: "2026-10-20T00:00:00.400Z",
           }}
         />
       </LocaleProvider>,
     )
-    expect(screen.getByText("ls -la")).toBeTruthy()
+    expect(screen.getByText("读取")).toBeTruthy()
+    expect(screen.getByText("src/auth/session.ts")).toBeTruthy()
     expect(screen.getByText("400 ms")).toBeTruthy()
-    expect(screen.queryByText("total 0")).toBeNull()
+    expect(screen.queryByText("export const a = 1")).toBeNull()
 
     const head = screen.getByRole("button", { expanded: false })
     await userEvent.click(head)
     expect(head.getAttribute("aria-expanded")).toBe("true")
-    expect(screen.getByText("total 0")).toBeTruthy()
+    expect(screen.getByText("export const a = 1")).toBeTruthy()
   })
 
-  it("renders no summary, duration or chevron when there is nothing to show", () => {
+  it("renders shell tools as a command card with the command line and output", async () => {
+    const { container } = render(
+      <LocaleProvider locale="zh-CN">
+        <ToolCard
+          tool={{
+            id: "t2",
+            name: "Bash",
+            status: "failed",
+            input: "pnpm test -- auth",
+            output: "FAIL session.test.ts",
+          }}
+        />
+      </LocaleProvider>,
+    )
+    expect(container.querySelector(".tool-card.tool-command[data-status='failed']")).not.toBeNull()
+    expect(screen.getByText("pnpm test -- auth")).toBeTruthy()
+    expect(screen.getByText("失败")).toBeTruthy()
+    await userEvent.click(screen.getByRole("button", { expanded: false }))
+    expect(screen.getByText("FAIL session.test.ts")).toBeTruthy()
+    // 命令卡片不重复显示“输入”标签，命令行本身就是输入。
+    expect(screen.queryByText("输入")).toBeNull()
+  })
+
+  it("renders no target, duration or chevron when there is nothing to show", () => {
     const { container } = render(
       <LocaleProvider locale="zh-CN">
         <ToolCard
@@ -66,10 +112,11 @@ describe("ToolCard", () => {
         />
       </LocaleProvider>,
     )
+    expect(screen.getByText("Think")).toBeTruthy()
     expect(container.querySelector(".tool-summary")).toBeNull()
     expect(container.querySelector(".tool-duration")).toBeNull()
     expect(container.querySelector(".tool-chev")).toBeNull()
-    expect(container.querySelector('.tool-icon[data-status="running"]')).not.toBeNull()
+    expect(container.querySelector('.tool-card[data-status="running"] .tool-icon')).not.toBeNull()
   })
 })
 
@@ -109,5 +156,31 @@ describe("MessageList tool timing", () => {
     expect(container.querySelectorAll(".tool-card")).toHaveLength(1)
     expect(screen.getByText("1.5 s")).toBeTruthy()
     expect(container.querySelector('.tool-card[data-status="completed"]')).not.toBeNull()
+  })
+
+  it("shows a generating line while the run is open without streaming text", () => {
+    const { container, rerender } = render(
+      <LocaleProvider locale="zh-CN">
+        <MessageList
+          running
+          events={[event(1, "run.started", { text: "hi" }, "2026-10-20T00:00:00.000Z")]}
+          onApproval={() => {}}
+        />
+      </LocaleProvider>,
+    )
+    expect(container.querySelector(".run-status")?.textContent).toBe("正在生成…")
+
+    rerender(
+      <LocaleProvider locale="zh-CN">
+        <MessageList
+          running
+          streamingText="partial"
+          events={[event(1, "run.started", { text: "hi" }, "2026-10-20T00:00:00.000Z")]}
+          onApproval={() => {}}
+        />
+      </LocaleProvider>,
+    )
+    expect(container.querySelector(".run-status")).toBeNull()
+    expect(container.querySelector(".stream-cursor")).not.toBeNull()
   })
 })

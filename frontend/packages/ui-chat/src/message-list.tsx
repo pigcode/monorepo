@@ -1,7 +1,7 @@
 /** 按事件顺序渲染消息、工具、审批、计划与文件变更。 */
 import type { ReactNode } from "react"
 import type { ThreadEvent } from "@pigcode/contracts"
-import { AlertTriangle } from "lucide-react"
+import { AlertTriangle, Loader2, Sparkles } from "lucide-react"
 import { useLocale } from "@pigcode/ui-primitives"
 import { ApprovalCard, type ApprovalDecision, type ApprovalRequest } from "./approval-card"
 import { DiffSummary, type DiffFile, type FileChangeSummary } from "./diff-summary"
@@ -17,6 +17,8 @@ export interface MessageListProps {
   /** 当前 provider 的展示名与头像首字母。 */
   assistantName?: string
   assistantInitial?: string
+  /** run 仍在进行：没有流式文本时在末尾显示“正在生成”。 */
+  running?: boolean
   onApproval: (requestId: string, decision: ApprovalDecision) => void
   onViewTool?: ((tool: ToolCall) => void) | undefined
   onViewDiff?: ((summary: FileChangeSummary) => void) | undefined
@@ -339,6 +341,7 @@ export function MessageList({
   streamingText = "",
   assistantName = "Assistant",
   assistantInitial = "AI",
+  running = false,
   onApproval,
   onViewTool,
   onViewDiff,
@@ -447,6 +450,13 @@ export function MessageList({
         />
       </AssistantMessage>,
     )
+  } else if (running && nodes.length > 0) {
+    nodes.push(
+      <div key="working" className="run-status" role="status" aria-live="polite">
+        <Loader2 className="ic ic-sm spin" aria-hidden="true" />
+        <span>{t("chat.generating")}</span>
+      </div>,
+    )
   }
 
   if (nodes.length === 0) {
@@ -454,7 +464,7 @@ export function MessageList({
       <div className="msgs">
         <div className="chat-empty">
           <span className="empty-mark" aria-hidden="true">
-            ✦
+            <Sparkles className="ic" />
           </span>
           <h2>{t("chat.empty.title")}</h2>
           <p>{t("chat.empty.hint")}</p>

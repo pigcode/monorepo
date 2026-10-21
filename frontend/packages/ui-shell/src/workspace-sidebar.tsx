@@ -1,4 +1,4 @@
-/** 工作区侧栏：项目树、线程列表与设置入口。 */
+/** 工作区侧栏：项目分组下的会话列表，每行两段 —— 标题，以及来源与时间。 */
 import type { Project, Thread } from "@pigcode/contracts"
 import { Button, useLocale } from "@pigcode/ui-primitives"
 import { Icon } from "./icon"
@@ -20,16 +20,16 @@ export interface WorkspaceSidebarProps {
   onSearch?: () => void
 }
 
-/** 把 provider id 缩成侧栏可读的短标记。 */
-function providerMark(thread: Thread): string {
+/** 把 provider id 变成可读名字；未知 id 原样显示。 */
+export function providerLabel(thread: Thread): string {
   const id = thread.lastProviderId ?? thread.defaultProviderId
-  if (id === "claude") return "CL"
-  if (id === "codex") return "CX"
-  return id.slice(0, 2).toUpperCase()
+  if (id === "claude") return "Claude"
+  if (id === "codex") return "Codex"
+  return id
 }
 
 /** 把线程更新时间格式化成“刚刚 / 3 分钟前 / 昨天”的短文本。 */
-function formatThreadTime(value: string, locale: string): string {
+export function formatThreadTime(value: string, locale: string): string {
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return ""
   const diff = Date.now() - date.getTime()
@@ -41,6 +41,14 @@ function formatThreadTime(value: string, locale: string): string {
   const days = Math.floor(hours / 24)
   if (days < 7) return locale.startsWith("zh") ? `${days} 天前` : `${days}d`
   return new Intl.DateTimeFormat(locale, { month: "short", day: "numeric" }).format(date)
+}
+
+/** 状态图形：运行中转圈、完成打勾、失败叉，其余是圆点。 */
+function StatusGlyph({ status }: { status: ThreadTabStatus }) {
+  if (status === "running") return <Icon name="refresh" small className="spin" />
+  if (status === "completed") return <Icon name="check" small />
+  if (status === "failed") return <Icon name="x" small />
+  return <span className="sess-dot" />
 }
 
 /** 绘制工作区导航，不读取会话内核。 */
@@ -61,21 +69,25 @@ export function WorkspaceSidebar({
     <>
       <nav className="side-actions" aria-label={t("nav.projects")}>
         <Button
-          variant="primary"
+          variant="secondary"
           className="new-thread-btn"
           type="button"
           aria-label={t("nav.newThread")}
           onClick={() => onNewThread()}
         >
-          <Icon name="plus" />
+          <Icon name="plus" small />
           <span className="grow">{t("nav.newThread")}</span>
           <span className="new-thread-kbd">⌘N</span>
         </Button>
         {onSearch ? (
-          <Button variant="plain" className="side-command" type="button" onClick={onSearch}
+          <Button
+            variant="plain"
+            className="side-command"
+            type="button"
+            onClick={onSearch}
             aria-label={t("nav.search")}
           >
-            <Icon name="search" />
+            <Icon name="search" small />
             <span className="grow">{t("nav.search")}</span>
             <span className="nav-kbd">⌘K</span>
           </Button>
@@ -101,7 +113,7 @@ export function WorkspaceSidebar({
           </span>
           <strong>{t("nav.addProject")}</strong>
           <p>{t("chat.empty.hint")}</p>
-          <Button variant="primary" size="sm" type="button" onClick={onAddProject}>
+          <Button variant="secondary" size="sm" type="button" onClick={onAddProject}>
             {t("nav.addProject")}
           </Button>
         </div>
@@ -119,15 +131,15 @@ export function WorkspaceSidebar({
                 className="proj"
                 type="button"
                 aria-expanded={open}
+                title={project.rootPath}
                 onClick={() => onToggleProject(project.id, !open)}
               >
                 <span className="proj-icon">
-                  <Icon name="folder" className="proj-folder" />
                   <Icon name={open ? "down" : "right"} small className="proj-caret" />
                 </span>
                 <span className="truncate">{project.name}</span>
                 {projectThreads.length > 0 ? (
-                  <span className="proj-count">{projectThreads.length}</span>
+                  <span className="proj-count num">{projectThreads.length}</span>
                 ) : null}
               </Button>
               <Button
@@ -157,12 +169,20 @@ export function WorkspaceSidebar({
                       type="button"
                       aria-current={active ? "page" : undefined}
                       data-status={status}
+                      title={thread.title}
                       onClick={() => onOpenThread(thread.id)}
                     >
-                      <span className="sess-dot" data-status={status} />
-                      <span className="sess-provider">{providerMark(thread)}</span>
-                      <span className="sess-title truncate">{thread.title}</span>
-                      <time>{formatThreadTime(thread.updatedAt, locale)}</time>
+                      <span className="sess-status" data-status={status} aria-hidden="true">
+                        <StatusGlyph status={status} />
+                      </span>
+                      <span className="sess-main">
+                        <span className="sess-title truncate">{thread.title}</span>
+                        <span className="sess-meta">
+                          <span className="sess-provider">{providerLabel(thread)}</span>
+                          <span aria-hidden="true">·</span>
+                          <time>{formatThreadTime(thread.updatedAt, locale)}</time>
+                        </span>
+                      </span>
                     </Button>
                   )
                 })}

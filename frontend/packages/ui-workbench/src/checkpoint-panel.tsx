@@ -30,10 +30,16 @@ const PHASE_LABELS: Record<CheckpointPhase, string> = {
   manual: "手动",
 }
 
-/** 时间展示；非法时间直接回退到原始字符串。 */
+/** 时间展示：月日 + 时分，当天的只显示时分；非法时间直接回退到原始字符串。 */
 function formatTime(value: string): string {
   const date = new Date(value)
-  return Number.isNaN(date.getTime()) ? value : date.toLocaleString()
+  if (Number.isNaN(date.getTime())) return value
+  const sameDay = date.toDateString() === new Date().toDateString()
+  return date.toLocaleString(undefined, {
+    ...(sameDay ? {} : { month: "short", day: "numeric" }),
+    hour: "2-digit",
+    minute: "2-digit",
+  })
 }
 
 /** Checkpoint 面板入口。 */

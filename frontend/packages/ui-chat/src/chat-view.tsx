@@ -1,7 +1,15 @@
 /** 聊天主视图：标题、运行状态、消息时间线、composer 占位与环境抽屉。 */
 import { useEffect, useRef, useState, type ReactNode } from "react"
 import type { ProviderCapabilities, Thread, ThreadEvent } from "@pigcode/contracts"
-import { ArrowDown, Check, ChevronDown, Folder, PanelRight, PanelRightOpen, Square } from "lucide-react"
+import {
+  ArrowDown,
+  Check,
+  ChevronDown,
+  Loader2,
+  PanelRight,
+  PanelRightOpen,
+  Square,
+} from "lucide-react"
 import { Composer } from "@pigcode/ui-composer"
 import { Button, Menu, useLocale } from "@pigcode/ui-primitives"
 import type { ApprovalDecision } from "./approval-card"
@@ -154,7 +162,11 @@ export function ChatView({
     permissionMode: thread?.permissionMode ?? "workspace-write",
   }
   const assistantInitial =
-    providerId === "claude" ? "CL" : providerId === "codex" ? "CX" : providerName.slice(0, 2).toUpperCase()
+    providerId === "claude"
+      ? "CL"
+      : providerId === "codex"
+        ? "CX"
+        : providerName.slice(0, 2).toUpperCase()
   const projectName = cwd?.split(/[\\/]/).filter(Boolean).at(-1)
 
   useEffect(() => {
@@ -184,14 +196,25 @@ export function ChatView({
       {tabs}
       <div className="panel-top">
         <div className="title">
-          <Folder className="ic muted" aria-hidden="true" />
           <span className="title-copy">
             <span className="truncate">{thread?.title ?? t("nav.newThread")}</span>
-            {projectName ? <small className="truncate">{projectName}</small> : null}
+            {projectName ? (
+              <small className="truncate" title={cwd}>
+                {projectName}
+              </small>
+            ) : null}
           </span>
         </div>
         <span className="spacer" />
-        <span className={`status status-pill ${statusClass}`.trim()}>{status}</span>
+        <span
+          className={`status status-pill ${statusClass}`.trim()}
+          data-running={running || undefined}
+        >
+          {running && !pendingApproval ? (
+            <Loader2 className="ic ic-sm spin" aria-hidden="true" />
+          ) : null}
+          {status}
+        </span>
         {!running && thread && providers.length > 0 && onSwitchProvider ? (
           <HeaderMenu
             label={providerName}
@@ -253,6 +276,7 @@ export function ChatView({
           streamingText={streamingText}
           assistantName={providerName}
           assistantInitial={assistantInitial}
+          running={running && !pendingApproval}
           onApproval={onApproval ?? (() => undefined)}
           onViewTool={onViewTool}
           onViewDiff={onViewDiff}

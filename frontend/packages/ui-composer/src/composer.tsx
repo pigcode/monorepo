@@ -2,7 +2,17 @@
 import { Placeholder } from "@tiptap/extension-placeholder"
 import { EditorContent, useEditor, useEditorState } from "@tiptap/react"
 import StarterKit from "@tiptap/starter-kit"
-import { ArrowUp, Check, ChevronDown, Clock, Hand, Plus, Square } from "lucide-react"
+import {
+  ArrowUp,
+  AtSign,
+  Check,
+  ChevronDown,
+  Hand,
+  Infinity as InfinityIcon,
+  ListChecks,
+  Square,
+  type LucideIcon,
+} from "lucide-react"
 import { useEffect, useMemo, useRef } from "react"
 import { Button, Menu, useLocale, type MessageKey } from "@pigcode/ui-primitives"
 import {
@@ -25,6 +35,13 @@ const permissionKeys: Record<PermissionMode, { label: MessageKey; description: M
     label: "composer.permission.plan",
     description: "composer.permission.plan.description",
   },
+}
+
+/** 权限模式的图标：询问用手势，自动改文件用 ∞，只做计划用清单。 */
+const permissionIcons: Record<PermissionMode, LucideIcon> = {
+  ask: Hand,
+  edit: InfinityIcon,
+  plan: ListChecks,
 }
 
 /** 思考深度对应的 locale key。 */
@@ -156,6 +173,7 @@ export function Composer({
     }) ?? true
 
   const permissionLabel = t(permissionKeys[permissionMode].label)
+  const PermissionIcon = permissionIcons[permissionMode]
   const depthLabel = t(depthKeys[depth])
   const showModel = Boolean(model) && models.length > 0
   const availablePermissionModes = canPlan
@@ -169,22 +187,25 @@ export function Composer({
   }
 
   return (
-    <div className={tall ? "composer is-tall" : "composer"}>
+    <div className={tall ? "composer is-tall" : "composer"} data-running={running || undefined}>
+      <div className="composer-context">
+        <Button
+          variant="plain"
+          className="context-chip"
+          type="button"
+          title={t("composer.attach")}
+          disabled={disabled}
+        >
+          <AtSign className="ic ic-sm" aria-hidden="true" />
+          <span>{t("composer.addContext")}</span>
+        </Button>
+      </div>
       <EditorContent editor={editor} />
       <div className="composer-bar">
         <div className="composer-side">
-          <Button
-            variant="plain"
-            className="icon-btn"
-            type="button"
-            aria-label={t("composer.attach")}
-            title={t("composer.attach")}
-          >
-            <Plus className="ic" aria-hidden="true" />
-          </Button>
           <Menu.Root>
-            <Menu.Trigger className="chip-btn" type="button">
-              <Hand className="ic" aria-hidden="true" />
+            <Menu.Trigger className="chip-btn chip-mode" type="button">
+              <PermissionIcon className="ic" aria-hidden="true" />
               {permissionLabel}
               <ChevronDown className="ic chip-caret" aria-hidden="true" />
             </Menu.Trigger>
@@ -196,23 +217,27 @@ export function Composer({
                 sideOffset={6}
               >
                 <Menu.Popup className="menu-popup">
-                  {availablePermissionModes.map((id) => (
-                    <Menu.Item
-                      key={id}
-                      className="menu-item"
-                      onClick={() => onPermissionMode?.(id)}
-                    >
-                      <span className="grow">
-                        <span>{t(permissionKeys[id].label)}</span>
-                        <span className="muted" style={{ display: "block", fontSize: 12 }}>
-                          {t(permissionKeys[id].description)}
+                  {availablePermissionModes.map((id) => {
+                    const ItemIcon = permissionIcons[id]
+                    return (
+                      <Menu.Item
+                        key={id}
+                        className="menu-item"
+                        onClick={() => onPermissionMode?.(id)}
+                      >
+                        <ItemIcon className="ic" aria-hidden="true" />
+                        <span className="grow">
+                          <span>{t(permissionKeys[id].label)}</span>
+                          <span className="muted" style={{ display: "block", fontSize: 12 }}>
+                            {t(permissionKeys[id].description)}
+                          </span>
                         </span>
-                      </span>
-                      {id === permissionMode ? (
-                        <Check className="ic check-mark" aria-hidden="true" />
-                      ) : null}
-                    </Menu.Item>
-                  ))}
+                        {id === permissionMode ? (
+                          <Check className="ic check-mark" aria-hidden="true" />
+                        ) : null}
+                      </Menu.Item>
+                    )
+                  })}
                 </Menu.Popup>
               </Menu.Positioner>
             </Menu.Portal>
@@ -247,8 +272,7 @@ export function Composer({
             </Menu.Root>
           ) : null}
           <Menu.Root>
-            <Menu.Trigger className="chip-btn" type="button">
-              <Clock className="ic" aria-hidden="true" />
+            <Menu.Trigger className="chip-btn" type="button" title={t("composer.depth.label")}>
               <span className="chip-label-optional">{t("composer.depth.label")}</span>
               {depthLabel}
               <ChevronDown className="ic chip-caret" aria-hidden="true" />
@@ -283,20 +307,17 @@ export function Composer({
               <Square className="ic" aria-hidden="true" />
             </Button>
           ) : running ? null : (
-            <>
-              <span className="composer-hint">{t("chat.sendHint")}</span>
-              <Button
-                variant="plain"
-                className="send"
-                type="button"
-                aria-label={t("chat.send")}
-                title={t("chat.send")}
-                aria-disabled={empty || disabled ? true : undefined}
-                onClick={submit}
-              >
-                <ArrowUp className="ic" aria-hidden="true" />
-              </Button>
-            </>
+            <Button
+              variant="plain"
+              className="send"
+              type="button"
+              aria-label={t("chat.send")}
+              title={t("chat.sendHint")}
+              aria-disabled={empty || disabled ? true : undefined}
+              onClick={submit}
+            >
+              <ArrowUp className="ic" aria-hidden="true" />
+            </Button>
           )}
         </div>
       </div>

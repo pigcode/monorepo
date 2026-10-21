@@ -28,6 +28,7 @@ const STATUS_KEYS = {
 export function PlanCard({ plan }: { plan: PlanUpdate }) {
   const { t } = useLocale()
   const [open, setOpen] = useState(true)
+  const done = plan.steps.filter((step) => step.status === "completed").length
 
   return (
     <div className={`result plan-card${open ? " is-open" : ""}`}>
@@ -40,6 +41,9 @@ export function PlanCard({ plan }: { plan: PlanUpdate }) {
       >
         <ChevronRight className="ic ic-sm chev" aria-hidden="true" />
         <span>{plan.title ?? t("chat.plan.title")}</span>
+        <span className="plan-progress num">
+          {done}/{plan.steps.length}
+        </span>
         <span className="grow" />
         <span className="muted">{open ? t("chat.hide") : t("chat.view")}</span>
       </Button>

@@ -1,6 +1,6 @@
 /** 文件变更摘要；沿用 pigclaude 的 result / diff 结构与类名。 */
 import { useState } from "react"
-import { ChevronRight } from "lucide-react"
+import { ChevronRight, FileText } from "lucide-react"
 import { Button, useLocale } from "@pigcode/ui-primitives"
 
 /** 单个文件的 diff 行。 */
@@ -30,6 +30,18 @@ function lineMark(line: string): string {
   return " "
 }
 
+/** 统计单个文件的增删行数；没有 diff 行时返回 null，不显示计数。 */
+function fileCounts(file: DiffFile): { additions: number; deletions: number } | null {
+  if (file.lines.length === 0) return null
+  let additions = 0
+  let deletions = 0
+  for (const line of file.lines) {
+    if (line.startsWith("+")) additions += 1
+    else if (line.startsWith("-") || line.startsWith("−")) deletions += 1
+  }
+  return { additions, deletions }
+}
+
 /** 渲染文件变更摘要；点击查看展开 diff。 */
 export function DiffSummary({
   summary,
@@ -47,7 +59,7 @@ export function DiffSummary({
   }
 
   return (
-    <div className={`result${open ? " is-open" : ""}`}>
+    <div className={`result diff-summary${open ? " is-open" : ""}`}>
       <Button
         variant="plain"
         className="result-head"
@@ -68,7 +80,19 @@ export function DiffSummary({
         <div className="result-body">
           {summary.files.map((file) => (
             <div className="diff-file" key={file.path}>
-              <div className="diff-path">{file.path}</div>
+              <div className="diff-path">
+                <FileText className="ic ic-sm" aria-hidden="true" />
+                <span className="truncate">{file.path}</span>
+                {(() => {
+                  const counts = fileCounts(file)
+                  return counts ? (
+                    <span className="diff-path-counts num">
+                      <span className="t-ok">+{counts.additions}</span>
+                      <span className="t-bad">−{counts.deletions}</span>
+                    </span>
+                  ) : null
+                })()}
+              </div>
               {file.lines.length > 0 ? (
                 <div className="diff">
                   {file.lines.map((line, index) => (
