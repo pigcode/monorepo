@@ -17,6 +17,11 @@ interface Window {
       position: { x: number; y: number },
     ): Promise<string | null>
     pickFolder?(labels?: { title?: string; buttonLabel?: string }): Promise<string | null>
+    /** 在系统文件管理器里打开文件夹；不是已存在的目录时拒绝。 */
+    openFolder?(path: string): Promise<void>
+    /** 本机装了、能用 URL 打开文件夹的编辑器。 */
+    listEditors?(): Promise<Array<{ id: string; name: string }>>
+    openInEditor?(editorId: string, path: string): Promise<void>
     previewOpen(url: string): Promise<{ id: string }>
     previewClose(id?: string): void
   }

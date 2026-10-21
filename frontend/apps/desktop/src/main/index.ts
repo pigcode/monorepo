@@ -1,9 +1,10 @@
 /** Electron main：单实例、窗口、Host utilityProcess、原生桥与端口转交。 */
-import { app, BrowserWindow, dialog, ipcMain, Menu, nativeTheme } from "electron"
+import { app, BrowserWindow, dialog, ipcMain, Menu, nativeTheme, shell } from "electron"
 import { join } from "node:path"
 import { pickFolder, readFolderPickerLabels } from "./folder-picker"
 import { startHostProcess, type HostProcess } from "./host-process"
 import { popupNativeMenu, readMenuPosition, readNativeMenu } from "./native-menu"
+import { editorUrl, installedEditors, readDirectory, settleOpenPath } from "./open-in"
 import { registerAppProtocol, registerPluginProtocol, registerPrivilegedSchemes } from "./protocol"
 import { closePreview, isAllowedPreviewUrl, openPreview } from "./preview"
 import {
@@ -75,6 +76,23 @@ function registerNativeBridge(): void {
       window,
       readFolderPickerLabels(labels),
     )
+  })
+  // 项目文件夹交给系统文件管理器或编辑器打开；页面只能传已存在的目录，编辑器 URL 由主进程拼。
+  ipcMain.handle("pigcode:open-folder", async (_event, value: unknown) => {
+    const folder = readDirectory(value)
+    if (!folder) throw new Error("FOLDER_NOT_FOUND")
+    const error = await settleOpenPath(shell.openPath(folder))
+    if (error) throw new Error(error)
+  })
+  ipcMain.handle("pigcode:list-editors", () =>
+    installedEditors((url) => app.getApplicationNameForProtocol(url)),
+  )
+  ipcMain.handle("pigcode:open-in-editor", async (_event, editorId: unknown, value: unknown) => {
+    const folder = readDirectory(value)
+    if (!folder) throw new Error("FOLDER_NOT_FOUND")
+    const url = editorUrl(editorId, folder)
+    if (!url) throw new Error("EDITOR_NOT_SUPPORTED")
+    await shell.openExternal(url)
   })
   // 预览窗口：URL 合法性由 preview.ts 统一校验，IPC 只做类型收敛。
   ipcMain.handle("pigcode:preview-open", (_event, url: unknown) => {
