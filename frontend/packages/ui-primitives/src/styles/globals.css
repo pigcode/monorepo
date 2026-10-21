@@ -3119,6 +3119,21 @@ body.is-resizing-rows iframe {
   border-radius: var(--r-md);
   color: var(--fg-2);
 }
+/* 「IDE ↗」是一枚安静的文字按钮，和右侧的图标按钮同高 */
+.panel-top .chip-btn.open-in {
+  gap: 2px;
+  margin-right: 2px;
+  padding: 0 7px 0 9px;
+  color: var(--muted);
+  font-size: var(--fs-md);
+}
+.panel-top .chip-btn.open-in .ic {
+  color: inherit;
+}
+.panel-top .chip-btn.open-in:hover,
+.panel-top .chip-btn.open-in[aria-expanded="true"] {
+  color: var(--fg);
+}
 .panel-top .btn-icon,
 .panel-top .btn.btn-icon {
   width: 28px;

@@ -303,4 +303,21 @@ describe("ChatView", () => {
     expect(screen.queryByRole("button", { name: "切换右侧面板" })).toBeNull()
     expect(screen.queryByRole("button", { name: "layout" })).toBeNull()
   })
+
+  it("puts the open-in entry in the thread header only when a thread is shown", () => {
+    const openIn = <button type="button">IDE</button>
+    const { container, rerender } = render(
+      <LocaleProvider locale="zh-CN">
+        <ChatView thread={thread} events={[]} openIn={openIn} />
+      </LocaleProvider>,
+    )
+    expect(container.querySelector(".panel-top")?.textContent).toContain("IDE")
+
+    rerender(
+      <LocaleProvider locale="zh-CN">
+        <ChatView thread={null} events={[]} openIn={openIn} />
+      </LocaleProvider>,
+    )
+    expect(screen.queryByRole("button", { name: "IDE" })).toBeNull()
+  })
 })

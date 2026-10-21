@@ -2,6 +2,7 @@
 export * from "./add-project-dialog"
 export * from "./command-palette"
 export * from "./icon"
+export * from "./open-in"
 export * from "./plugin-panel"
 export * from "./settings-sidebar"
 export * from "./shell"

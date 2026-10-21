@@ -47,6 +47,8 @@ export interface ChatViewProps {
   onToggleRight?: () => void
   /** 线程头末尾的布局按钮，替代单个右栏按钮；传 null 表示按钮已放在别处（例如右栏标签栏）。 */
   layoutControls?: ReactNode
+  /** 线程头右侧「在编辑器中打开项目」的入口；由容器按项目目录组装。 */
+  openIn?: ReactNode
 }
 
 /** 根据事件流判断当前 run 是否仍在进行。 */
@@ -85,6 +87,7 @@ export function ChatView({
   rightOpen = false,
   onToggleRight,
   layoutControls,
+  openIn,
 }: ChatViewProps) {
   const submit = onSubmit ?? onStart
   const { t } = useLocale()
@@ -160,6 +163,7 @@ export function ChatView({
         ) : null}
         {statusClass ? <span className={`status status-pill ${statusClass}`}>{status}</span> : null}
         <span className="spacer" />
+        {thread ? openIn : null}
         {running && canInterrupt ? (
           <Button
             variant="plain"

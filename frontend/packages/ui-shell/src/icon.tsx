@@ -62,6 +62,7 @@ const marks: Record<string, string> = {
   moon: '<path d="M19.5 14.5A8 8 0 0 1 9.5 4.5a8 8 0 1 0 10 10z"/>',
   external:
     '<path d="M14 4.5h5.5V10M19.5 4.5l-8 8M17 13.5v5a1.5 1.5 0 0 1-1.5 1.5h-10A1.5 1.5 0 0 1 4 18.5v-10A1.5 1.5 0 0 1 5.5 7h5"/>',
+  "arrow-up-right": '<path d="M7.5 16.5l9-9M9.5 7.5h7v7"/>',
   clock: '<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/>',
   swap: '<path d="M4.5 8h14M15 4.5L18.5 8 15 11.5M19.5 16h-14M9 12.5L5.5 16 9 19.5"/>',
   route:

@@ -1,7 +1,7 @@
 /** 一轮回复结束后显示在下方的一行：复制整轮回复、回复时间。 */
 import { useEffect, useState } from "react"
 import { Check, Copy } from "lucide-react"
-import { useLocale } from "@pigcode/ui-primitives"
+import { copyText, useLocale } from "@pigcode/ui-primitives"
 
 /** 把时间写成「刚刚 / 5 分钟前 / 昨天」；超过一周显示日期。 */
 export function formatReplyTime(value: string, locale: string, justNow: string, now = Date.now()): string {
@@ -19,19 +19,6 @@ export function formatReplyTime(value: string, locale: string, justNow: string, 
   return new Intl.DateTimeFormat(locale, { month: "short", day: "numeric" }).format(date)
 }
 
-/** 剪贴板接口不可用时，退回选中隐藏文本框再复制。 */
-function copyWithSelection(text: string): void {
-  const area = document.createElement("textarea")
-  area.value = text
-  area.setAttribute("readonly", "")
-  area.style.position = "fixed"
-  area.style.opacity = "0"
-  document.body.append(area)
-  area.select()
-  document.execCommand("copy")
-  area.remove()
-}
-
 /** 复制按钮与时间；复制成功后短暂显示对勾。 */
 export function TurnActions({ text, at }: { text: string; at: string | null }) {
   const { t, locale } = useLocale()
@@ -44,11 +31,7 @@ export function TurnActions({ text, at }: { text: string; at: string | null }) {
   }, [copied])
 
   async function copy(): Promise<void> {
-    try {
-      await navigator.clipboard.writeText(text)
-    } catch {
-      copyWithSelection(text)
-    }
+    await copyText(text)
     setCopied(true)
   }
 

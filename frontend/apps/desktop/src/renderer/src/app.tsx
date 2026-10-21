@@ -16,7 +16,7 @@ import {
   type Locale,
 } from "@pigcode/ui-primitives"
 import { ChatView, type ApprovalDecision, type ProviderOption } from "@pigcode/ui-chat"
-import type { SettingsSection, ShellView, ThreadStatus } from "@pigcode/ui-shell"
+import { OpenInMenu, type SettingsSection, type ShellView, type ThreadStatus } from "@pigcode/ui-shell"
 import {
   EMPTY_SURFACE_STATE,
   PanelLayoutControls,
@@ -210,6 +210,7 @@ export function ChatViewContainer({
         rightOpen={rightOpen}
         {...(onToggleRight ? { onToggleRight } : {})}
         {...(layoutControls !== undefined ? { layoutControls } : {})}
+        {...(project ? { openIn: <OpenInMenu path={project.rootPath} /> } : {})}
       />
     </>
   )
