@@ -47,10 +47,13 @@ describe("host services", () => {
     // 移除后会话仍能找到所在项目的目录。
     expect(ctx.projects.get(thread.projectId)?.rootPath).toBe("/tmp/pigcode-projects")
 
-    const restored = ctx.projects.add("/tmp/pigcode-projects", "Back")
-    expect(restored).toEqual({ ...project, name: "Back" })
+    // 没给新名字时沿用移除前的名字。
+    const restored = ctx.projects.add("/tmp/pigcode-projects")
+    expect(restored).toEqual({ ...project, name: "Renamed" })
     expect(ctx.projects.list()).toEqual([restored])
     expect(ctx.threads.list(project.id).map((item) => item.id)).toEqual([thread.id])
+    ctx.projects.remove(project.id)
+    expect(ctx.projects.add("/tmp/pigcode-projects", "Back")).toEqual({ ...project, name: "Back" })
     expect(ctx.projects.remove("missing")).toBeUndefined()
     void ctx.fiber.dispose()
   })

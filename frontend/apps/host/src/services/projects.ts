@@ -8,7 +8,8 @@ import { basename } from "node:path"
 export interface ProjectsService {
   /**
    * 新增项目；name 缺省或为空白时用目录名作为展示名。
-   * 同一路径已在列表里时直接返回它；从侧栏移除过时恢复原记录，会话随之回来。
+   * 同一路径已在列表里时直接返回它；从侧栏移除过时恢复原记录，会话随之回来，
+   * 没给新名字时沿用原来的名字。
    */
   add(rootPath: string, name?: string): Project
   /** 侧栏里的项目，不含已移除的。 */
@@ -52,19 +53,20 @@ export const apply: ProjectsPlugin = (ctx) => {
 
   const service: ProjectsService = {
     add(rootPath, name) {
-      const label = name?.trim() || basename(rootPath)
+      const given = name?.trim()
       const existing = db.prepare(`SELECT * FROM projects WHERE root_path = ?`).get(rootPath) as
         | ProjectRow
         | undefined
       if (existing?.archived_at === null) return mapProject(existing)
       if (existing) {
+        const label = given || existing.name
         db.prepare(`UPDATE projects SET archived_at = NULL, name = ? WHERE id = ?`).run(label, existing.id)
         return mapProject({ ...existing, name: label })
       }
       const project: Project = {
         id: `pr_${randomUUID()}`,
         rootPath,
-        name: label,
+        name: given || basename(rootPath),
         createdAt: new Date().toISOString(),
       }
       db.prepare(`INSERT INTO projects (id, root_path, name, created_at) VALUES (?, ?, ?, ?)`).run(
