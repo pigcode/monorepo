@@ -35,19 +35,22 @@ test("workbench files, terminal, checkpoint, and diff", async () => {
   await expect(page.getByText("pigcode-m3-e2e", { exact: true })).toBeVisible()
   await page.getByRole("button", { name: "新会话" }).first().click()
 
-  // 打开右栏终端，跑一个命令。
-  await page.getByRole("button", { name: "工作台" }).click()
-  await page.getByRole("tab", { name: "终端" }).click()
+  // 打开右侧面板，从空面板启动器打开终端并跑一个命令。
+  await page.locator(".panel-top").getByRole("button", { name: "切换右侧面板" }).click()
+  await page.getByLabel("打开一个面板").getByRole("button", { name: /终端/ }).click()
+  await expect(page.getByRole("tab", { name: "终端 1" })).toHaveAttribute("aria-selected", "true")
   await expect(page.locator(".xterm")).toBeVisible()
   await page.locator(".xterm").click()
   await page.keyboard.type("echo READY")
   await page.keyboard.press("Enter")
   await expect(page.locator(".xterm")).toContainText("READY")
 
-  // 手动 checkpoint，修改文件后 diff/restore。
-  await page.getByRole("tab", { name: "检查点" }).click()
+  // 手动 checkpoint，修改文件后 diff/restore；终端标签切走后保持同一个 shell。
+  await page.getByRole("button", { name: "添加面板" }).click()
+  await page.getByRole("menuitem", { name: /检查点/ }).click()
   await page.getByRole("button", { name: "创建检查点" }).click()
-  await page.getByRole("tab", { name: "终端" }).click()
+  await page.getByRole("tab", { name: "终端 1" }).click()
+  await expect(page.locator(".xterm")).toContainText("READY")
   await page.locator(".xterm").click()
   // WROTE 用于确认 shell 已经真正改写了 a.txt，避免 restore 变成空操作。
   await page.keyboard.type("echo two > a.txt && echo WROTE")
@@ -59,8 +62,10 @@ test("workbench files, terminal, checkpoint, and diff", async () => {
   // 确认按钮消失代表 restore RPC 已完成，再读文件避免竞态。
   await expect(page.getByRole("button", { name: "确认恢复" })).toBeHidden()
 
-  // 恢复后从 Files tab 读取 a.txt，确认工作区回到 checkpoint 的内容。
-  await page.getByRole("tab", { name: "文件" }).click()
+  // 恢复后从文件标签读取 a.txt，确认工作区回到 checkpoint 的内容。
+  await page.getByRole("button", { name: "添加面板" }).click()
+  await page.getByRole("menuitem", { name: /文件/ }).click()
+  await expect(page.getByRole("tab")).toHaveText(["终端 1", "检查点", "文件"])
   await page.getByRole("button", { name: "a.txt", exact: true }).click()
   await expect(page.getByRole("region", { name: "文件预览 a.txt" })).toContainText("one")
   await app.close()
