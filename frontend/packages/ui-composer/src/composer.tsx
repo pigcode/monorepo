@@ -1,6 +1,6 @@
 // 负责会话输入区：TipTap 正文、权限、模型和思考深度菜单，以及发送/停止按钮。
 import { Placeholder } from "@tiptap/extension-placeholder"
-import { EditorContent, useEditor, useEditorState } from "@tiptap/react"
+import { EditorContent, useEditor, useEditorState, type Editor } from "@tiptap/react"
 import StarterKit from "@tiptap/starter-kit"
 import { ArrowUp, Check, ChevronDown, Clock, Hand, Plus, Square } from "lucide-react"
 import { useEffect, useMemo, useRef } from "react"
@@ -107,6 +107,15 @@ export function Composer({
   placeholderRef.current = label
   const inputLabelRef = useRef(inputLabel)
   inputLabelRef.current = inputLabel
+  const editorRef = useRef<Editor | null>(null)
+
+  /** 交出文本后清空输入区，下一条消息从空白开始。 */
+  function send(text: string): void {
+    submitRef.current(text)
+    editorRef.current?.commands.clearContent(true)
+  }
+  const sendRef = useRef(send)
+  sendRef.current = send
 
   const smartExtension = useMemo(() => createSmartPunctuation(() => smartRef.current), [])
   const editor = useEditor({
@@ -135,11 +144,12 @@ export function Composer({
         event.preventDefault()
         if (disabledRef.current || runningRef.current) return true
         const text = view.state.doc.textContent.trim()
-        if (text) submitRef.current(text)
+        if (text) sendRef.current(text)
         return true
       },
     },
   })
+  editorRef.current = editor
 
   useEffect(() => {
     editor?.setEditable(!disabled)
@@ -165,7 +175,7 @@ export function Composer({
   function submit(): void {
     if (disabled) return
     const text = editor?.getText().trim() ?? ""
-    if (text) onSubmit(text)
+    if (text) send(text)
   }
 
   return (
@@ -175,7 +185,7 @@ export function Composer({
         <div className="composer-side">
           <Button
             variant="plain"
-            className="icon-btn"
+            className="icon-btn composer-attach"
             type="button"
             aria-label={t("composer.attach")}
             title={t("composer.attach")}

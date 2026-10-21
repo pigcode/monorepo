@@ -1,6 +1,7 @@
 /** M4 验收：安装/启用/停用第三方 provider、UI、capability 插件。 */
 import { mkdirSync, rmSync } from "node:fs"
 import { _electron as electron, expect, test } from "@playwright/test"
+import { addProject } from "./projects"
 
 test("installs, enables, and disables plugins without restart", async () => {
   // 每次从干净的项目目录开始，避免上一次失败残留影响结果。
@@ -15,9 +16,7 @@ test("installs, enables, and disables plugins without restart", async () => {
   const app = await electron.launch({ args: ["."], env: { ...env, PIGCODE_PROVIDER: "echo" } })
   const page = await app.firstWindow()
   // 安装 provider 插件
-  await page.getByRole("button", { name: "添加项目" }).first().click()
-  await page.getByLabel("项目路径").fill(projectRoot)
-  await page.getByRole("button", { name: "添加", exact: true }).click()
+  await addProject(app, page, projectRoot)
   await page.getByRole("button", { name: "设置", exact: true }).click()
   await page.getByRole("button", { name: "插件", exact: true }).first().click()
   const provider = new URL("../../../examples/provider-echo", import.meta.url).pathname

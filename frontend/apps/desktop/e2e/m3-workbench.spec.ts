@@ -2,6 +2,7 @@
 import { execFileSync } from "node:child_process"
 import { mkdirSync, rmSync, writeFileSync } from "node:fs"
 import { _electron as electron, expect, test } from "@playwright/test"
+import { addProject } from "./projects"
 
 /** 过滤 undefined，满足 Playwright env 的 string 值约束。 */
 function launchEnv(): Record<string, string> {
@@ -29,9 +30,7 @@ test("workbench files, terminal, checkpoint, and diff", async () => {
     env: { ...launchEnv(), PIGCODE_PROVIDER: "fake" },
   })
   const page = await app.firstWindow()
-  await page.getByRole("button", { name: "添加项目" }).first().click()
-  await page.getByLabel("项目路径").fill(root)
-  await page.getByRole("button", { name: "添加", exact: true }).click()
+  await addProject(app, page, root)
   await expect(page.getByText("pigcode-m3-e2e", { exact: true })).toBeVisible()
   await page.getByRole("button", { name: "新会话" }).first().click()
 

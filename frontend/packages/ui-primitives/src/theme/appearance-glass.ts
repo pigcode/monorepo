@@ -72,14 +72,14 @@ export const glassBases: Record<Tone, readonly GlassBase[]> = {
  */
 export const pigclaudeOpaque: Record<Tone, Record<string, Paint>> = {
   light: {
-    "--window": paint("#F7F7F8", 1, "oklch(97.6% 0.0015 286)"),
-    "--sidebar": paint("#F7F7F8", 0.6, "oklch(97.6% 0.0015 286 / 0.6)"),
-    "--bg": paint("#FFFFFF", 1, "oklch(100% 0 0)"),
-    "--surface": paint("#FFFFFF", 1, "oklch(100% 0 0)"),
+    "--window": paint("#F1F1F1", 1, "oklch(95.8% 0 0)"),
+    "--sidebar": paint("#F1F1F1", 0.6, "oklch(95.8% 0 0 / 0.6)"),
+    "--bg": paint("#F7F7F7", 1, "oklch(97.6% 0 0)"),
+    "--surface": paint("#FCFCFC", 1, "oklch(99% 0 0)"),
     "--panel": paint("#18181B", 0.035, "oklch(21% 0.006 286 / 0.035)"),
     "--popover": paint("#FFFFFF", 1, "oklch(100% 0 0)"),
     "--popover-glass": paint("#FFFFFF", 0.9, "oklch(100% 0 0 / 0.9)"),
-    "--avatar": paint("#E4E4E7", 1, "oklch(92% 0.004 286)"),
+    "--avatar": paint("#E1E1E1", 1, "oklch(91% 0 0)"),
     "--field-hl": paint("#FFFFFF", 0.5, "oklch(100% 0 0 / 0.5)"),
   },
   dark: {

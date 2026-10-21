@@ -6,7 +6,8 @@ import { basename } from "node:path"
 
 /** 项目记录的读写入口。 */
 export interface ProjectsService {
-  add(rootPath: string): Project
+  /** 新增项目；name 缺省或为空白时用目录名作为展示名。 */
+  add(rootPath: string, name?: string): Project
   list(): Project[]
 }
 
@@ -25,14 +26,14 @@ export interface ProjectsPlugin {
   inject: string[]
 }
 
-/** 注册 projects 服务；新增项目时用目录名作为展示名。 */
+/** 注册 projects 服务。 */
 export const apply: ProjectsPlugin = (ctx) => {
   const service: ProjectsService = {
-    add(rootPath) {
+    add(rootPath, name) {
       const project: Project = {
         id: `pr_${randomUUID()}`,
         rootPath,
-        name: basename(rootPath),
+        name: name?.trim() || basename(rootPath),
         createdAt: new Date().toISOString(),
       }
       ctx.storage.db

@@ -67,8 +67,10 @@ export class RpcServer {
     switch (command) {
       case "project.list":
         return this.ctx.projects.list()
-      case "project.add":
-        return this.ctx.projects.add((parsed as { rootPath: string }).rootPath)
+      case "project.add": {
+        const value = parsed as { rootPath: string; name?: string }
+        return this.ctx.projects.add(value.rootPath, value.name)
+      }
       case "thread.list":
         return this.ctx.threads.list((parsed as { projectId?: string }).projectId)
       case "thread.rename": {

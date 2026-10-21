@@ -22,6 +22,25 @@ describe("Composer", () => {
     expect(onSubmit).toHaveBeenCalledWith("hello")
   })
 
+  it("clears the editor after submitting with Enter or the send button", async () => {
+    const onSubmit = vi.fn()
+    render(
+      <LocaleProvider locale="zh-CN">
+        <Composer onSubmit={onSubmit} onStop={() => {}} />
+      </LocaleProvider>,
+    )
+    const editor = screen.getByRole("textbox")
+    await userEvent.type(editor, "first")
+    await userEvent.keyboard("{Enter}")
+    expect(editor.textContent).toBe("")
+
+    await userEvent.type(editor, "second")
+    await userEvent.click(screen.getByRole("button", { name: "发送" }))
+    expect(onSubmit.mock.calls).toEqual([["first"], ["second"]])
+    expect(editor.textContent).toBe("")
+    expect(screen.getByRole("button", { name: "发送" }).getAttribute("aria-disabled")).toBe("true")
+  })
+
   it("does not submit empty content", async () => {
     const onSubmit = vi.fn()
     render(

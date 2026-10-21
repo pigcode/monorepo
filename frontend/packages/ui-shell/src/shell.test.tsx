@@ -1,13 +1,23 @@
-/** 验证外壳：工作区卡片、右栏的收起与最大化、底部抽屉与快捷键。 */
+/** 验证外壳：平台标题栏与菜单、工作区、右栏的收起与最大化、底部抽屉与快捷键。 */
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen } from "@testing-library/react"
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import type { ComponentProps } from "react"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import { LocaleProvider } from "@pigcode/ui-primitives"
 import { Shell } from "./shell"
 
+/** 用替身代替 preload 暴露的原生桥。 */
+function mockNative(value: Partial<NonNullable<Window["pigcodeNative"]>>): void {
+  Object.defineProperty(window, "pigcodeNative", { configurable: true, value })
+}
+
 // vitest 未开启 globals，Testing Library 不会自动清理，多测试用例需要手动卸载。
-afterEach(cleanup)
+afterEach(() => {
+  cleanup()
+  Reflect.deleteProperty(window, "pigcodeNative")
+  delete document.documentElement.dataset.platform
+  delete document.documentElement.dataset.fullscreen
+})
 
 function renderShell(props: Partial<ComponentProps<typeof Shell>> = {}) {
   return render(
@@ -31,7 +41,70 @@ function renderShell(props: Partial<ComponentProps<typeof Shell>> = {}) {
 }
 
 describe("Shell", () => {
-  it("places chat and the right panel in one workspace card", () => {
+  it("draws the title bar menus on Linux and runs the command picked from the native menu", async () => {
+    const popupMenu = vi.fn().mockResolvedValue("new-thread")
+    mockNative({ platform: "linux", popupMenu })
+    const onNewThread = vi.fn()
+    renderShell({ onNewThread })
+
+    expect(document.documentElement.dataset.platform).toBe("linux")
+    expect(screen.getByRole("navigation", { name: "应用菜单" })).toBeTruthy()
+    fireEvent.click(screen.getByRole("button", { name: "文件" }))
+    await waitFor(() => expect(onNewThread).toHaveBeenCalledTimes(1))
+    const [items, position] = popupMenu.mock.calls[0] ?? []
+    expect(items[0]).toEqual({ id: "new-thread", label: "新会话", accelerator: "CmdOrCtrl+N" })
+    expect(items).toContainEqual({ role: "quit", label: "退出" })
+    expect(position).toEqual({ x: expect.any(Number), y: expect.any(Number) })
+  })
+
+  it("does nothing when the native menu closes without a choice", async () => {
+    const popupMenu = vi.fn().mockResolvedValue(null)
+    mockNative({ platform: "win32", popupMenu })
+    const onView = vi.fn()
+    renderShell({ onView })
+
+    fireEvent.click(screen.getByRole("button", { name: "帮助" }))
+    await waitFor(() => expect(popupMenu).toHaveBeenCalledTimes(1))
+    expect(screen.getByRole("button", { name: "帮助" }).getAttribute("aria-expanded")).toBe("false")
+    expect(onView).not.toHaveBeenCalled()
+  })
+
+  it("leaves the window buttons to macOS and draws no title bar or fake traffic lights", () => {
+    mockNative({ platform: "darwin" })
+    const { container } = renderShell()
+
+    expect(document.documentElement.dataset.platform).toBe("darwin")
+    expect(screen.queryByRole("navigation", { name: "应用菜单" })).toBeNull()
+    expect(container.querySelector(".traffic")).toBeNull()
+  })
+
+  it("marks full screen so macOS can drop the traffic light inset", async () => {
+    let listener: ((fullScreen: boolean) => void) | undefined
+    mockNative({
+      platform: "darwin",
+      isFullScreen: () => Promise.resolve(false),
+      onFullScreenChange: (next) => {
+        listener = next
+        return () => undefined
+      },
+    })
+    renderShell()
+
+    await waitFor(() => expect(listener).toBeDefined())
+    act(() => listener?.(true))
+    expect(document.documentElement.dataset.fullscreen).toBe("true")
+    act(() => listener?.(false))
+    expect(document.documentElement.dataset.fullscreen).toBeUndefined()
+  })
+
+  it("opens the command palette from the search button in the sidebar's top row", () => {
+    renderShell()
+
+    fireEvent.click(screen.getByRole("button", { name: "搜索" }))
+    expect(screen.getByRole("dialog", { name: "行动" })).toBeTruthy()
+  })
+
+  it("places chat and the right panel side by side in the workspace", () => {
     const { container } = renderShell()
 
     const workspace = container.querySelector(".workspace")

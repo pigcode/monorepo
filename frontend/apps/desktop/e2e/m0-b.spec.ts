@@ -1,5 +1,6 @@
 /** M0-B 验收：项目/会话、fake 流、插件面板、重连。 */
 import { _electron as electron, expect, test } from "@playwright/test"
+import { addProject } from "./projects"
 
 test("chat, plugin panel, and reconnect", async () => {
   const env = Object.fromEntries(
@@ -12,10 +13,7 @@ test("chat, plugin panel, and reconnect", async () => {
     env: { ...env, PIGCODE_PROVIDER: "fake" },
   })
   const page = await app.firstWindow()
-  // 侧栏同时渲染图标按钮和空状态按钮，取第一个即可。
-  await page.getByRole("button", { name: "添加项目" }).first().click()
-  await page.getByLabel("项目路径").fill("/tmp/pigcode-m0b")
-  await page.getByRole("button", { name: "添加", exact: true }).click()
+  await addProject(app, page, "/tmp/pigcode-m0b")
   // 等待 project.add 的 RPC 返回并渲染到侧栏，再创建会话。
   await expect(page.getByText("pigcode-m0b", { exact: true })).toBeVisible()
   // 「新会话」同时出现在导航和项目行，取第一个导航入口。

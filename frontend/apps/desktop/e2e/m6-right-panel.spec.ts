@@ -3,6 +3,7 @@ import { mkdirSync, rmSync } from "node:fs"
 import { createServer, type Server } from "node:http"
 import type { AddressInfo } from "node:net"
 import { _electron as electron, expect, test } from "@playwright/test"
+import { addProject } from "./projects"
 
 /** 过滤 undefined，满足 Playwright env 的 string 值约束。 */
 function launchEnv(): Record<string, string> {
@@ -38,9 +39,7 @@ test("right panel surfaces, embedded browser, maximize and bottom terminal", asy
   })
   try {
     const page = await app.firstWindow()
-    await page.getByRole("button", { name: "添加项目" }).first().click()
-    await page.getByLabel("项目路径").fill(projectRoot)
-    await page.getByRole("button", { name: "添加", exact: true }).click()
+    await addProject(app, page, projectRoot)
     await page
       .locator(".proj-block")
       .filter({ hasText: "pigcode-m6-e2e" })

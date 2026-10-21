@@ -1,9 +1,9 @@
 /** 聊天主视图：标题、运行状态、消息时间线、composer 占位与环境抽屉。 */
 import { useEffect, useRef, useState, type ReactNode } from "react"
 import type { ProviderCapabilities, Thread, ThreadEvent } from "@pigcode/contracts"
-import { ArrowDown, Check, ChevronDown, Folder, PanelRight, SquareMenu, Square } from "lucide-react"
+import { ArrowDown, Check, ChevronDown, Ellipsis, PanelRight, Square } from "lucide-react"
 import { Composer } from "@pigcode/ui-composer"
-import { Button, Menu, useLocale } from "@pigcode/ui-primitives"
+import { Button, Menu, formatShortcut, useLocale } from "@pigcode/ui-primitives"
 import type { ApprovalDecision } from "./approval-card"
 import type { FileChangeSummary } from "./diff-summary"
 import { EnvironmentDrawer, type EnvironmentInfo } from "./environment-drawer"
@@ -182,22 +182,16 @@ export function ChatView({
   return (
     <section className="view">
       <div className="panel-top">
-        <div className="title">
-          <Folder className="ic muted" aria-hidden="true" />
-          <span className="title-copy">
-            {projectName ? (
-              <>
-                <span className="title-project truncate">{projectName}</span>
-                <span className="title-sep" aria-hidden="true">
-                  /
-                </span>
-              </>
-            ) : null}
-            <span className="title-text truncate">{thread?.title ?? t("nav.newThread")}</span>
-          </span>
-        </div>
+        {thread ? (
+          <div
+            className="title-chip"
+            title={projectName ? `${projectName} / ${thread.title}` : thread.title}
+          >
+            <span className="title-text truncate">{thread.title}</span>
+          </div>
+        ) : null}
+        {statusClass ? <span className={`status status-pill ${statusClass}`}>{status}</span> : null}
         <span className="spacer" />
-        <span className={`status status-pill ${statusClass}`.trim()}>{status}</span>
         {!running && thread && providers.length > 0 && onSwitchProvider ? (
           <HeaderMenu
             label={providerName}
@@ -239,7 +233,7 @@ export function ChatView({
           aria-expanded={drawerOpen}
           onClick={() => setDrawerOpen((value) => !value)}
         >
-          <SquareMenu className="ic" aria-hidden="true" />
+          <Ellipsis className="ic" aria-hidden="true" />
         </Button>
         {layoutControls !== undefined
           ? layoutControls
@@ -249,7 +243,7 @@ export function ChatView({
               size="icon"
               type="button"
               aria-label={t("panel.toggleRight")}
-              title={`${t("panel.toggleRight")} ⌘J`}
+              title={`${t("panel.toggleRight")} ${formatShortcut("Mod+j")}`}
               aria-pressed={rightOpen}
               onClick={onToggleRight}
             >
