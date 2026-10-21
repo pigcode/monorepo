@@ -87,6 +87,12 @@ export class RpcServer {
         })
         return thread
       }
+      case "thread.archive": {
+        const value = parsed as { threadId: string }
+        const thread = this.ctx.threads.archive(value.threadId)
+        if (!thread) throw new Error(`thread not found: ${value.threadId}`)
+        return thread
+      }
       case "thread.create": {
         const value = parsed as { projectId: string; title: string; providerId: string }
         const thread = this.ctx.threads.create(value.projectId, value.title, value.providerId)

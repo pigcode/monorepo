@@ -28,6 +28,37 @@ describe("rpc server", () => {
     await ctx.fiber.dispose()
   })
 
+  it("archives a thread and keeps it archived", async () => {
+    const { ctx, transport } = await createServer()
+    const project = ctx.projects.add("/tmp/pigcode-archive")
+    const thread = ctx.threads.create(project.id, "To archive", "fake")
+    transport.client.send({
+      jsonrpc: "2.0",
+      id: "1",
+      method: "thread.archive",
+      params: { threadId: thread.id },
+    })
+    const response = (await transport.client.next()) as { result: { archivedAt: string | null } }
+    expect(response.result.archivedAt).toEqual(expect.any(String))
+    const archivedAt = response.result.archivedAt
+    // 再次归档不改变时间。
+    transport.client.send({
+      jsonrpc: "2.0",
+      id: "2",
+      method: "thread.archive",
+      params: { threadId: thread.id },
+    })
+    expect(await transport.client.next()).toMatchObject({ result: { archivedAt } })
+    transport.client.send({
+      jsonrpc: "2.0",
+      id: "3",
+      method: "thread.archive",
+      params: { threadId: "missing" },
+    })
+    expect(await transport.client.next()).toMatchObject({ id: "3", error: expect.anything() })
+    await ctx.fiber.dispose()
+  })
+
   it("adds a project with the given name, or the folder name when none is given", async () => {
     const { ctx, transport } = await createServer()
     transport.client.send({

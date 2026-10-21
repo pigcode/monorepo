@@ -10,6 +10,8 @@ export interface ThreadsService {
   get(threadId: string): Thread | undefined
   /** 重命名线程；返回更新后的记录。 */
   rename(threadId: string, title: string): Thread | undefined
+  /** 归档后线程不再出现在侧栏与命令面板里，事件与记录保留。 */
+  archive(threadId: string): Thread | undefined
   /** 记录线程最近选择的 provider/model，切换后下一次 run 生效。 */
   updateSelection(threadId: string, providerId: string, modelId: string | null): void
 }
@@ -85,6 +87,12 @@ export const apply: ThreadsPlugin = (ctx) => {
       ctx.storage.db
         .prepare(`UPDATE threads SET title = ?, updated_at = ? WHERE id = ?`)
         .run(title, updatedAt, threadId)
+      return service.get(threadId)
+    },
+    archive(threadId) {
+      ctx.storage.db
+        .prepare(`UPDATE threads SET archived_at = ? WHERE id = ? AND archived_at IS NULL`)
+        .run(new Date().toISOString(), threadId)
       return service.get(threadId)
     },
     updateSelection(threadId, providerId, modelId) {

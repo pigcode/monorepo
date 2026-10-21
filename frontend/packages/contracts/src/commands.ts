@@ -19,6 +19,7 @@ export const commandSchemas = {
     threadId: z.string().min(1),
     title: z.string().min(1).max(120),
   }),
+  "thread.archive": z.object({ threadId: z.string().min(1) }),
   "thread.switchProvider": z.object({
     threadId: z.string().min(1),
     providerId: z.string().min(1),
