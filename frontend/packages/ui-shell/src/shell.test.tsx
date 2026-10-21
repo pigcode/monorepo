@@ -176,6 +176,20 @@ describe("Shell", () => {
     expect(container.querySelector(".app")?.classList.contains("has-right")).toBe(true)
   })
 
+  it("resizes the right panel from its separator and remembers the width", () => {
+    window.localStorage.removeItem("pigcode.rightWidth")
+    const { container } = renderShell()
+    const app = container.querySelector(".app") as HTMLElement
+    const separator = screen.getByRole("separator")
+
+    expect(app.style.getPropertyValue("--right-w")).toBe("460px")
+    fireEvent.keyDown(separator, { key: "ArrowLeft" })
+    expect(app.style.getPropertyValue("--right-w")).toBe("484px")
+    expect(window.localStorage.getItem("pigcode.rightWidth")).toBe("484")
+    fireEvent.doubleClick(separator)
+    expect(app.style.getPropertyValue("--right-w")).toBe("460px")
+  })
+
   it("keeps the right panel mounted but hidden when closed", () => {
     const { container } = renderShell({ rightOpen: false })
 

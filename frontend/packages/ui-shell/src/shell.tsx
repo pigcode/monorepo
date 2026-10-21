@@ -2,20 +2,13 @@
  * 应用外壳：Windows/Linux 的标题栏、侧栏顶行按钮、工作区/设置侧栏与内容区。
  * 窗口按钮全部由系统绘制：macOS 的交通灯落在侧栏顶行，Windows/Linux 的按钮叠在标题栏上。
  */
-import {
-  useEffect,
-  useLayoutEffect,
-  useState,
-  type CSSProperties,
-  type KeyboardEvent as ReactKeyboardEvent,
-  type PointerEvent as ReactPointerEvent,
-  type ReactNode,
-} from "react"
+import { useEffect, useLayoutEffect, useState, type CSSProperties, type ReactNode } from "react"
 import type { Project, Thread } from "@pigcode/contracts"
 import { Button, formatShortcut, useLocale } from "@pigcode/ui-primitives"
 import { AddProjectDialog } from "./add-project-dialog"
 import { CommandPalette } from "./command-palette"
 import { Icon } from "./icon"
+import { PanelResizer, useRightWidth } from "./panel-resizer"
 import { SettingsSidebar, type SettingsSection } from "./settings-sidebar"
 import type { ThreadStatus } from "./thread-status"
 import { TitleBar } from "./title-bar"
@@ -26,27 +19,6 @@ import { WorkspaceSidebar } from "./workspace-sidebar"
 
 /** 顶层视图：聊天、设置与插件。 */
 export type ShellView = "chat" | "settings" | "plugins"
-
-const RIGHT_MIN = 320
-const RIGHT_MAX_RATIO = 0.58
-const RIGHT_STORAGE_KEY = "pigcode.rightWidth"
-
-/** 把右栏宽度限制在窗口可承受范围内。 */
-function clampRightWidth(width: number): number {
-  const max = Math.max(RIGHT_MIN, Math.round((typeof window === "undefined" ? 1200 : window.innerWidth) * RIGHT_MAX_RATIO))
-  return Math.min(max, Math.max(RIGHT_MIN, Math.round(width)))
-}
-
-/** 读取上次保存的右栏宽度；存储不可用时回到默认值。 */
-function initialRightWidth(): number {
-  try {
-    const saved = Number.parseInt(window.localStorage.getItem(RIGHT_STORAGE_KEY) ?? "", 10)
-    if (Number.isFinite(saved)) return clampRightWidth(saved)
-  } catch {
-    // 隐私模式或测试环境可能禁用 localStorage；使用默认宽度。
-  }
-  return 460
-}
 
 /** 外壳所需的数据与事件；项目/线程数据由 store 传入。 */
 export interface ShellProps {
@@ -144,7 +116,7 @@ export function Shell({
   const { t } = useLocale()
   const [dialogOpen, setDialogOpen] = useState(false)
   const [paletteOpen, setPaletteOpen] = useState(false)
-  const [rightWidth, setRightWidth] = useState(initialRightWidth)
+  const [rightWidth, setRightWidth] = useRightWidth()
   const [localExpanded, setLocalExpanded] = useState<Record<string, boolean>>({})
   const [localSidebarOpen, setLocalSidebarOpen] = useState(true)
   const inSettings = view !== "chat"
@@ -190,23 +162,6 @@ export function Shell({
       .then(apply)
       .catch(() => undefined)
     return bridge.onFullScreenChange(apply)
-  }, [])
-
-  // 记住工作台宽度；窗口变窄时重新夹紧，避免右栏挤掉主内容。
-  useEffect(() => {
-    try {
-      window.localStorage.setItem(RIGHT_STORAGE_KEY, String(rightWidth))
-    } catch {
-      // 存储不可用时不阻塞界面。
-    }
-  }, [rightWidth])
-
-  useEffect(() => {
-    function handleResize(): void {
-      setRightWidth((width) => clampRightWidth(width))
-    }
-    window.addEventListener("resize", handleResize)
-    return () => window.removeEventListener("resize", handleResize)
   }, [])
 
   // 全局快捷键：⌘K 面板、⌘N 新会话、⌘B 侧栏、⌘J 右栏、⌃` 底部终端、⌘, 设置。
@@ -305,30 +260,6 @@ export function Shell({
     .join(" ")
   const appStyle = { "--right-w": `${rightWidth}px` } as CSSProperties
 
-  /** 拖动右栏分隔条；向左拖变宽，向右拖变窄。 */
-  function startResize(event: ReactPointerEvent<HTMLDivElement>): void {
-    event.preventDefault()
-    const startX = event.clientX
-    const startWidth = rightWidth
-    const move = (moveEvent: PointerEvent): void => {
-      setRightWidth(clampRightWidth(startWidth + startX - moveEvent.clientX))
-    }
-    const up = (): void => {
-      window.removeEventListener("pointermove", move)
-      window.removeEventListener("pointerup", up)
-      document.body.classList.remove("is-resizing")
-    }
-    window.addEventListener("pointermove", move)
-    window.addEventListener("pointerup", up)
-    document.body.classList.add("is-resizing")
-  }
-
-  function onResizerKey(event: ReactKeyboardEvent<HTMLDivElement>): void {
-    if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return
-    event.preventDefault()
-    setRightWidth((width) => clampRightWidth(width + (event.key === "ArrowLeft" ? 24 : -24)))
-  }
-
   const menus = hasCustomTitleBar(platform)
     ? titleBarMenus({
         t,
@@ -417,19 +348,7 @@ export function Shell({
         {rightPanel !== undefined ? (
           <div className="right-panel-slot" hidden={!showRight}>
             {showRight && !rightMaximized ? (
-              <div
-                className="panel-resizer"
-                role="separator"
-                aria-orientation="vertical"
-                aria-label={t("panel.label")}
-                aria-valuemin={RIGHT_MIN}
-                aria-valuemax={clampRightWidth(Number.MAX_SAFE_INTEGER)}
-                aria-valuenow={rightWidth}
-                tabIndex={0}
-                onPointerDown={startResize}
-                onKeyDown={onResizerKey}
-                onDoubleClick={() => setRightWidth(clampRightWidth(460))}
-              />
+              <PanelResizer width={rightWidth} onChange={setRightWidth} />
             ) : null}
             {rightPanel}
           </div>
