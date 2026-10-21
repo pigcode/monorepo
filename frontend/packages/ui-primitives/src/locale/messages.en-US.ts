@@ -10,6 +10,7 @@ export const enUS = {
   "nav.forward": "Forward",
   "sidebar.expand": "Expand sidebar",
   "sidebar.collapse": "Collapse sidebar",
+  "sidebar.grouping": "Arrange threads",
   "sidebar.noThreads": "No threads yet",
   "menu.label": "Application menu",
   "menu.file": "File",

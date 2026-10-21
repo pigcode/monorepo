@@ -1,6 +1,7 @@
 /** 验证侧栏渲染导航、项目与会话。 */
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen } from "@testing-library/react"
+import userEvent from "@testing-library/user-event"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import { LocaleProvider } from "@pigcode/ui-primitives"
 import { WorkspaceSidebar, formatThreadTime } from "./workspace-sidebar"
@@ -36,6 +37,61 @@ describe("WorkspaceSidebar", () => {
     expect(addButtons).toHaveLength(2)
     fireEvent.click(addButtons[1] as HTMLElement)
     expect(onAddProject).toHaveBeenCalledTimes(1)
+  })
+
+  it("switches to a single list sorted by time from the filter menu and remembers it", async () => {
+    window.localStorage.removeItem("pigcode.sidebarGrouping")
+    const project = (id: string, name: string) => ({
+      id,
+      rootPath: `/tmp/${name}`,
+      name,
+      createdAt: "2026-10-20T00:00:00.000Z",
+    })
+    const thread = (id: string, projectId: string, title: string, updatedAt: string) => ({
+      id,
+      projectId,
+      title,
+      defaultProviderId: "claude",
+      lastProviderId: null,
+      lastModelId: null,
+      permissionMode: "workspace-write" as const,
+      createdAt: updatedAt,
+      updatedAt,
+      archivedAt: null,
+      lastRunId: null,
+    })
+    render(
+      <LocaleProvider locale="zh-CN">
+        <WorkspaceSidebar
+          projects={[project("p1", "alpha"), project("p2", "beta")]}
+          threads={[
+            thread("t1", "p1", "older", "2026-10-20T01:00:00.000Z"),
+            thread("t2", "p2", "newest", "2026-10-20T03:00:00.000Z"),
+            thread("t3", "p1", "middle", "2026-10-20T02:00:00.000Z"),
+            thread("t4", "gone", "hidden", "2026-10-20T04:00:00.000Z"),
+          ]}
+          activeThreadId={null}
+          expandedProjects={{}}
+          onAddProject={() => {}}
+          onToggleProject={() => {}}
+          onOpenThread={() => {}}
+          onNewThread={() => {}}
+        />
+      </LocaleProvider>,
+    )
+    const titles = () =>
+      Array.from(document.querySelectorAll(".sess-title")).map((node) => node.textContent)
+    expect(titles()).toEqual(["older", "middle", "newest"])
+
+    await userEvent.click(screen.getByRole("button", { name: "会话排列方式" }))
+    await userEvent.click(await screen.findByRole("menuitem", { name: "按时间" }))
+    expect(titles()).toEqual(["newest", "middle", "older"])
+    expect(screen.getByText("最近会话")).toBeTruthy()
+    expect(
+      Array.from(document.querySelectorAll(".sess-project")).map((node) => node.textContent),
+    ).toEqual(["beta", "alpha", "alpha"])
+    expect(window.localStorage.getItem("pigcode.sidebarGrouping")).toBe("time")
+    window.localStorage.removeItem("pigcode.sidebarGrouping")
   })
 
   it("formats thread times compactly so they can stay visible", () => {

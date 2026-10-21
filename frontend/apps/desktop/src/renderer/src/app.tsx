@@ -285,11 +285,15 @@ export function App({ store, slots, connection, plugins, locale }: AppProps) {
     }
   }
 
+  /** 新建会话；没指定项目时放进当前会话所在的项目，再退回第一个项目。 */
   async function createThread(projectId?: string): Promise<void> {
     const snapshot = store.getSnapshot()
+    const activeProjectId = snapshot.threads.find(
+      (thread) => thread.id === snapshot.activeThreadId,
+    )?.projectId
     const project = projectId
       ? snapshot.projects.find((item) => item.id === projectId)
-      : snapshot.projects[0]
+      : (snapshot.projects.find((item) => item.id === activeProjectId) ?? snapshot.projects[0])
     if (!project) return
     try {
       const providerId = await pickProviderId(connection)

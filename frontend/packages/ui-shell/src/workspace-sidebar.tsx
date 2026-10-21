@@ -1,6 +1,13 @@
-/** 工作区侧栏：主导航、项目与会话列表。 */
+/** 工作区侧栏：主导航、项目与会话列表；会话可按项目分组或按时间排成一列。 */
 import type { Project, Thread } from "@pigcode/contracts"
-import { Button, formatShortcut, useLocale } from "@pigcode/ui-primitives"
+import {
+  Button,
+  Menu,
+  formatShortcut,
+  useLocale,
+  useSidebarGrouping,
+  type SidebarGrouping,
+} from "@pigcode/ui-primitives"
 import { Icon } from "./icon"
 import { THREAD_STATUS_MESSAGE, type ThreadStatus } from "./thread-status"
 
@@ -45,6 +52,81 @@ export function formatThreadTime(value: string, locale: string, now = Date.now()
   return new Intl.DateTimeFormat(locale, { month: "short", day: "numeric" }).format(date)
 }
 
+/** 一行会话：状态点、标题、补充信息（provider 或项目名）与时间。 */
+function ThreadRow({
+  thread,
+  active,
+  status,
+  detail,
+  detailClass,
+  onOpen,
+}: {
+  thread: Thread
+  active: boolean
+  status: ThreadStatus
+  detail: string
+  detailClass: string
+  onOpen: () => void
+}) {
+  const { t, locale } = useLocale()
+  const statusKey = THREAD_STATUS_MESSAGE[status]
+  return (
+    <Button
+      variant="plain"
+      className={active ? "sess is-active" : "sess"}
+      type="button"
+      aria-current={active ? "page" : undefined}
+      data-status={status}
+      onClick={onOpen}
+    >
+      <span className="sess-dot" data-status={status} />
+      {statusKey ? <span className="sr-only">{t(statusKey)}</span> : null}
+      <span className="sess-title truncate">{thread.title}</span>
+      <span className={`${detailClass} truncate`}>{detail}</span>
+      <time dateTime={thread.updatedAt}>{formatThreadTime(thread.updatedAt, locale)}</time>
+    </Button>
+  )
+}
+
+/** 「项目」标题旁的排列方式菜单。 */
+function GroupingMenu({
+  value,
+  onChange,
+}: {
+  value: SidebarGrouping
+  onChange: (value: SidebarGrouping) => void
+}) {
+  const { t } = useLocale()
+  const options: Array<{ id: SidebarGrouping; label: string }> = [
+    { id: "project", label: t("settings.general.byProject") },
+    { id: "time", label: t("settings.general.byTime") },
+  ]
+  return (
+    <Menu.Root>
+      <Menu.Trigger
+        className="icon-btn"
+        type="button"
+        aria-label={t("sidebar.grouping")}
+        title={t("sidebar.grouping")}
+      >
+        <Icon name="filter" small />
+      </Menu.Trigger>
+      <Menu.Portal>
+        <Menu.Positioner className="menu-positioner" side="bottom" align="end" sideOffset={6}>
+          <Menu.Popup className="menu-popup">
+            {options.map((option) => (
+              <Menu.Item key={option.id} className="menu-item" onClick={() => onChange(option.id)}>
+                <span className="grow">{option.label}</span>
+                {option.id === value ? <Icon name="check" small className="check-mark" /> : null}
+              </Menu.Item>
+            ))}
+          </Menu.Popup>
+        </Menu.Positioner>
+      </Menu.Portal>
+    </Menu.Root>
+  )
+}
+
 /** 绘制工作区导航，不读取会话内核。 */
 export function WorkspaceSidebar({
   projects,
@@ -59,7 +141,24 @@ export function WorkspaceSidebar({
   onOpenSchedules,
   onOpenPlugins,
 }: WorkspaceSidebarProps) {
-  const { t, locale } = useLocale()
+  const { t } = useLocale()
+  const [grouping, setGrouping] = useSidebarGrouping()
+  const projectNames = new Map(projects.map((project) => [project.id, project.name]))
+  const liveThreads = threads.filter(
+    (thread) => thread.archivedAt === null && projectNames.has(thread.projectId),
+  )
+  const row = (thread: Thread, detail: string, detailClass: string) => (
+    <ThreadRow
+      key={thread.id}
+      thread={thread}
+      active={thread.id === activeThreadId}
+      status={threadStatus[thread.id] ?? "idle"}
+      detail={detail}
+      detailClass={detailClass}
+      onOpen={() => onOpenThread(thread.id)}
+    />
+  )
+
   return (
     <>
       <nav className="side-actions" aria-label={t("nav.projects")}>
@@ -88,7 +187,8 @@ export function WorkspaceSidebar({
         ) : null}
       </nav>
       <div className="side-label">
-        <span>{t("nav.projects")}</span>
+        <span>{grouping === "time" ? t("sidebar.recent") : t("nav.projects")}</span>
+        <GroupingMenu value={grouping} onChange={setGrouping} />
         <Button
           variant="plain"
           className="icon-btn"
@@ -111,69 +211,57 @@ export function WorkspaceSidebar({
           <span className="grow">{t("nav.addProject")}</span>
         </Button>
       ) : null}
-      {projects.map((project) => {
-        const open = expandedProjects[project.id] ?? true
-        const projectThreads = threads.filter(
-          (thread) => thread.projectId === project.id && thread.archivedAt === null,
-        )
-        return (
-          <div key={project.id} className="proj-block">
-            <div className="proj-row">
-              <Button
-                variant="plain"
-                className="proj"
-                type="button"
-                aria-expanded={open}
-                onClick={() => onToggleProject(project.id, !open)}
-              >
-                <Icon name={open ? "folder-open" : "folder"} className="proj-folder" />
-                <span className="truncate">{project.name}</span>
-              </Button>
-              <Button
-                variant="plain"
-                className="icon-btn proj-add"
-                type="button"
-                aria-label={t("nav.newThread")}
-                title={t("nav.newThread")}
-                onClick={() => onNewThread(project.id)}
-              >
-                <Icon name="plus" small />
-              </Button>
-            </div>
-            {open ? (
-              <div className="proj-sessions">
-                {projectThreads.length === 0 ? (
-                  <p className="side-empty">{t("sidebar.noThreads")}</p>
-                ) : null}
-                {projectThreads.map((thread) => {
-                  const active = thread.id === activeThreadId
-                  const status = threadStatus[thread.id] ?? "idle"
-                  const statusKey = THREAD_STATUS_MESSAGE[status]
-                  return (
-                    <Button
-                      variant="plain"
-                      key={thread.id}
-                      className={active ? "sess is-active" : "sess"}
-                      type="button"
-                      aria-current={active ? "page" : undefined}
-                      data-status={status}
-                      onClick={() => onOpenThread(thread.id)}
-                    >
-                      <span className="sess-dot" data-status={status} />
-                      {statusKey ? <span className="sr-only">{t(statusKey)}</span> : null}
-                      <span className="sess-title truncate">{thread.title}</span>
-                      <span className="sess-provider">{providerMark(thread)}</span>
-                      <time dateTime={thread.updatedAt}>
-                        {formatThreadTime(thread.updatedAt, locale)}
-                      </time>
-                    </Button>
-                  )
-                })}
+      {grouping === "time" ? (
+        <div className="recent-sessions">
+          {projects.length > 0 && liveThreads.length === 0 ? (
+            <p className="side-empty">{t("sidebar.noThreads")}</p>
+          ) : null}
+          {[...liveThreads]
+            .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))
+            .map((thread) => row(thread, projectNames.get(thread.projectId) ?? "", "sess-project"))}
+        </div>
+      ) : (
+        projects.map((project) => {
+          const open = expandedProjects[project.id] ?? true
+          const projectThreads = liveThreads.filter((thread) => thread.projectId === project.id)
+          return (
+            <div key={project.id} className="proj-block">
+              <div className="proj-row">
+                <Button
+                  variant="plain"
+                  className="proj"
+                  type="button"
+                  aria-expanded={open}
+                  onClick={() => onToggleProject(project.id, !open)}
+                >
+                  <Icon name={open ? "folder-open" : "folder"} className="proj-folder" />
+                  <span className="truncate">{project.name}</span>
+                </Button>
+                <Button
+                  variant="plain"
+                  className="icon-btn proj-add"
+                  type="button"
+                  aria-label={t("nav.newThread")}
+                  title={t("nav.newThread")}
+                  onClick={() => onNewThread(project.id)}
+                >
+                  <Icon name="plus" small />
+                </Button>
               </div>
-            ) : null}
-          </div>
-        )
-      })}
+              {open ? (
+                <div className="proj-sessions">
+                  {projectThreads.length === 0 ? (
+                    <p className="side-empty">{t("sidebar.noThreads")}</p>
+                  ) : null}
+                  {projectThreads.map((thread) =>
+                    row(thread, providerMark(thread), "sess-provider"),
+                  )}
+                </div>
+              ) : null}
+            </div>
+          )
+        })
+      )}
     </>
   )
 }

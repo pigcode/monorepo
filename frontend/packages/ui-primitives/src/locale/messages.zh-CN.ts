@@ -8,6 +8,7 @@ export const zhCN = {
   "nav.forward": "前进",
   "sidebar.expand": "展开侧栏",
   "sidebar.collapse": "收起侧栏",
+  "sidebar.grouping": "会话排列方式",
   "sidebar.noThreads": "还没有会话",
   "menu.label": "应用菜单",
   "menu.file": "文件",

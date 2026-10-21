@@ -2951,6 +2951,13 @@ body.is-resizing-rows iframe {
   font-size: calc(var(--ui-scale) * 10px);
   letter-spacing: 0.02em;
 }
+/* 按时间排列时显示会话所在的项目 */
+.sess-project {
+  flex: 0 1 auto;
+  max-width: 84px;
+  color: var(--faint);
+  font-size: calc(var(--ui-scale) * 11.5px);
+}
 .sess time {
   flex: none;
   color: var(--muted);
