@@ -45,7 +45,7 @@ export interface ChatViewProps {
   rightOpen?: boolean
   /** 切换右栏；由容器维护展开状态。 */
   onToggleRight?: () => void
-  /** 线程头末尾的布局按钮；右栏收起时由容器传入，替代单个右栏按钮。 */
+  /** 线程头末尾的布局按钮，替代单个右栏按钮；传 null 表示按钮已放在别处（例如右栏标签栏）。 */
   layoutControls?: ReactNode
 }
 
@@ -241,8 +241,9 @@ export function ChatView({
         >
           <SquareMenu className="ic" aria-hidden="true" />
         </Button>
-        {layoutControls ??
-          (onToggleRight ? (
+        {layoutControls !== undefined
+          ? layoutControls
+          : onToggleRight ? (
             <Button
               variant="plain"
               size="icon"
@@ -254,7 +255,7 @@ export function ChatView({
             >
               <PanelRight className="ic" aria-hidden="true" />
             </Button>
-          ) : null)}
+          ) : null}
       </div>
       <div className="thread" ref={threadRef} onScroll={handleScroll}>
         <MessageList

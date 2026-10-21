@@ -201,4 +201,35 @@ describe("ChatView", () => {
     expect(await screen.findByText("自动改文件")).toBeTruthy()
     expect(screen.queryByText("只做计划")).toBeNull()
   })
+
+  it("uses host layout controls in the header, or none when they live elsewhere", () => {
+    const onToggleRight = vi.fn()
+    const { rerender } = render(
+      <LocaleProvider locale="zh-CN">
+        <ChatView thread={thread} events={[]} onToggleRight={onToggleRight} />
+      </LocaleProvider>,
+    )
+    expect(screen.getByRole("button", { name: "切换右侧面板" })).toBeTruthy()
+
+    rerender(
+      <LocaleProvider locale="zh-CN">
+        <ChatView
+          thread={thread}
+          events={[]}
+          onToggleRight={onToggleRight}
+          layoutControls={<button type="button">layout</button>}
+        />
+      </LocaleProvider>,
+    )
+    expect(screen.getByRole("button", { name: "layout" })).toBeTruthy()
+    expect(screen.queryByRole("button", { name: "切换右侧面板" })).toBeNull()
+
+    rerender(
+      <LocaleProvider locale="zh-CN">
+        <ChatView thread={thread} events={[]} onToggleRight={onToggleRight} layoutControls={null} />
+      </LocaleProvider>,
+    )
+    expect(screen.queryByRole("button", { name: "切换右侧面板" })).toBeNull()
+    expect(screen.queryByRole("button", { name: "layout" })).toBeNull()
+  })
 })

@@ -42,7 +42,7 @@ export interface CoreDeps {
 export interface ChatSlotProps {
   rightOpen?: boolean
   onToggleRight?: () => void
-  /** 右栏收起时放在线程头末尾的布局按钮。 */
+  /** 线程头末尾的布局按钮；右栏展开时为 null，按钮在右栏标签栏里。 */
   layoutControls?: ReactNode
   onNewThread?: () => void
 }
@@ -190,7 +190,7 @@ export function ChatViewContainer({
         onSwitchModel={switchModel}
         rightOpen={rightOpen}
         {...(onToggleRight ? { onToggleRight } : {})}
-        {...(layoutControls ? { layoutControls } : {})}
+        {...(layoutControls !== undefined ? { layoutControls } : {})}
       />
     </>
   )
@@ -381,7 +381,7 @@ export function App({ store, slots, connection, plugins, locale }: AppProps) {
           props={{
             rightOpen,
             onToggleRight: toggleRight,
-            ...(rightOpen && activeThreadId ? {} : { layoutControls: layoutControls(false) }),
+            layoutControls: rightOpen && activeThreadId ? null : layoutControls(false),
             onNewThread: () => void createThread(),
           }}
         />
