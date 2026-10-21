@@ -4,7 +4,7 @@
  * 连续的查阅合成一行。
  */
 import { memo } from "react"
-import { ChevronRight, Globe, Telescope } from "lucide-react"
+import { ChevronRight, Globe, SquareArrowOutUpRight, Telescope } from "lucide-react"
 import { useLocale } from "@pigcode/ui-primitives"
 import { CommandRow } from "./command-row"
 import {
@@ -12,6 +12,7 @@ import {
   browserPreview,
   diffStats,
   isCommandTool,
+  toolFilePath,
   toolIcon,
   toolKind,
   toolOutputParts,
@@ -26,6 +27,7 @@ export {
   commandText,
   diffStats,
   isCommandTool,
+  toolFilePath,
   toolIcon,
   toolKind,
   toolPreview,
@@ -50,7 +52,7 @@ export const ToolCard = memo(function ToolCard({
   live?: string | undefined
   onView?: ((tool: ToolCall) => void) | undefined
 }) {
-  if (isCommandTool(tool.name)) return <CommandRow tool={tool} live={live} onView={onView} />
+  if (isCommandTool(tool.name)) return <CommandRow tool={tool} live={live} />
   return <GenericToolRow tool={tool} onView={onView} />
 })
 
@@ -76,11 +78,7 @@ function GenericToolRow({
       ? t("chat.tool.unknown")
       : baseToolName(tool.name)
   const running = tool.status === "running"
-
-  function toggle(): void {
-    onView?.(tool)
-    if (hasDetails) setOpen(!open)
-  }
+  const file = onView ? toolFilePath(tool) : undefined
 
   return (
     <div className={open && hasDetails ? "tool-row is-open" : "tool-row"} data-status={tool.status}>
@@ -88,7 +86,9 @@ function GenericToolRow({
         type="button"
         className="tool-row-head"
         aria-expanded={hasDetails ? open : undefined}
-        onClick={toggle}
+        onClick={() => {
+          if (hasDetails) setOpen(!open)
+        }}
       >
         <Icon className="ic ic-sm tool-row-icon" aria-hidden="true" />
         <span
@@ -115,6 +115,17 @@ function GenericToolRow({
         )}
         {hasDetails ? <ChevronRight className="ic ic-sm tool-row-chev" aria-hidden="true" /> : null}
       </button>
+      {file ? (
+        <button
+          type="button"
+          className="tool-row-open"
+          title={t("chat.tool.openFile")}
+          aria-label={`${t("chat.tool.openFile")} ${file}`}
+          onClick={() => onView?.(tool)}
+        >
+          <SquareArrowOutUpRight className="ic ic-sm" aria-hidden="true" />
+        </button>
+      ) : null}
       {open && hasDetails ? (
         <div className="tool-row-body">
           {tool.input ? (

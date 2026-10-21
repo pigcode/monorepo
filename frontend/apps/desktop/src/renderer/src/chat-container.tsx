@@ -7,7 +7,13 @@ import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react
 import type { PermissionMode, Thread } from "@pigcode/contracts"
 import { useAppStore, type AppStore, type Connection } from "@pigcode/client-runtime"
 import { useLocale } from "@pigcode/ui-primitives"
-import { ChatView, collectSubagents, type ApprovalDecision } from "@pigcode/ui-chat"
+import {
+  ChatView,
+  collectSubagents,
+  toolFilePath,
+  type ApprovalDecision,
+  type ToolCall,
+} from "@pigcode/ui-chat"
 import type { ComposerCommand } from "@pigcode/ui-composer"
 import { OpenInButton } from "@pigcode/ui-shell"
 import type { ClientPluginController } from "./client-plugins"
@@ -36,11 +42,24 @@ export interface ChatSlotProps {
   /** 线程头末尾的布局按钮；右栏展开时为 null，按钮在右栏标签栏里。 */
   layoutControls?: ReactNode
   onNewThread?: () => void
+  /** 在右栏的文件标签里打开项目内的文件（相对路径）。 */
+  onOpenFile?: (path: string) => void
+  /** 在右栏打开 Diff。 */
+  onOpenDiff?: () => void
 }
 
 /** 把 unknown 错误转成可展示文本。 */
 function messageOf(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
+}
+
+/** 项目内的文件转成相对路径；项目外的文件不在文件标签里打开。 */
+function projectRelative(path: string | undefined, root: string | undefined): string | undefined {
+  if (!path) return undefined
+  if (!path.startsWith("/") && !/^[a-z]:[\\/]/i.test(path)) return path
+  if (!root) return undefined
+  const prefix = root.endsWith("/") || root.endsWith("\\") ? root : `${root}/`
+  return path.startsWith(prefix) ? path.slice(prefix.length) : undefined
 }
 
 /** 用 Host 返回的线程记录替换 store 里的同 id 线程。 */
@@ -58,6 +77,8 @@ export function ChatViewContainer({
   onToggleRight,
   layoutControls,
   onNewThread,
+  onOpenFile,
+  onOpenDiff,
 }: { deps: CoreDeps } & ChatSlotProps) {
   const state = useAppStore(deps.store)
   const { t } = useLocale()
@@ -296,6 +317,15 @@ export function ChatViewContainer({
         }}
         onInterrupt={interrupt}
         onApproval={respondApproval}
+        {...(onOpenFile
+          ? {
+              onViewTool: (tool: ToolCall) => {
+                const path = projectRelative(toolFilePath(tool), project?.rootPath)
+                if (path) onOpenFile(path)
+              },
+            }
+          : {})}
+        {...(onOpenDiff ? { onViewDiff: () => onOpenDiff() } : {})}
         onSelectModel={selectModel}
         onPermissionMode={setPermissionMode}
         {...(files ? { files } : {})}

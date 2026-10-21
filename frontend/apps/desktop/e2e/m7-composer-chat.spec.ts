@@ -104,6 +104,25 @@ test("timeline folds a finished turn's work and the sidebar animates running thr
     await command.locator(".tool-row-head").click()
     await expect(command.locator(".cmd-text pre")).toHaveText("pnpm lint && pnpm test")
     await expect(command.locator(".cmd-output")).toContainText("Tests  3 passed")
+
+    // 从时间线打开右栏：编辑行末尾的按钮在文件标签里打开文件，改动入口打开 Diff。
+    const edit = page.locator(".tool-row").filter({ hasText: "编辑" }).first()
+    await edit.hover()
+    await edit.getByRole("button", { name: "在文件面板中打开 src/index.ts" }).click()
+    const panelTabs = page.locator(".right-panel").getByRole("tab")
+    await expect(page.locator(".right-panel").getByRole("tab", { name: "文件" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    )
+    await expect(page.getByRole("region", { name: "文件预览 src/index.ts" })).toContainText(
+      "export const answer = 42",
+    )
+    await page.getByRole("button", { name: /改了 1 个文件/ }).click()
+    await expect(panelTabs).toHaveText(["文件", "Diff"])
+    await expect(page.locator(".right-panel").getByRole("tab", { name: "Diff" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    )
   } finally {
     await app.close()
   }

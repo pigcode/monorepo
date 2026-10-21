@@ -4,7 +4,7 @@
  * 运行中工作区展开，结束后自动折叠，只留下最终回答。
  */
 import { memo, useEffect, useState } from "react"
-import { AlertTriangle, Check, ChevronRight, CircleStop, Copy } from "lucide-react"
+import { AlertTriangle, Check, ChevronRight, CircleStop, Copy, FileDiff } from "lucide-react"
 import { DotMatrix, copyText, useLocale } from "@pigcode/ui-primitives"
 import { ApprovalCard, type ApprovalDecision } from "./approval-card"
 import { CommandGroup } from "./command-row"
@@ -13,7 +13,14 @@ import { elapsed, formatDuration, useNow } from "./duration"
 import { MessageText } from "./message-item"
 import { PlanCard } from "./plan-card"
 import { SubagentCard } from "./subagent-card"
-import { BrowserGroup, ExploreGroup, ToolCard, type ToolCall } from "./tool-card"
+import {
+  BrowserGroup,
+  ExploreGroup,
+  ToolCard,
+  diffStats,
+  toolFilePath,
+  type ToolCall,
+} from "./tool-card"
 import { TurnActions } from "./turn-actions"
 import { isEnded, type Turn, type WorkItem } from "./turns"
 
@@ -97,6 +104,51 @@ function UserActions({ text }: { text: string }) {
   )
 }
 
+/** 这一轮改过的文件与行数，来自编辑类工具的输入。 */
+function turnChanges(turn: Turn): FileChangeSummary | null {
+  const files = new Set<string>()
+  let additions = 0
+  let deletions = 0
+  for (const item of turn.work) {
+    const tools =
+      item.kind === "tool"
+        ? [item.tool]
+        : item.kind === "explore" || item.kind === "commands" || item.kind === "browser"
+          ? item.tools
+          : []
+    for (const tool of tools) {
+      const stats = tool.status === "completed" ? diffStats(tool) : null
+      if (!stats) continue
+      additions += stats.added
+      deletions += stats.removed
+      const path = toolFilePath(tool)
+      if (path) files.add(path)
+    }
+  }
+  if (files.size === 0 && additions === 0 && deletions === 0) return null
+  return { files: [...files].map((path) => ({ path, lines: [] })), additions, deletions }
+}
+
+/** 一轮结束后的改动入口：文件数与行数，点开在右栏 Diff 里看。 */
+function ChangesChip({
+  summary,
+  onView,
+}: {
+  summary: FileChangeSummary
+  onView: (summary: FileChangeSummary) => void
+}) {
+  const { t } = useLocale()
+  return (
+    <button type="button" className="turn-changes" onClick={() => onView(summary)}>
+      <FileDiff className="ic ic-sm" aria-hidden="true" />
+      <span>{t("chat.changes.files").replace("{count}", String(summary.files.length))}</span>
+      <span className="add">+{summary.additions}</span>
+      <span className="del">−{summary.deletions}</span>
+      <span className="turn-changes-cta">{t("chat.changes.review")}</span>
+    </button>
+  )
+}
+
 /** 工作区里的一项。 */
 function WorkItemView({
   item,
@@ -121,7 +173,7 @@ function WorkItemView({
     case "explore":
       return <ExploreGroup tools={item.tools} onView={onViewTool} />
     case "commands":
-      return <CommandGroup tools={item.tools} onView={onViewTool} />
+      return <CommandGroup tools={item.tools} />
     case "browser":
       return <BrowserGroup tools={item.tools} onView={onViewTool} />
     case "plan":
@@ -161,6 +213,7 @@ function TurnViewImpl({
   const open = manual ?? !ended
   const hasWork = turn.work.length > 0
   const showHeader = hasWork || !ended
+  const changes = ended ? turnChanges(turn) : null
   return (
     <section className="turn" data-status={turn.status} data-turn={turn.key}>
       {turn.userText ? (
@@ -225,6 +278,9 @@ function TurnViewImpl({
             <AlertTriangle className="ic ic-sm" aria-hidden="true" />
             {turn.error || t("chat.error")}
           </div>
+        ) : null}
+        {ended && onViewDiff && changes ? (
+          <ChangesChip summary={changes} onView={onViewDiff} />
         ) : null}
         {ended && turn.replyText ? <TurnActions text={turn.replyText} at={turn.replyAt} /> : null}
       </div>

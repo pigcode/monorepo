@@ -14,6 +14,7 @@ import type { SettingsSection, ShellView, ThreadStatus } from "@pigcode/ui-shell
 import {
   EMPTY_SURFACE_STATE,
   PanelLayoutControls,
+  addSurface,
   updateSurface,
   type PanelLayoutControlsProps,
   type PanelSurfaceState,
@@ -297,6 +298,19 @@ export function App({ store, slots, connection, plugins, locale }: AppProps) {
     [locale],
   )
 
+  /** 从聊天里打开文件或 Diff：当前线程的右栏切到对应标签并展开。 */
+  function openSurface(kind: "files" | "diff", path?: string): void {
+    const threadId = state.activeThreadId
+    if (!threadId) return
+    const title = kind === "files" ? (locale === "en-US" ? "Files" : "文件") : "Diff"
+    updatePanel(threadId, (panel) => {
+      const next = addSurface(panel, kind, `${kind}-${crypto.randomUUID()}`, () => title)
+      return path && next.activeId ? updateSurface(next, next.activeId, { path }) : next
+    })
+    setRightOpen(true)
+    setRightMaximized(false)
+  }
+
   const browsers = useMemo(() => {
     const live = new Set(
       state.threads.filter((thread) => thread.archivedAt === null).map((thread) => thread.id),
@@ -424,6 +438,8 @@ export function App({ store, slots, connection, plugins, locale }: AppProps) {
             onToggleRight: toggleRight,
             layoutControls: rightOpen && activeThreadId ? null : layoutControls(false),
             onNewThread: () => void createThread(),
+            onOpenFile: (path: string) => openSurface("files", path),
+            onOpenDiff: () => openSurface("diff"),
           }}
         />
       ) : (

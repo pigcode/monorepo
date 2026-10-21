@@ -185,6 +185,28 @@ export function browserPreview(
   }
 }
 
+/** 读写文件类工具操作的文件路径；其他工具返回 undefined。 */
+export function toolFilePath(tool: Pick<ToolCall, "name" | "input">): string | undefined {
+  const kind = toolKind(tool.name)
+  if (kind !== "chat.tool.kind.read" && kind !== "chat.tool.kind.edit") return undefined
+  const value = parseJson(tool.input)
+  if (value) {
+    for (const key of ["file_path", "path", "notebook_path"]) {
+      const candidate = value[key]
+      if (typeof candidate === "string" && candidate.trim()) return candidate.trim()
+    }
+    return undefined
+  }
+  if (!tool.input?.trim().startsWith("[")) return undefined
+  try {
+    const entries = JSON.parse(tool.input) as Array<{ path?: unknown } | null>
+    const first = Array.isArray(entries) ? entries[0]?.path : undefined
+    return typeof first === "string" && first.trim() ? first.trim() : undefined
+  } catch {
+    return undefined
+  }
+}
+
 /** 从工具输入里挑一行最能说明意图的摘要：JSON 优先取命令、路径或查询字段。 */
 export function toolPreview(input: string | undefined): string | undefined {
   if (!input) return undefined

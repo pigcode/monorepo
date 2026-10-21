@@ -109,11 +109,9 @@ function CommandOutput({ text, running }: { text: string; running: boolean }) {
 export const CommandRow = memo(function CommandRow({
   tool,
   live,
-  onView,
 }: {
   tool: ToolCall
   live?: string | undefined
-  onView?: ((tool: ToolCall) => void) | undefined
 }) {
   const { t, locale } = useLocale()
   const running = tool.status === "running"
@@ -138,10 +136,7 @@ export const CommandRow = memo(function CommandRow({
         type="button"
         className="tool-row-head"
         aria-expanded={open}
-        onClick={() => {
-          onView?.(tool)
-          setOpen(!open)
-        }}
+        onClick={() => setOpen(!open)}
       >
         <SquareTerminal className="ic ic-sm tool-row-icon" aria-hidden="true" />
         <span className={running ? "tool-row-kind tool-shimmer" : "tool-row-kind"}>
@@ -169,13 +164,7 @@ export const CommandRow = memo(function CommandRow({
 })
 
 /** 连续的已结束命令合成一行「终端 · N 个命令」，展开后逐条列出。 */
-export const CommandGroup = memo(function CommandGroup({
-  tools,
-  onView,
-}: {
-  tools: readonly ToolCall[]
-  onView?: ((tool: ToolCall) => void) | undefined
-}) {
+export const CommandGroup = memo(function CommandGroup({ tools }: { tools: readonly ToolCall[] }) {
   const { t } = useLocale()
   const [open, setOpen] = useToolOpen(`commands-${tools[0]?.id ?? ""}`, false)
   const failed = tools.filter((tool) => tool.status === "failed").length
@@ -204,7 +193,7 @@ export const CommandGroup = memo(function CommandGroup({
       {open ? (
         <div className="tool-group-body">
           {tools.map((tool) => (
-            <CommandRow key={tool.id} tool={tool} onView={onView} />
+            <CommandRow key={tool.id} tool={tool} />
           ))}
         </div>
       ) : null}

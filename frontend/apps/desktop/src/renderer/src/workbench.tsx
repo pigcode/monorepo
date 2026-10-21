@@ -108,6 +108,12 @@ export function WorkbenchPanel({
   const [prCreating, setPrCreating] = useState(false)
   const [prError, setPrError] = useState<string | null>(null)
 
+  // 从聊天里点开的文件：文件标签带着路径打开，直接选中它。
+  const requestedPath = panel.surfaces.find((surface) => surface.kind === "files")?.path
+  useEffect(() => {
+    if (requestedPath) setSelectedPath(requestedPath)
+  }, [requestedPath])
+
   // 文件树：每次进入文件标签都重新读取，反映终端或外部编辑后的状态。
   useEffect(() => {
     if (tab !== "files") return undefined
@@ -173,9 +179,16 @@ export function WorkbenchPanel({
     const baselines = committed.filter((checkpoint) => checkpoint.phase === "baseline")
     return baselines[baselines.length - 1]?.commitSha ?? null
   }, [committed])
+  // 还没有结束快照时（没跑过、或者正在跑）和当前工作区比较：没跑过时是未提交的改动，
+  // 正在跑时是这一轮到目前为止的改动。
   const headSha = useMemo(() => {
     const finals = committed.filter((checkpoint) => checkpoint.phase !== "baseline")
-    return finals[finals.length - 1]?.commitSha ?? "HEAD"
+    const latestBaseline = committed.filter((checkpoint) => checkpoint.phase === "baseline").at(-1)
+    const latestFinal = finals.at(-1)
+    if (!latestFinal || (latestBaseline && latestBaseline.createdAt > latestFinal.createdAt)) {
+      return "WORKTREE"
+    }
+    return latestFinal.commitSha ?? "WORKTREE"
   }, [committed])
   const baseSha = diffBase ?? defaultBase
 

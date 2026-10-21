@@ -8,7 +8,7 @@ import { afterEach, describe, expect, it } from "vitest"
 import { plainOutput } from "./command-row"
 import { MessageList } from "./message-list"
 import { ToolCard } from "./tool-card"
-import { commandText, diffStats } from "./tool-meta"
+import { commandText, diffStats, toolFilePath } from "./tool-meta"
 import { resetToolOpen } from "./tool-open"
 
 afterEach(() => {
@@ -155,6 +155,47 @@ describe("tool metadata", () => {
       }),
     ).toEqual({ added: 2, removed: 1 })
     expect(diffStats({ name: "Read", input: "{}" })).toBeNull()
+  })
+
+  it("find the file a read or edit touched", () => {
+    expect(
+      toolFilePath({ name: "Edit", input: JSON.stringify({ file_path: "/repo/src/a.ts" }) }),
+    ).toBe("/repo/src/a.ts")
+    expect(
+      toolFilePath({ name: "ApplyPatch", input: JSON.stringify([{ path: "src/b.ts", diff: "" }]) }),
+    ).toBe("src/b.ts")
+    expect(toolFilePath({ name: "Bash", input: JSON.stringify({ command: "ls" }) })).toBeUndefined()
+  })
+
+  it("open the file from its row and review a finished turn's changes", async () => {
+    const opened: string[] = []
+    const reviewed: number[] = []
+    const edit = { file_path: "/repo/src/index.ts", old_string: "a", new_string: "b\nc" }
+    inLocale(
+      <MessageList
+        events={[
+          e(1, "run.started", { text: "fix" }),
+          e(2, "tool.started", { id: "w1", name: "Edit", input: edit }),
+          e(3, "tool.completed", { id: "w1", name: "Edit", output: "ok" }),
+          e(4, "message.completed", { role: "assistant", text: "done" }),
+          e(5, "run.completed", {}),
+        ]}
+        onApproval={() => {}}
+        onViewTool={(tool) => opened.push(tool.id)}
+        onViewDiff={(summary) => reviewed.push(summary.files.length)}
+      />,
+    )
+    const chip = screen.getByRole("button", { name: /改了 1 个文件.*\+2.*−1.*在 Diff 中查看/ })
+    await userEvent.click(chip)
+    expect(reviewed).toEqual([1])
+    await userEvent.click(screen.getByRole("button", { name: /已工作/ }))
+    // 展开这一行不会打开面板，只有末尾的按钮会。
+    await userEvent.click(screen.getByRole("button", { name: /编辑/ }))
+    expect(opened).toEqual([])
+    await userEvent.click(
+      screen.getByRole("button", { name: "在文件面板中打开 /repo/src/index.ts" }),
+    )
+    expect(opened).toEqual(["w1"])
   })
 
   it("show the line counts on edit rows", () => {
