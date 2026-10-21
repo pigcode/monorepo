@@ -20,6 +20,8 @@ export const commandSchemas = {
     projectId: z.string().min(1),
     title: z.string().min(1).default("New thread"),
     providerId: z.string().min(1).default("fake"),
+    /** 在这个主会话下添加子代理；子代理继承主会话的项目、工作目录与最近的对话摘要。 */
+    parentThreadId: z.string().min(1).optional(),
   }),
   "thread.list": z.object({ projectId: z.string().min(1).optional() }),
   "thread.rename": z.object({

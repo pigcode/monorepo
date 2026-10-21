@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest"
 import type { ProviderEvent } from "@pigcode/contracts"
 import type { ProviderRuntime } from "./driver"
-import { FAKE_MODELS, FAKE_SCRIPT_TEXT, FakeProviderDriver } from "./fake"
+import { FAKE_MODELS, FAKE_SCRIPT_TEXT, FAKE_SUBAGENT_TEXT, FakeProviderDriver } from "./fake"
 
 describe("fake provider", () => {
   it("streams a deterministic response", async () => {
@@ -50,6 +50,34 @@ describe("fake provider", () => {
     expect(events.filter((event) => event.type === "tool.completed")).toHaveLength(5)
     expect(events.filter((event) => event.type === "plan.updated")).toHaveLength(3)
     expect(events.filter((event) => event.type === "message.completed")).toHaveLength(2)
+    expect(events.at(-1)).toEqual({ type: "run.completed" })
+  })
+
+  it("spawns two sub-agents whose work is tagged with their task", async () => {
+    const driver = new FakeProviderDriver({ stepMs: 0 })
+    const session = await driver.createSession({ threadId: "th_1", cwd: "/tmp" })
+    const events: ProviderEvent[] = []
+    await driver.send(
+      session,
+      { text: FAKE_SUBAGENT_TEXT },
+      {
+        signal: new AbortController().signal,
+        emit: (event) => events.push(event),
+        requestApproval: async () => "deny",
+      },
+    )
+    const started = events.flatMap((event) =>
+      event.type === "subagent.started" ? [event.toolCallId] : [],
+    )
+    expect(started).toEqual(["fake-task-explore", "fake-task-review"])
+    const completed = events.flatMap((event) =>
+      event.type === "subagent.completed" ? [event.toolCallId] : [],
+    )
+    expect(completed).toEqual(["fake-task-explore", "fake-task-review"])
+    const childTools = events.flatMap((event) =>
+      event.type === "tool.started" ? [event.parentToolUseId] : [],
+    )
+    expect(new Set(childTools)).toEqual(new Set(["fake-task-explore", "fake-task-review"]))
     expect(events.at(-1)).toEqual({ type: "run.completed" })
   })
 })

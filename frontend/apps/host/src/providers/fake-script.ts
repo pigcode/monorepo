@@ -81,9 +81,105 @@ export function fakeScript(stepMs: number): Step[] {
   ]
 }
 
+/** 触发派生子 agent 脚本的输入。 */
+export const FAKE_SUBAGENT_TEXT = "subagents"
+
+function childTool(
+  parent: string,
+  id: string,
+  name: string,
+  input: unknown,
+  output: unknown,
+): Step[] {
+  return [
+    { type: "tool.started", toolCallId: id, name, input, parentToolUseId: parent },
+    {
+      type: "tool.completed",
+      toolCallId: id,
+      name,
+      output,
+      isError: false,
+      parentToolUseId: parent,
+    },
+  ]
+}
+
+/** 主 agent 并行派生两个子 agent：一个查代码，一个跑测试，各自交回结果后主 agent 总结。 */
+export function fakeSubagentScript(stepMs: number): Step[] {
+  const explore = "fake-task-explore"
+  const review = "fake-task-review"
+  return [
+    ...message("我让两个子代理并行处理：一个梳理入口，一个检查测试。"),
+    {
+      type: "subagent.started",
+      toolCallId: explore,
+      name: "Explore",
+      description: "梳理入口与导出",
+      prompt: "阅读 src/index.ts 和 README.md，列出项目对外导出的内容，以及 answer 的计算方式。",
+    },
+    {
+      type: "subagent.started",
+      toolCallId: review,
+      name: "general-purpose",
+      description: "检查测试覆盖",
+      prompt: "运行 pnpm test，说明哪些行为有测试覆盖，哪些没有。",
+    },
+    { wait: stepMs },
+    ...childTool(
+      explore,
+      "fake-explore-read",
+      "Read",
+      { file_path: "src/index.ts" },
+      "export const answer = 42\n",
+    ),
+    {
+      type: "message.completed",
+      text: "入口只导出了一个常量 `answer`。",
+      parentToolUseId: explore,
+    },
+    { wait: stepMs },
+    ...childTool(
+      review,
+      "fake-review-bash",
+      "Bash",
+      { command: "pnpm test" },
+      "Tests  3 passed (3)\n",
+    ),
+    { wait: stepMs },
+    ...childTool(explore, "fake-explore-read-2", "Read", { file_path: "README.md" }, "# Demo\n"),
+    {
+      type: "subagent.completed",
+      toolCallId: explore,
+      isError: false,
+      status: "completed",
+      output: "导出：`answer`（= 42）。README 只有标题，没有用法说明。",
+    },
+    { wait: stepMs },
+    {
+      type: "message.completed",
+      text: "3 个测试都覆盖 `answer` 的值，没有覆盖导出形状。",
+      parentToolUseId: review,
+    },
+    {
+      type: "subagent.completed",
+      toolCallId: review,
+      isError: false,
+      status: "completed",
+      output: "`pnpm test` 3 个通过；缺少对导出形状的测试。",
+    },
+    ...message(
+      "两个子代理都完成了：\n\n- 入口只导出 `answer`（42），README 缺少用法说明\n- 测试 3 个通过，但没有覆盖导出形状",
+    ),
+  ]
+}
+
 /** 依次推送脚本；中断后立即停止。 */
-export async function runFakeScript(runtime: ProviderRuntime, stepMs: number): Promise<void> {
-  for (const step of fakeScript(stepMs)) {
+export async function runFakeScript(
+  runtime: ProviderRuntime,
+  stepMs: number,
+  script: (stepMs: number) => Step[] = fakeScript,
+): Promise<void> {
+  for (const step of script(stepMs)) {
     if (runtime.signal.aborted) return
     if ("wait" in step) {
       if (step.wait > 0) await new Promise((resolve) => setTimeout(resolve, step.wait))

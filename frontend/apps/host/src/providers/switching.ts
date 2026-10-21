@@ -54,13 +54,11 @@ export async function defaultProvider(hasProvider: (id: string) => boolean): Pro
 const HANDOFF_MESSAGE_LIMIT = 3
 const HANDOFF_TOOL_LIMIT = 3
 
-/**
- * 生成跨 provider 的 handoff：最近三条 user/assistant 文本与最近使用过的工具名。
- * 同一 provider 的切换优先原生 fork，只有无法 fork 时才走这里。
- */
-export function buildHandoff(ctx: Context, threadId: string): string {
-  const thread = ctx.threads.get(threadId)
-  const previousProvider = thread?.lastProviderId ?? thread?.defaultProviderId ?? "unknown"
+/** 线程最近的对话与工具名，按时间顺序。 */
+function recentContext(
+  ctx: Context,
+  threadId: string,
+): { messages: Array<{ role: string; text: string }>; tools: string[] } {
   const events = ctx.sessions.read(threadId, 0)
   const messages: Array<{ role: string; text: string }> = []
   const tools: string[] = []
@@ -86,16 +84,45 @@ export function buildHandoff(ctx: Context, threadId: string): string {
     if (messages.length >= HANDOFF_MESSAGE_LIMIT && tools.length >= HANDOFF_TOOL_LIMIT) break
   }
   // 反向扫描得到的是从新到旧，输出时恢复为时间顺序。
-  const recentMessages = messages.reverse()
-  const recentTools = tools.reverse()
+  return { messages: messages.reverse(), tools: tools.reverse() }
+}
+
+function contextLines(context: ReturnType<typeof recentContext>): string[] {
+  return [
+    "Recent conversation:",
+    ...(context.messages.length > 0
+      ? context.messages.map((message) => `- ${message.role}: ${message.text}`)
+      : ["- (none)"]),
+    `Recent tools: ${context.tools.length > 0 ? context.tools.join(", ") : "(none)"}`,
+  ]
+}
+
+/**
+ * 生成跨 provider 的 handoff：最近三条 user/assistant 文本与最近使用过的工具名。
+ * 同一 provider 的切换优先原生 fork，只有无法 fork 时才走这里。
+ */
+export function buildHandoff(ctx: Context, threadId: string): string {
+  const thread = ctx.threads.get(threadId)
+  const previousProvider = thread?.lastProviderId ?? thread?.defaultProviderId ?? "unknown"
   return [
     `Previous provider: ${previousProvider}`,
-    "Recent conversation:",
-    ...(recentMessages.length > 0
-      ? recentMessages.map((message) => `- ${message.role}: ${message.text}`)
-      : ["- (none)"]),
-    `Recent tools: ${recentTools.length > 0 ? recentTools.join(", ") : "(none)"}`,
+    ...contextLines(recentContext(ctx, threadId)),
     "Continue from here. Do not repeat completed work.",
+  ].join("\n")
+}
+
+/**
+ * 子代理的第一条消息前附带的说明：它和主会话共用一个工作目录，并带上主会话最近的对话，
+ * 让子代理知道主 agent 在做什么。主会话还没聊过时返回 null。
+ */
+export function buildSubagentBrief(ctx: Context, parentThreadId: string): string | null {
+  if (!hasConversation(ctx, parentThreadId)) return null
+  const parent = ctx.threads.get(parentThreadId)
+  const mainAgent = parent?.lastProviderId ?? parent?.defaultProviderId ?? "unknown"
+  return [
+    `You are a sub-agent working next to the main agent (${mainAgent}) of the task "${parent?.title ?? ""}", in the same working directory.`,
+    ...contextLines(recentContext(ctx, parentThreadId)),
+    "Do what the user asks you below. Build on the main agent's work instead of redoing it, and avoid editing files it is changing unless asked.",
   ].join("\n")
 }
 
@@ -180,10 +207,13 @@ export async function switchProvider(
   return { providerId, modelId, handoff, forkFromNativeSessionId }
 }
 
-/** 解析线程的 provider cwd：优先活动 worktree，没有时回退到项目根目录。 */
+/** 解析线程的 provider cwd：优先活动 worktree（子代理用主会话的），没有时回退到项目根目录。 */
 export function resolveThreadCwd(ctx: Context, threadId: string, projectId: string): string {
   const worktree = activeWorktreePath(ctx.storage.db, threadId)
   if (worktree) return worktree
+  const parentThreadId = ctx.threads.get(threadId)?.parentThreadId
+  const parentWorktree = parentThreadId ? activeWorktreePath(ctx.storage.db, parentThreadId) : null
+  if (parentWorktree) return parentWorktree
   const row = ctx.storage.db
     .prepare(`SELECT root_path FROM projects WHERE id = ?`)
     .get(projectId) as { root_path: string } | undefined

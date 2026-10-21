@@ -245,6 +245,21 @@ function asSubagentStatus(value: unknown, isError: boolean): SubagentStatus {
   }
 }
 
+/** 子 agent 交回的结果：字符串、文本块数组或带 content 的对象，取出其中的文字。 */
+function subagentOutput(value: unknown): string | undefined {
+  if (typeof value === "string") return value.trim() || undefined
+  if (Array.isArray(value)) {
+    const text = value
+      .map((block) => (typeof block === "string" ? block : asText(asRecord(block)?.text)))
+      .filter((part): part is string => Boolean(part))
+      .join("\n\n")
+    return text.trim() || undefined
+  }
+  const record = asRecord(value)
+  if (!record) return undefined
+  return subagentOutput(record.content) ?? asText(record.text) ?? asText(record.result)
+}
+
 /** 判断事件是否属于某个子 agent；这类事件只在卡片内部展示。 */
 export function isParentScoped(type: ThreadEvent["type"]): boolean {
   return type === "message.completed" || type === "tool.started" || type === "tool.completed"
@@ -275,9 +290,12 @@ export function collectSubagents(events: ThreadEvent[]): Map<string, SubagentCal
         name: asText(payload.name) ?? id,
         status: "running",
         events: children.get(id) ?? [],
+        runId: event.runId,
       }
       const description = asText(payload.description)
       if (description) entry.description = description
+      const prompt = asText(payload.prompt)
+      if (prompt) entry.prompt = prompt
       const model = asText(payload.model)
       if (model) entry.model = model
       subagents.set(id, entry)
@@ -285,7 +303,10 @@ export function collectSubagents(events: ThreadEvent[]): Map<string, SubagentCal
     }
     if (event.type === "subagent.completed") {
       const entry = subagents.get(id)
-      if (entry) entry.status = asSubagentStatus(payload.status, payload.isError === true)
+      if (!entry) continue
+      entry.status = asSubagentStatus(payload.status, payload.isError === true)
+      const output = subagentOutput(payload.output)
+      if (output) entry.output = output
     }
   }
   return subagents

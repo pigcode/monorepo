@@ -53,9 +53,11 @@ export interface Turn {
   signature: string
 }
 
-/** 时间线上的一项：一轮对话，或切换 agent 的分隔线。 */
+/** 时间线上的一项：一轮对话、切换 agent 的分隔线，或子代理带上主会话近况的提示。 */
 export type TimelineEntry =
-  { kind: "turn"; turn: Turn } | { kind: "switch"; key: string; agentId: string; handoff: boolean }
+  | { kind: "turn"; turn: Turn }
+  | { kind: "switch"; key: string; agentId: string; handoff: boolean }
+  | { kind: "brief"; key: string }
 
 /** 查阅类工具：连续多个时合成一行「查阅 N 个文件」。 */
 const EXPLORE_TOOL = /^(read|view|cat|open|grep|glob|search|find|ls|list)/i
@@ -158,6 +160,7 @@ export function buildTimeline(events: readonly ThreadEvent[], streaming = false)
           agentId,
           handoff: Boolean(asText(payload?.handoff)),
         })
+      else if (asText(payload?.handoff)) entries.push({ kind: "brief", key: `brief-${event.seq}` })
       continue
     }
     if (event.runId === null && event.type !== "message.completed") continue

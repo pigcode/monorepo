@@ -73,6 +73,8 @@ export const providerEventSchema = z.discriminatedUnion("type", [
     toolCallId: z.string(),
     name: z.string(),
     description: z.string().optional(),
+    /** 主 agent 交给子 agent 的完整任务。 */
+    prompt: z.string().optional(),
     model: z.string().optional(),
     parentToolUseId: z.string().optional(),
   }),

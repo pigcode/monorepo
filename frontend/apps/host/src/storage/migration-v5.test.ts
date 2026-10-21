@@ -11,7 +11,7 @@ describe("migration v5", () => {
       db.prepare(`PRAGMA table_info(projects)`).all() as Array<{ name: string }>
     ).map((row) => row.name)
     expect(columns).toEqual(["id", "root_path", "name", "created_at", "archived_at"])
-    expect(db.pragma("user_version", { simple: true })).toBe(5)
+    expect(db.pragma("user_version", { simple: true })).toBeGreaterThanOrEqual(5)
     db.close()
   })
 
@@ -24,6 +24,7 @@ describe("migration v5", () => {
         name TEXT NOT NULL,
         created_at TEXT NOT NULL
       );
+      CREATE TABLE threads (id TEXT PRIMARY KEY, project_id TEXT NOT NULL);
       INSERT INTO projects VALUES ('pr_1', '/tmp/pigcode-v4', 'v4', '2026-10-20T00:00:00.000Z');
     `)
     db.pragma("user_version = 4")
@@ -33,7 +34,7 @@ describe("migration v5", () => {
     expect(db.prepare(`SELECT id, archived_at FROM projects`).all()).toEqual([
       { id: "pr_1", archived_at: null },
     ])
-    expect(db.pragma("user_version", { simple: true })).toBe(5)
+    expect(db.pragma("user_version", { simple: true })).toBeGreaterThanOrEqual(5)
     db.close()
   })
 })

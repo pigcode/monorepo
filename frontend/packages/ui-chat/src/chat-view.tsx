@@ -1,7 +1,7 @@
-/** 聊天主视图：标题、运行状态、消息时间线、composer 占位与环境抽屉。 */
+/** 聊天主视图：标签栏（主会话与子代理）、消息时间线、输入框与环境抽屉。 */
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 import type { ProviderCapabilities, Thread, ThreadEvent } from "@pigcode/contracts"
-import { ArrowDown, Ellipsis, PanelRight, Square } from "lucide-react"
+import { ArrowDown, ArrowLeft, Ellipsis, PanelRight } from "lucide-react"
 import {
   Composer,
   type ComposerAgent,
@@ -10,11 +10,14 @@ import {
   type ComposerSubmitOptions,
   type PermissionMode,
 } from "@pigcode/ui-composer"
-import { Button, DotMatrix, formatShortcut, useLocale } from "@pigcode/ui-primitives"
+import { Button, formatShortcut, useLocale } from "@pigcode/ui-primitives"
 import type { ApprovalDecision } from "./approval-card"
 import type { FileChangeSummary } from "./diff-summary"
 import { EnvironmentDrawer, type EnvironmentInfo } from "./environment-drawer"
-import { MessageList, hasPendingApproval } from "./message-list"
+import { MessageList, type EmptyStateText } from "./message-list"
+import type { SubagentCall } from "./subagent-card"
+import { SubagentView } from "./subagent-view"
+import { ThreadTabs, type ThreadTabsProps } from "./thread-tabs"
 import type { ToolCall } from "./tool-card"
 
 /** 线程头切换入口需要的 provider 展示信息。 */
@@ -61,6 +64,16 @@ export interface ChatViewProps {
   layoutControls?: ReactNode
   /** 线程头右侧「在编辑器中打开项目」的入口；由容器按项目目录组装。 */
   openIn?: ReactNode
+  /** 线程头的标签栏：主会话与子代理；不提供时只显示主会话标题。 */
+  tabs?: ThreadTabsProps | undefined
+  /** 正在查看的派生子代理；有值时显示它的只读过程，不显示输入框。 */
+  subagent?: SubagentCall | null | undefined
+  /** 在标签页中打开时间线里的派生子代理。 */
+  onOpenSubagent?: ((id: string) => void) | undefined
+  /** 从派生子代理的只读视图回到主会话。 */
+  onBackToMain?: (() => void) | undefined
+  /** 空会话的文案；子代理会话用它说明共用工作目录。 */
+  empty?: EmptyStateText | undefined
 }
 
 /** 根据事件流判断当前 run 是否仍在进行。 */
@@ -103,6 +116,11 @@ export function ChatView({
   onToggleRight,
   layoutControls,
   openIn,
+  tabs,
+  subagent = null,
+  onOpenSubagent,
+  onBackToMain,
+  empty,
 }: ChatViewProps) {
   const submit = onSubmit ?? onStart
   const { t } = useLocale()
@@ -123,15 +141,8 @@ export function ChatView({
           ),
     [events, canApprove],
   )
-  const pendingApproval = useMemo(() => hasPendingApproval(visibleEvents), [visibleEvents])
   const runOpen = useMemo(() => isRunOpen(events), [events])
   const running = Boolean(streamingText) || runOpen
-  const status = pendingApproval
-    ? t("chat.status.waitingApproval")
-    : running
-      ? t("chat.status.running")
-      : t("chat.status.idle")
-  const statusClass = pendingApproval ? "warn" : running ? "ok" : ""
   const providerId = thread?.lastProviderId ?? thread?.defaultProviderId ?? null
   const modelId = thread?.lastModelId ?? null
   const agentName = useCallback(
@@ -145,16 +156,17 @@ export function ChatView({
     permissionMode: thread?.permissionMode ?? "workspace-write",
   }
   const projectName = cwd?.split(/[\\/]/).filter(Boolean).at(-1)
+  const viewKey = subagent ? `subagent:${subagent.id}` : (thread?.id ?? null)
 
   useEffect(() => {
     setPinned(true)
-  }, [thread?.id])
+  }, [viewKey])
 
   useEffect(() => {
     if (!pinned) return
     const element = threadRef.current
     if (element) element.scrollTop = element.scrollHeight
-  }, [events, streamingText, pinned])
+  }, [events, streamingText, pinned, subagent])
 
   function handleScroll(): void {
     const element = threadRef.current
@@ -168,38 +180,26 @@ export function ChatView({
     element?.scrollTo({ top: element.scrollHeight, behavior: "smooth" })
   }
 
+  const mainTitle = thread
+    ? projectName
+      ? `${projectName} / ${thread.title}`
+      : thread.title
+    : undefined
+
   return (
     <section className="view">
       <div className="panel-top">
-        {thread ? (
-          <div
-            className="title-chip"
-            title={projectName ? `${projectName} / ${thread.title}` : thread.title}
-          >
-            <span className="title-text truncate">{thread.title}</span>
-          </div>
-        ) : null}
-        {statusClass ? (
-          <span
-            className={`status status-pill ${statusClass}${running && !pendingApproval ? " is-running" : ""}`}
-          >
-            {running && !pendingApproval ? <DotMatrix /> : null}
-            {status}
-          </span>
+        {tabs ? (
+          <ThreadTabs {...tabs} />
+        ) : thread ? (
+          <ThreadTabs
+            tabs={[{ id: "main", kind: "main", title: thread.title, description: mainTitle }]}
+            activeId="main"
+            onSelect={() => undefined}
+          />
         ) : null}
         <span className="spacer" />
         {thread ? openIn : null}
-        {running && canInterrupt ? (
-          <Button
-            variant="plain"
-            size="icon"
-            type="button"
-            aria-label={t("chat.interrupt")}
-            onClick={onInterrupt}
-          >
-            <Square className="ic" aria-hidden="true" />
-          </Button>
-        ) : null}
         <Button
           variant="plain"
           size="icon"
@@ -228,14 +228,20 @@ export function ChatView({
         ) : null}
       </div>
       <div className="thread" ref={threadRef} onScroll={handleScroll}>
-        <MessageList
-          events={visibleEvents}
-          streamingText={streamingText}
-          agentName={agentName}
-          onApproval={onApproval ?? (() => undefined)}
-          onViewTool={onViewTool}
-          onViewDiff={onViewDiff}
-        />
+        {subagent ? (
+          <SubagentView subagent={subagent} onViewTool={onViewTool} />
+        ) : (
+          <MessageList
+            events={visibleEvents}
+            streamingText={streamingText}
+            agentName={agentName}
+            onApproval={onApproval ?? (() => undefined)}
+            onViewTool={onViewTool}
+            onViewDiff={onViewDiff}
+            onOpenSubagent={onOpenSubagent}
+            empty={empty}
+          />
+        )}
       </div>
       {!pinned ? (
         <button type="button" className="jump-latest" onClick={jumpToLatest}>
@@ -244,26 +250,38 @@ export function ChatView({
         </button>
       ) : null}
       <div className="composer-wrap">
-        <Composer
-          onSubmit={(text, options) => submit?.(text, options)}
-          onStop={onInterrupt ?? (() => undefined)}
-          running={running}
-          disabled={!thread}
-          autoFocus={Boolean(thread) && visibleEvents.length === 0 && !running}
-          draftKey={thread?.id ?? null}
-          agents={agents}
-          agentId={providerId}
-          modelId={modelId}
-          catalog={catalog}
-          {...(onLoadModels ? { onLoadModels } : {})}
-          {...(thread && onSelectModel ? { onSelectModel } : {})}
-          permissionMode={thread?.permissionMode ?? "workspace-write"}
-          {...(thread && onPermissionMode ? { onPermissionMode } : {})}
-          {...(files ? { files } : {})}
-          {...(commands ? { commands } : {})}
-          canPlan={canPlan}
-          canInterrupt={canInterrupt}
-        />
+        {subagent ? (
+          <div className="subagent-readonly" role="note">
+            <span>{t("chat.subagent.readonly")}</span>
+            {onBackToMain ? (
+              <button type="button" className="subagent-back" onClick={onBackToMain}>
+                <ArrowLeft className="ic ic-sm" aria-hidden="true" />
+                {t("chat.subagent.back")}
+              </button>
+            ) : null}
+          </div>
+        ) : (
+          <Composer
+            onSubmit={(text, options) => submit?.(text, options)}
+            onStop={onInterrupt ?? (() => undefined)}
+            running={running}
+            disabled={!thread}
+            autoFocus={Boolean(thread) && visibleEvents.length === 0 && !running}
+            draftKey={thread?.id ?? null}
+            agents={agents}
+            agentId={providerId}
+            modelId={modelId}
+            catalog={catalog}
+            {...(onLoadModels ? { onLoadModels } : {})}
+            {...(thread && onSelectModel ? { onSelectModel } : {})}
+            permissionMode={thread?.permissionMode ?? "workspace-write"}
+            {...(thread && onPermissionMode ? { onPermissionMode } : {})}
+            {...(files ? { files } : {})}
+            {...(commands ? { commands } : {})}
+            canPlan={canPlan}
+            canInterrupt={canInterrupt}
+          />
+        )}
       </div>
       <EnvironmentDrawer
         open={drawerOpen}

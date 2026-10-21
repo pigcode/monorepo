@@ -1,5 +1,5 @@
 /** 应用外壳：把 store/connection 接到 Shell、聊天、设置与插件管理器。 */
-import { Suspense, lazy, useEffect, useRef, useState } from "react"
+import { Suspense, lazy, useEffect, useMemo, useRef, useState } from "react"
 import type { Project, Thread } from "@pigcode/contracts"
 import { AppRenderer, SlotHost, useAppStore, type SlotRegistry } from "@pigcode/client-runtime"
 import {
@@ -67,6 +67,28 @@ export interface AppProps extends CoreDeps {
 /** 把 unknown 错误转成可展示文本。 */
 function messageOf(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
+}
+
+const BUSY: ReadonlySet<ThreadStatus> = new Set(["running", "queued", "waiting-approval"])
+
+/** 侧栏状态：主会话空闲但有子代理在忙时，主会话显示子代理的状态。 */
+export function mergeChildStatus(
+  threads: readonly Thread[],
+  threadStates: Readonly<Record<string, { status: ThreadStatus }>>,
+): Record<string, ThreadStatus> {
+  const result: Record<string, ThreadStatus> = {}
+  for (const [threadId, viewState] of Object.entries(threadStates)) {
+    result[threadId] = viewState.status
+  }
+  for (const thread of threads) {
+    if (!thread.parentThreadId || thread.archivedAt !== null) continue
+    const status = threadStates[thread.id]?.status
+    const parent = result[thread.parentThreadId]
+    if (status && BUSY.has(status) && !(parent && BUSY.has(parent))) {
+      result[thread.parentThreadId] = status
+    }
+  }
+  return result
 }
 
 /** 布局按钮；App 位于 LocaleProvider 之外，文案在渲染处读取。 */
@@ -205,10 +227,15 @@ export function App({ store, slots, connection, plugins, locale }: AppProps) {
   }
 
   const effectiveSection: SettingsSection = view === "plugins" ? "plugins" : section
-  const threadStatus: Record<string, ThreadStatus> = {}
-  for (const [threadId, viewState] of Object.entries(state.threadStates)) {
-    threadStatus[threadId] = viewState.status
-  }
+  // 子代理只在主会话的标签栏里出现；侧栏和命令面板只列主会话。
+  const mainThreads = useMemo(
+    () => state.threads.filter((thread) => !thread.parentThreadId),
+    [state.threads],
+  )
+  const threadStatus = useMemo(
+    () => mergeChildStatus(state.threads, state.threadStates),
+    [state.threads, state.threadStates],
+  )
   const activeThreadId = view === "chat" ? state.activeThreadId : null
 
   function toggleRight(): void {
@@ -250,7 +277,7 @@ export function App({ store, slots, connection, plugins, locale }: AppProps) {
       locale={locale}
       view={view}
       projects={state.projects}
-      threads={state.threads}
+      threads={mainThreads}
       activeThreadId={state.activeThreadId}
       threadStatus={threadStatus}
       onToggleRight={toggleRight}

@@ -1,13 +1,26 @@
-/** 聊天页容器：从 store 读取线程与事件，把输入框里的操作（发送、切换 agent/模型、权限）交给 Host。 */
+/**
+ * 聊天页容器：从 store 读取线程与事件，把输入框里的操作（发送、切换 agent/模型、权限）交给 Host。
+ * 线程头是一组标签：主会话、用户添加的子代理会话、主 agent 派生的子代理；输入框与中断、
+ * 审批都作用在当前标签所在的会话上。
+ */
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react"
 import type { PermissionMode, Thread } from "@pigcode/contracts"
 import { useAppStore, type AppStore, type Connection } from "@pigcode/client-runtime"
 import { useLocale } from "@pigcode/ui-primitives"
-import { ChatView, type ApprovalDecision } from "@pigcode/ui-chat"
+import { ChatView, collectSubagents, type ApprovalDecision } from "@pigcode/ui-chat"
 import type { ComposerCommand } from "@pigcode/ui-composer"
 import { OpenInButton } from "@pigcode/ui-shell"
 import type { ClientPluginController } from "./client-plugins"
-import { useAgents, useModelCatalog } from "./agents"
+import { useAgents, useModelCatalog, useProviderCapabilities } from "./agents"
+import {
+  buildThreadTabs,
+  childThreads,
+  dismissSpawnedTab,
+  openSpawnedTab,
+  selectThreadTab,
+  useThreadTabState,
+  visibleSpawned,
+} from "./thread-tabs"
 
 /** 核心容器共享的依赖。 */
 export interface CoreDeps {
@@ -48,13 +61,38 @@ export function ChatViewContainer({
 }: { deps: CoreDeps } & ChatSlotProps) {
   const state = useAppStore(deps.store)
   const { t } = useLocale()
-  const thread = state.threads.find((item) => item.id === state.activeThreadId) ?? null
-  const project = state.projects.find((item) => item.id === thread?.projectId)
+  const active = state.threads.find((item) => item.id === state.activeThreadId) ?? null
+  // 子代理不在侧栏里；从历史或命令面板落到子代理时，按它的主会话显示并选中它的标签。
+  const main = active?.parentThreadId
+    ? (state.threads.find((item) => item.id === active.parentThreadId) ?? active)
+    : active
+  const mainId = main?.id ?? null
+  const project = state.projects.find((item) => item.id === main?.projectId)
   const connected = state.status === "connected"
   const agents = useAgents(deps.connection, state.providerRevision, connected)
+  const capabilityMap = useProviderCapabilities(deps.connection, state.providerRevision, connected)
   const { catalog, load } = useModelCatalog(deps.connection, state.providerRevision, connected)
   const [notice, setNotice] = useState<string | null>(null)
-  const threadId = thread?.id ?? null
+  const tabState = useThreadTabState(mainId)
+  const children = useMemo(() => childThreads(state.threads, mainId), [state.threads, mainId])
+  const childKey = children.map((child) => child.id).join(",")
+
+  useEffect(() => {
+    if (!active?.parentThreadId || !mainId) return
+    selectThreadTab(mainId, `agent:${active.id}`)
+    deps.store.setActiveThread(mainId)
+  }, [active, mainId, deps.store])
+
+  // 子代理标签要显示运行状态，主会话打开时把它的子代理也订阅上。
+  useEffect(() => {
+    if (!connected || !childKey) return
+    const open = new Set(deps.store.getSnapshot().openThreadIds)
+    for (const childId of childKey.split(",")) {
+      if (open.has(childId)) continue
+      deps.store.openThread(childId)
+      void deps.connection.openThread(childId).catch(() => undefined)
+    }
+  }, [connected, childKey, deps.store, deps.connection])
 
   useEffect(() => {
     if (!notice) return undefined
@@ -67,9 +105,44 @@ export function ChatViewContainer({
     [deps.store],
   )
 
-  /** 最近一条带 runId 的事件所属的 run；中断与审批都作用在它上面。 */
+  const mainEvents = mainId ? (state.threadStates[mainId]?.events ?? state.events) : state.events
+  const subagents = useMemo(() => collectSubagents(mainEvents), [mainEvents])
+  const spawned = visibleSpawned(subagents, tabState)
+  const selected = tabState.selected
+  const viewChild = selected.startsWith("agent:")
+    ? children.find((child) => `agent:${child.id}` === selected)
+    : undefined
+  const viewSubagent = selected.startsWith("spawned:")
+    ? spawned.find((subagent) => `spawned:${subagent.id}` === selected)
+    : undefined
+  const thread = viewChild ?? main
+  const threadId = thread?.id ?? null
+  const viewState = threadId ? state.threadStates[threadId] : undefined
+  const events = viewChild ? (viewState?.events ?? []) : mainEvents
+  const streamingText = viewChild
+    ? (viewState?.streamingText ?? "")
+    : mainId
+      ? (state.threadStates[mainId]?.streamingText ?? state.streamingText)
+      : state.streamingText
+  const viewProviderId = thread ? (thread.lastProviderId ?? thread.defaultProviderId) : null
+  const capabilities =
+    (viewProviderId ? capabilityMap[viewProviderId] : undefined) ?? state.providerCapabilities
+
+  const statuses = useMemo(
+    () =>
+      Object.fromEntries(
+        Object.entries(state.threadStates).map(([id, value]) => [id, value.status]),
+      ),
+    [state.threadStates],
+  )
+  const tabs = main
+    ? buildThreadTabs({ main, projectName: project?.name, children, statuses, spawned })
+    : []
+  const activeTabId = tabs.some((tab) => tab.id === selected) ? selected : "main"
+
+  /** 当前会话最近一条带 runId 的事件所属的 run；中断与审批都作用在它上面。 */
   function latestRunId(): string | null {
-    return [...state.events].reverse().find((event) => event.runId !== null)?.runId ?? null
+    return [...events].reverse().find((event) => event.runId !== null)?.runId ?? null
   }
 
   function interrupt(): void {
@@ -113,17 +186,56 @@ export function ChatViewContainer({
       })
   }
 
+  /** 在主会话下添加一个子代理会话，并切到它的标签。 */
+  function addSubagent(agentId: string): void {
+    if (!main) return
+    const label = agents.find((agent) => agent.id === agentId)?.label ?? agentId
+    void (async () => {
+      const child = (await deps.connection.call("thread.create", {
+        projectId: main.projectId,
+        title: t("chat.subagent.defaultTitle").replace("{agent}", label),
+        providerId: agentId,
+        parentThreadId: main.id,
+      })) as Thread
+      deps.store.update({ threads: [...deps.store.getSnapshot().threads, child] })
+      deps.store.openThread(child.id)
+      selectThreadTab(main.id, `agent:${child.id}`)
+      await deps.connection.openThread(child.id)
+    })().catch(fail)
+  }
+
+  /** 关闭子代理标签：用户添加的归档（还在跑的 run 会停下），派生的只是不再显示。 */
+  function closeTab(tabId: string): void {
+    if (!mainId) return
+    if (tabId.startsWith("spawned:")) {
+      dismissSpawnedTab(mainId, tabId.slice("spawned:".length))
+      return
+    }
+    if (!tabId.startsWith("agent:")) return
+    const childId = tabId.slice("agent:".length)
+    if (selected === tabId) selectThreadTab(mainId, "main")
+    void deps.connection
+      .call("thread.archive", { threadId: childId })
+      .then((archived) => {
+        patchThread(deps.store, childId, archived as Thread)
+        deps.store.closeThread(childId)
+        void deps.connection.closeThread(childId).catch(() => undefined)
+      })
+      .catch(fail)
+  }
+
+  const fileRoot = mainId
   const files = useMemo(
     () =>
-      threadId
+      fileRoot
         ? async () => {
-            const entries = (await deps.connection.call("workspace.tree", { threadId })) as Array<{
-              path: string
-            }>
+            const entries = (await deps.connection.call("workspace.tree", {
+              threadId: fileRoot,
+            })) as Array<{ path: string }>
             return entries.map((entry) => entry.path)
           }
         : undefined,
-    [deps.connection, threadId],
+    [deps.connection, fileRoot],
   )
 
   const commands = useMemo<ComposerCommand[]>(
@@ -163,9 +275,9 @@ export function ChatViewContainer({
       ) : null}
       <ChatView
         thread={thread}
-        events={state.events}
-        streamingText={state.streamingText}
-        capabilities={state.providerCapabilities}
+        events={events}
+        streamingText={streamingText}
+        capabilities={capabilities}
         agents={agents}
         catalog={catalog}
         onLoadModels={load}
@@ -186,6 +298,24 @@ export function ChatViewContainer({
         {...(onToggleRight ? { onToggleRight } : {})}
         {...(layoutControls !== undefined ? { layoutControls } : {})}
         {...(project ? { openIn: <OpenInButton path={project.rootPath} /> } : {})}
+        {...(main
+          ? {
+              tabs: {
+                tabs,
+                activeId: activeTabId,
+                onSelect: (tabId: string) => selectThreadTab(main.id, tabId),
+                onClose: closeTab,
+                agents,
+                onAdd: addSubagent,
+              },
+              onOpenSubagent: (subagentId: string) => openSpawnedTab(main.id, subagentId),
+              onBackToMain: () => selectThreadTab(main.id, "main"),
+            }
+          : {})}
+        subagent={viewSubagent ?? null}
+        {...(viewChild
+          ? { empty: { title: t("chat.subagent.emptyTitle"), hint: t("chat.subagent.emptyHint") } }
+          : {})}
       />
     </>
   )

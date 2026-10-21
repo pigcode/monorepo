@@ -64,6 +64,8 @@ export const threadSchema = z.object({
   updatedAt: z.string().datetime(),
   archivedAt: z.string().datetime().nullable(),
   lastRunId: z.string().nullable(),
+  /** 子代理会话所属的主会话；主会话为 null。子代理共用主会话的项目与工作目录，不出现在侧栏。 */
+  parentThreadId: z.string().nullable().optional(),
 })
 
 /** 一次运行的生命周期状态。 */

@@ -137,9 +137,11 @@ function UserActions({ text }: { text: string }) {
 function WorkItemView({
   item,
   onViewTool,
+  onOpenSubagent,
 }: {
   item: WorkItem
   onViewTool: ((tool: ToolCall) => void) | undefined
+  onOpenSubagent: ((id: string) => void) | undefined
 }) {
   switch (item.kind) {
     case "message":
@@ -155,7 +157,7 @@ function WorkItemView({
     case "plan":
       return <PlanCard plan={item.plan} />
     case "subagent":
-      return <SubagentCard subagent={item.subagent} />
+      return <SubagentCard subagent={item.subagent} onOpen={onOpenSubagent} />
   }
 }
 
@@ -167,6 +169,7 @@ export interface TurnViewProps {
   onApproval: (requestId: string, decision: ApprovalDecision) => void
   onViewTool: ((tool: ToolCall) => void) | undefined
   onViewDiff: ((summary: FileChangeSummary) => void) | undefined
+  onOpenSubagent?: ((id: string) => void) | undefined
 }
 
 function TurnViewImpl({
@@ -176,6 +179,7 @@ function TurnViewImpl({
   onApproval,
   onViewTool,
   onViewDiff,
+  onOpenSubagent,
 }: TurnViewProps) {
   const { t } = useLocale()
   const ended = isEnded(turn)
@@ -205,7 +209,12 @@ function TurnViewImpl({
         {hasWork && open ? (
           <div className="turn-work">
             {turn.work.map((item) => (
-              <WorkItemView key={item.key} item={item} onViewTool={onViewTool} />
+              <WorkItemView
+                key={item.key}
+                item={item}
+                onViewTool={onViewTool}
+                onOpenSubagent={onOpenSubagent}
+              />
             ))}
           </div>
         ) : null}
@@ -258,5 +267,6 @@ export const TurnView = memo(
     previous.agentLabel === next.agentLabel &&
     previous.onApproval === next.onApproval &&
     previous.onViewTool === next.onViewTool &&
-    previous.onViewDiff === next.onViewDiff,
+    previous.onViewDiff === next.onViewDiff &&
+    previous.onOpenSubagent === next.onOpenSubagent,
 )

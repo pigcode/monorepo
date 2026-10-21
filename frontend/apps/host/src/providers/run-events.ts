@@ -81,6 +81,7 @@ export function mapProviderEvent(run: ActiveRun, event: ProviderEvent, hooks: Ru
         id: event.toolCallId,
         name: event.name,
         ...(event.description === undefined ? {} : { description: event.description }),
+        ...(event.prompt === undefined ? {} : { prompt: event.prompt }),
         ...(event.model === undefined ? {} : { model: event.model }),
         ...parentField(event.parentToolUseId),
       })

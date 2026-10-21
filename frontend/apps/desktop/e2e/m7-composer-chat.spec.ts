@@ -1,49 +1,6 @@
 /** 输入框、按轮时间线、运行指示与「用…打开」的端到端验收（fake provider）。 */
-import { mkdirSync, rmSync, writeFileSync } from "node:fs"
-import { join } from "node:path"
-import {
-  _electron as electron,
-  expect,
-  test,
-  type ElectronApplication,
-  type Page,
-} from "@playwright/test"
-import { addProject } from "./projects"
-
-/** 过滤 undefined，满足 Playwright env 的 string 值约束。 */
-function launchEnv(extra: Record<string, string>): Record<string, string> {
-  return {
-    ...Object.fromEntries(
-      Object.entries(process.env).filter(
-        (entry): entry is [string, string] => entry[1] !== undefined,
-      ),
-    ),
-    PIGCODE_PROVIDER: "fake",
-    ...extra,
-  }
-}
-
-/** 建一个带两个源文件的项目，并在里面开一个新会话。 */
-async function openThread(
-  name: string,
-  extra: Record<string, string> = {},
-): Promise<{ app: ElectronApplication; page: Page; root: string }> {
-  const root = `/tmp/pigcode-e2e-${name}`
-  rmSync(root, { recursive: true, force: true })
-  mkdirSync(join(root, "src"), { recursive: true })
-  writeFileSync(join(root, "README.md"), "# Demo\n")
-  writeFileSync(join(root, "src/index.ts"), "export const answer = 42\n")
-  const app = await electron.launch({ args: ["."], env: launchEnv(extra) })
-  const page = await app.firstWindow()
-  await addProject(app, page, root)
-  await page
-    .locator(".proj-block")
-    .filter({ hasText: `pigcode-e2e-${name}` })
-    .locator(".proj-add")
-    .click()
-  await expect(page.locator(".tiptap")).toHaveAttribute("contenteditable", "true")
-  return { app, page, root }
-}
+import { expect, test } from "@playwright/test"
+import { openThread } from "./projects"
 
 test("composer: agent rail, models, thinking depth, permissions, @files and /commands", async () => {
   const { app, page } = await openThread("composer")
@@ -119,9 +76,13 @@ test("timeline folds a finished turn's work and the sidebar animates running thr
     await page.keyboard.type("tools")
     await page.keyboard.press("Enter")
 
-    // 运行中：侧栏与线程头显示点阵，工作区展开并实时计时。
+    // 运行中：侧栏显示点阵，线程头只有标签、没有状态胶囊；工作区展开并实时计时。
     await expect(page.locator(".sess.is-active .sess-indicator .dot-matrix")).toBeVisible()
-    await expect(page.locator(".status-pill.is-running .dot-matrix")).toBeVisible()
+    await expect(page.locator(".panel-top .status-pill")).toHaveCount(0)
+    await expect(page.locator(".thread-tab[data-kind='main']")).toHaveAttribute(
+      "data-active",
+      "true",
+    )
     await expect(page.getByRole("button", { name: /工作中/ })).toBeVisible()
     await expect(page.locator(".turn-work .tool-row").first()).toBeVisible()
 

@@ -1,7 +1,7 @@
 /** 子代理卡片；用 details 折叠展示子 agent 的消息与工具调用。 */
 import type { ReactNode } from "react"
 import type { ThreadEvent } from "@pigcode/contracts"
-import { Bot, ChevronRight } from "lucide-react"
+import { Bot, ChevronRight, SquareArrowOutUpRight } from "lucide-react"
 import { useLocale } from "@pigcode/ui-primitives"
 import { toolIcon, toolPreview, type ToolCall, type ToolStatus } from "./tool-card"
 
@@ -13,9 +13,15 @@ export interface SubagentCall {
   id: string
   name: string
   description?: string
+  /** 主 agent 交给它的完整任务。 */
+  prompt?: string
   model?: string
   status: SubagentStatus
   events: ThreadEvent[]
+  /** 子 agent 交回给主 agent 的结果。 */
+  output?: string
+  /** 派生它的 run；标签栏只自动展示最近一次 run 派生的子 agent。 */
+  runId?: string | null
 }
 
 const STATUS_KEYS = {
@@ -126,8 +132,14 @@ function SubagentEvents({ events }: { events: ThreadEvent[] }) {
   return <>{nodes}</>
 }
 
-/** 渲染子 agent；默认折叠，点击标题展开子消息。 */
-export function SubagentCard({ subagent }: { subagent: SubagentCall }) {
+/** 渲染子 agent；默认折叠，点击标题展开子消息，「在标签页中打开」查看完整过程。 */
+export function SubagentCard({
+  subagent,
+  onOpen,
+}: {
+  subagent: SubagentCall
+  onOpen?: ((id: string) => void) | undefined
+}) {
   const { t } = useLocale()
   return (
     <details className="subagent-card" data-status={subagent.status}>
@@ -145,6 +157,21 @@ export function SubagentCard({ subagent }: { subagent: SubagentCall }) {
         <span className={`subagent-status ${subagent.status}`}>
           {t(STATUS_KEYS[subagent.status])}
         </span>
+        {onOpen ? (
+          <button
+            type="button"
+            className="subagent-open"
+            title={t("chat.subagent.open")}
+            aria-label={`${t("chat.subagent.open")} ${subagent.name}`}
+            onClick={(event) => {
+              event.preventDefault()
+              event.stopPropagation()
+              onOpen(subagent.id)
+            }}
+          >
+            <SquareArrowOutUpRight className="ic ic-sm" aria-hidden="true" />
+          </button>
+        ) : null}
       </summary>
       <div className="subagent-body">
         {subagent.events.length > 0 ? (

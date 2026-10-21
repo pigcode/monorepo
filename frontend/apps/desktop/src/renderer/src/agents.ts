@@ -1,6 +1,6 @@
 /** 输入框模型选择器的数据：已注册的 agent、各自的安装状态与按需读取的模型目录。 */
 import { useCallback, useEffect, useRef, useState } from "react"
-import type { ProviderModel } from "@pigcode/contracts"
+import type { ProviderCapabilities, ProviderModel } from "@pigcode/contracts"
 import type { Connection } from "@pigcode/client-runtime"
 import type { ComposerAgent, ComposerModel, ComposerModelCatalog } from "@pigcode/ui-composer"
 import { listProviders } from "./providers"
@@ -52,6 +52,31 @@ export function useAgents(
     }
   }, [connection, revision, connected])
   return agents
+}
+
+/** 各 agent 的能力；子代理标签可能和主会话用不同的 agent，按标签所在会话的 agent 取能力。 */
+export function useProviderCapabilities(
+  connection: Connection,
+  revision: number,
+  connected: boolean,
+): Readonly<Record<string, ProviderCapabilities>> {
+  const [capabilities, setCapabilities] = useState<Record<string, ProviderCapabilities>>({})
+  useEffect(() => {
+    if (!connected) return undefined
+    let cancelled = false
+    void listProviders(connection)
+      .then((providers) => {
+        if (cancelled) return
+        setCapabilities(
+          Object.fromEntries(providers.map((provider) => [provider.id, provider.capabilities])),
+        )
+      })
+      .catch(() => undefined)
+    return () => {
+      cancelled = true
+    }
+  }, [connection, revision, connected])
+  return capabilities
 }
 
 /**

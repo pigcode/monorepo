@@ -136,6 +136,7 @@ describe("normalizeSdkMessage", () => {
               name: "Task",
               input: {
                 description: "Explore the repo",
+                prompt: "List the entry points and how they are wired.",
                 subagent_type: "Explore",
                 model: "haiku",
               },
@@ -154,6 +155,7 @@ describe("normalizeSdkMessage", () => {
         toolCallId: "task_1",
         name: "Explore",
         description: "Explore the repo",
+        prompt: "List the entry points and how they are wired.",
         model: "haiku",
       },
     ])
