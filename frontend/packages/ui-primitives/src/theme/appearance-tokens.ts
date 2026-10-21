@@ -73,31 +73,31 @@ export const overlayVars = [
 type OverlayName = (typeof overlayVars)[number]
 
 // 叠色用的黑与白，取自 tokens.css（浅色是带一点冷调的深灰，不是纯黑）
-const ink: Record<Tone, string> = { light: "oklch(26% 0.02 280", dark: "oklch(100% 0 0" }
+const ink: Record<Tone, string> = { light: "oklch(21% 0.006 286", dark: "oklch(100% 0 0" }
 // 上面两种叠色的近似 sRGB，只用于插值
-const inkHex: Record<Tone, Hex> = { light: "#22232E", dark: "#FFFFFF" }
+const inkHex: Record<Tone, Hex> = { light: "#18181B", dark: "#FFFFFF" }
 
 // tokens.css 中叠色变量的 alpha；磨砂下 glass.css 改了其中三项
 const overlayBases: Record<Tone, Record<OverlayName, number>> = {
   light: {
-    "--border": 0.085,
-    "--border-strong": 0.14,
-    "--divider": 0.07,
-    "--hover": 0.05,
-    "--active": 0.085,
-    "--field": 0.045,
+    "--border": 0.1,
+    "--border-strong": 0.16,
+    "--divider": 0.075,
+    "--hover": 0.045,
+    "--active": 0.075,
+    "--field": 0.04,
     "--track": 0.08,
-    "--scroll-thumb": 0.2,
+    "--scroll-thumb": 0.18,
   },
   dark: {
-    "--border": 0.075,
+    "--border": 0.08,
     "--border-strong": 0.13,
     "--divider": 0.065,
-    "--hover": 0.055,
-    "--active": 0.09,
-    "--field": 0.055,
+    "--hover": 0.05,
+    "--active": 0.085,
+    "--field": 0.05,
     "--track": 0.09,
-    "--scroll-thumb": 0.2,
+    "--scroll-thumb": 0.18,
   },
 }
 
@@ -110,7 +110,7 @@ const glassOverlayBases: Record<Tone, Partial<Record<OverlayName, number>>> = {
 const glassAvatarAlpha: Record<Tone, number> = { light: 0.08, dark: 0.1 }
 
 // pigclaude 只改了 fg 时，用来推出次级文字色的背景
-const pigclaudeBg: Record<Tone, Hex> = { light: "#FCFDFE", dark: "#131317" }
+const pigclaudeBg: Record<Tone, Hex> = { light: "#FFFFFF", dark: "#151515" }
 
 const defaultContrast = 45
 const white: Hex = "#FFFFFF"
@@ -201,29 +201,29 @@ function accentGroup(accent: Hex): Vars {
 function surfacePaints(bg: Hex, tone: Tone): Record<string, Paint> {
   if (tone === "light") {
     return {
-      "--window": paint(mixHex(bg, black, 0.045)),
-      "--wall-1": paint(mixHex(bg, black, 0.07), 0.9),
-      "--wall-2": paint(mixHex(bg, white, 0.8), 0.9),
-      "--sidebar": paint(mixHex(bg, black, 0.045), 0.55),
+      "--window": paint(mixHex(bg, black, 0.03)),
+      "--wall-1": paint(mixHex(bg, black, 0.03), 0),
+      "--wall-2": paint(mixHex(bg, black, 0.03), 0),
+      "--sidebar": paint(mixHex(bg, black, 0.03), 0.6),
       "--bg": paint(bg),
       "--surface": paint(mixHex(bg, white, 0.7)),
-      "--panel": overlayPaint(tone, 0.04),
+      "--panel": overlayPaint(tone, 0.035),
       "--popover": paint(mixHex(bg, white, 0.6)),
-      "--popover-glass": paint(mixHex(bg, white, 0.5), 0.86),
-      "--avatar": paint(mixHex(bg, black, 0.09)),
+      "--popover-glass": paint(mixHex(bg, white, 0.5), 0.9),
+      "--avatar": paint(mixHex(bg, black, 0.1)),
     }
   }
   return {
-    "--window": paint(mixHex(bg, black, 0.28)),
-    "--wall-1": paint(mixHex(bg, white, 0.05), 0.85),
-    "--wall-2": paint(mixHex(bg, black, 0.4), 0.9),
-    "--sidebar": paint(mixHex(bg, black, 0.28), 0.5),
+    "--window": paint(mixHex(bg, black, 0.38)),
+    "--wall-1": paint(mixHex(bg, black, 0.38), 0),
+    "--wall-2": paint(mixHex(bg, black, 0.38), 0),
+    "--sidebar": paint(mixHex(bg, black, 0.38), 0.5),
     "--bg": paint(bg),
-    "--surface": paint(mixHex(bg, white, 0.04)),
-    "--panel": overlayPaint(tone, 0.035),
-    "--popover": paint(mixHex(bg, white, 0.055)),
-    "--popover-glass": paint(mixHex(bg, white, 0.065), 0.86),
-    "--avatar": paint(mixHex(bg, white, 0.12)),
+    "--surface": paint(mixHex(bg, white, 0.03)),
+    "--panel": overlayPaint(tone, 0.03),
+    "--popover": paint(mixHex(bg, white, 0.035)),
+    "--popover-glass": paint(mixHex(bg, white, 0.035), 0.9),
+    "--avatar": paint(mixHex(bg, white, 0.1)),
   }
 }
 
