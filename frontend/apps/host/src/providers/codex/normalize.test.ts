@@ -32,6 +32,7 @@ describe("normalizeCodexNotification", () => {
       name: "Bash",
       output: "hi",
       isError: false,
+      exitCode: 0,
     })
   })
 
@@ -52,7 +53,60 @@ describe("normalizeCodexNotification", () => {
       name: "Bash",
       output: "",
       isError: true,
+      exitCode: 1,
     })
+  })
+
+  it("maps MCP tool calls with the same mcp__server__tool names as Claude", () => {
+    const item = {
+      id: "m1",
+      type: "mcpToolCall",
+      server: "pigcode",
+      tool: "browser_click",
+      arguments: { ref: "e3" },
+      status: "inProgress",
+    }
+    expect(normalizeCodexNotification("item/started", { item })).toEqual([
+      {
+        type: "tool.started",
+        toolCallId: "m1",
+        name: "mcp__pigcode__browser_click",
+        input: { ref: "e3" },
+      },
+    ])
+    const content = [{ type: "text", text: 'Clicked button "登录".' }]
+    expect(
+      normalizeCodexNotification("item/completed", {
+        item: { ...item, status: "completed", result: { content } },
+      }),
+    ).toEqual([
+      {
+        type: "tool.completed",
+        toolCallId: "m1",
+        name: "mcp__pigcode__browser_click",
+        output: content,
+        isError: false,
+      },
+    ])
+    expect(
+      normalizeCodexNotification("item/completed", {
+        item: { ...item, status: "failed", error: { message: "No element matches e3." } },
+      }),
+    ).toMatchObject([{ output: "No element matches e3.", isError: true }])
+  })
+
+  it("streams command output as live deltas", () => {
+    expect(
+      normalizeCodexNotification("item/commandExecution/outputDelta", {
+        threadId: "th",
+        turnId: "t1",
+        itemId: "i1",
+        delta: "line 1\n",
+      }),
+    ).toEqual([{ type: "tool.outputDelta", toolCallId: "i1", delta: "line 1\n" }])
+    expect(normalizeCodexNotification("item/commandExecution/outputDelta", { delta: "x" })).toEqual(
+      [],
+    )
   })
 
   it("maps started command execution and file changes", () => {

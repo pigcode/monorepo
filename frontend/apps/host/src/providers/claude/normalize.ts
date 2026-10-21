@@ -148,6 +148,7 @@ function subagentStarted(
 ): ProviderEvent {
   const fields = asRecord(input)
   const description = asText(fields?.description)
+  const prompt = asText(fields?.prompt)
   const model = asText(fields?.model)
   const name = asText(fields?.subagent_type) ?? description ?? toolName
   const info: SubagentInfo = { name }
@@ -159,6 +160,7 @@ function subagentStarted(
     toolCallId,
     name,
     ...(description === undefined ? {} : { description }),
+    ...(prompt === undefined ? {} : { prompt }),
     ...(model === undefined ? {} : { model }),
     ...parentFields(parentToolUseId),
   }

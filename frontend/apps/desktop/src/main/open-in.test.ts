@@ -1,15 +1,23 @@
-/** 验证打开项目文件夹前的路径校验、编辑器探测与编辑器 URL。 */
+/** 验证打开项目文件夹前的路径校验、应用检测与各平台的启动命令。 */
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { afterAll, describe, expect, it } from "vitest"
-import { editorUrl, installedEditors, readDirectory, settleOpenPath } from "./open-in"
+import { appDefsFor, detectApps, findOnPath, type DetectedApp } from "./open-apps"
+import { launchCommand, readDirectory, settleOpenPath } from "./open-in"
 
 const folder = mkdtempSync(join(tmpdir(), "pigcode-open-in-"))
 const file = join(folder, "notes.txt")
 writeFileSync(file, "")
 
 afterAll(() => rmSync(folder, { recursive: true, force: true }))
+
+/** 按 id 取某个平台的检测结果。 */
+function detected(platform: NodeJS.Platform, id: string, location: string): DetectedApp {
+  const def = appDefsFor(platform).find((item) => item.id === id)
+  if (!def) throw new Error(`no app ${id} on ${platform}`)
+  return { def, location }
+}
 
 describe("readDirectory", () => {
   it("accepts only existing absolute directories", () => {
@@ -31,24 +39,84 @@ describe("settleOpenPath", () => {
   })
 })
 
-describe("installedEditors", () => {
-  it("lists the editors whose URL scheme the system knows", () => {
-    const names: Record<string, string> = { "cursor://": "Cursor", "windsurf://": "Windsurf" }
-    expect(installedEditors((url) => names[url] ?? "")).toEqual([
-      { id: "cursor", name: "Cursor" },
-      { id: "windsurf", name: "Windsurf" },
+describe("detectApps", () => {
+  it("lists the macOS apps whose bundles exist, file manager first", () => {
+    const installed = new Set([
+      "/System/Library/CoreServices/Finder.app",
+      "/Applications/Cursor.app",
+      "/Applications/Trae CN.app",
+      "/Applications/Zed.app",
+      "/Applications/CodeBuddy.app",
+      "/System/Applications/Utilities/Terminal.app",
+      "/Applications/iTerm.app",
+      "/Applications/Ghostty.app",
     ])
-    expect(installedEditors(() => "")).toEqual([])
+    const apps = detectApps(appDefsFor("darwin"), (path) => installed.has(path), "")
+    expect(apps.map((app) => app.def.name)).toEqual([
+      "Finder",
+      "Cursor",
+      "Trae",
+      "Zed",
+      "CodeBuddy",
+      "Terminal",
+      "iTerm",
+      "Ghostty",
+    ])
+    expect(apps.find((app) => app.def.id === "trae")?.location).toBe("/Applications/Trae CN.app")
+  })
+
+  it("finds Linux apps on PATH and always offers the file manager", () => {
+    const onPath = new Set(["/usr/bin/code", "/opt/bin/ghostty"])
+    const apps = detectApps(appDefsFor("linux"), (path) => onPath.has(path), "/usr/bin:/opt/bin")
+    expect(apps.map((app) => [app.def.id, app.location])).toEqual([
+      ["file-manager", ""],
+      ["vscode", "/usr/bin/code"],
+      ["ghostty", "/opt/bin/ghostty"],
+    ])
+    expect(findOnPath("missing", "/usr/bin", () => false)).toBeNull()
   })
 })
 
-describe("editorUrl", () => {
-  it("builds the editor's open-folder URL on every platform", () => {
-    expect(editorUrl("vscode", "/home/me/my app")).toBe("vscode://file/home/me/my%20app")
-    expect(editorUrl("cursor", "/Users/me/项目#1")).toBe(
-      "cursor://file/Users/me/%E9%A1%B9%E7%9B%AE%231",
+describe("launchCommand", () => {
+  it("hands file managers to the shell and opens other apps with the folder", () => {
+    expect(
+      launchCommand(
+        detected("darwin", "finder", "/System/Library/CoreServices/Finder.app"),
+        "/w",
+        "darwin",
+      ),
+    ).toBeNull()
+    expect(
+      launchCommand(
+        detected("darwin", "ghostty", "/Applications/Ghostty.app"),
+        "/w/my app",
+        "darwin",
+      ),
+    ).toEqual({
+      command: "open",
+      args: ["-a", "/Applications/Ghostty.app", "/w/my app"],
+    })
+    expect(
+      launchCommand(detected("linux", "gnome-terminal", "/usr/bin/gnome-terminal"), "/w", "linux"),
+    ).toEqual({
+      command: "/usr/bin/gnome-terminal",
+      args: ["--working-directory=/w"],
+    })
+    expect(launchCommand(detected("linux", "vscode", "/usr/bin/code"), "/w", "linux")).toEqual({
+      command: "/usr/bin/code",
+      args: ["/w"],
+    })
+    const wt = launchCommand(
+      detected("win32", "windows-terminal", "C:\\wt.exe"),
+      "C:\\work\\app",
+      "win32",
     )
-    expect(editorUrl("vscode", "C:\\work\\app")).toBe("vscode://file/C:/work/app")
-    expect(editorUrl("notepad", "/home/me")).toBeNull()
+    expect(wt).toEqual({ command: "C:\\wt.exe", args: ["-d", "C:\\work\\app"] })
+    const powershell = launchCommand(
+      detected("win32", "powershell", "C:\\ps.exe"),
+      "C:\\it's",
+      "win32",
+    )
+    expect(powershell?.args.at(-1)).toBe("Set-Location -LiteralPath 'C:\\it''s'")
   })
 })

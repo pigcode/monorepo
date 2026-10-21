@@ -31,10 +31,10 @@ test("polished shell: auto title, command palette and shortcuts", async () => {
     await page.keyboard.press("Enter")
     await expect(page.locator(".msg-user").filter({ hasText: "检查登录流程" })).toBeVisible()
 
-    // 第一条消息后自动命名线程，侧栏与线程头同步显示；聊天区不再有会话标签栏。
+    // 第一条消息后自动命名线程，侧栏与线程头同步显示；线程头的标签栏只有主会话一个标签。
     await expect(page.locator(".sess-title").first()).toHaveText("检查登录流程")
     await expect(page.locator(".panel-top .title-text")).toHaveText("检查登录流程")
-    await expect(page.locator(".panel [role='tablist']")).toHaveCount(0)
+    await expect(page.locator(".panel-top").getByRole("tab")).toHaveText(["检查登录流程"])
 
     // ⌘K 打开命令面板；过滤后回车执行“显示或隐藏右侧面板”。
     await page.keyboard.press("Meta+k")

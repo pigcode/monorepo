@@ -1,18 +1,15 @@
-/** 在系统文件管理器或本机装的编辑器里打开项目文件夹；只接受已存在的绝对目录。 */
+/** 用本机的文件管理器、编辑器或终端打开项目文件夹；只接受已存在的绝对目录。 */
+import { spawn } from "node:child_process"
 import { statSync } from "node:fs"
 import { isAbsolute } from "node:path"
+import type { DetectedApp, OpenAppKind } from "./open-apps"
 
-/** 能用 URL 打开文件夹的编辑器；安装时会在系统里登记自己的 scheme。 */
-export const EDITORS = [
-  { id: "cursor", name: "Cursor", scheme: "cursor" },
-  { id: "vscode", name: "VS Code", scheme: "vscode" },
-  { id: "windsurf", name: "Windsurf", scheme: "windsurf" },
-] as const
-
-/** 已安装编辑器的展示信息。 */
-export interface EditorInfo {
+/** 交给页面的应用信息；icon 是 data URL，取不到时为 null。 */
+export interface OpenAppInfo {
   id: string
   name: string
+  kind: OpenAppKind
+  icon: string | null
 }
 
 /** 已存在的绝对目录原样返回，其余一律为 null。 */
@@ -40,25 +37,28 @@ export function settleOpenPath(result: Promise<string>, waitMs = 1500): Promise<
   return Promise.race([result, timeout]).finally(() => clearTimeout(timer))
 }
 
-/** 系统登记了 URL scheme 的编辑器，即本机装了的编辑器。 */
-export function installedEditors(appNameForProtocol: (url: string) => string): EditorInfo[] {
-  return EDITORS.filter((editor) => appNameForProtocol(`${editor.scheme}://`) !== "").map(
-    ({ id, name }) => ({ id, name }),
-  )
+/**
+ * 用指定应用打开文件夹的命令。文件管理器返回 null，交给 shell.openPath；
+ * macOS 统一用 `open -a`，不依赖 PATH 上的 CLI（从 Dock 启动的应用拿不到 shell 的 PATH）。
+ */
+export function launchCommand(
+  app: DetectedApp,
+  folder: string,
+  platform: NodeJS.Platform = process.platform,
+): { command: string; args: string[] } | null {
+  if (app.def.kind === "file-manager") return null
+  if (platform === "darwin") return { command: "open", args: ["-a", app.location, folder] }
+  return { command: app.location, args: app.def.args?.(folder) ?? [folder] }
 }
 
-/**
- * 编辑器打开文件夹的 URL，例如 vscode://file/home/me/app 或 vscode://file/C:/work/app。
- * 每段路径单独编码，# 和 ? 这样的字符不会截断 URL；未知编辑器返回 null。
- */
-export function editorUrl(editorId: unknown, folder: string): string | null {
-  const editor = EDITORS.find((item) => item.id === editorId)
-  if (!editor) return null
-  const slashed = folder.replace(/\\/g, "/")
-  const path = (slashed.startsWith("/") ? slashed : `/${slashed}`)
-    .split("/")
-    .map((segment) => encodeURIComponent(segment))
-    .join("/")
-    .replace(/^\/([A-Za-z])%3A(?=\/|$)/, "/$1:")
-  return `${editor.scheme}://file${path}`
+/** 脱离 Pigcode 启动应用：不等它退出，也不接它的输出；启动失败时抛错。 */
+export function launchDetached(command: string, args: string[], cwd: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const child = spawn(command, args, { cwd, detached: true, stdio: "ignore", windowsHide: false })
+    child.once("error", reject)
+    child.once("spawn", () => {
+      child.unref()
+      resolve()
+    })
+  })
 }

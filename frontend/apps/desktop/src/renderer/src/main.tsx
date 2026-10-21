@@ -17,9 +17,14 @@ if (savedLocale === "zh-CN" || savedLocale === "en-US") locale.setLocale(savedLo
 
 const connection = new Connection({
   onEvent: (event) => store.addEvent(event),
+  // 打开长会话时整段历史一次写入，只触发一次渲染。
+  onEvents: (events) => store.addEvents(events),
+  // 流式增量按帧合并写入；新事件到达前 store 会先写完已排队的文本。
   onDelta: (delta) => {
     if (delta.event.type === "message.delta") {
-      store.appendDelta(delta.threadId, delta.event.text)
+      store.queueDelta(delta.threadId, delta.event.text)
+    } else if (delta.event.type === "tool.outputDelta") {
+      store.queueToolOutput(delta.threadId, delta.event.toolCallId, delta.event.delta)
     }
   },
   onStatus: (status) => store.update({ status }),

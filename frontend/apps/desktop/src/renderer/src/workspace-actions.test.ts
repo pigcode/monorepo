@@ -76,7 +76,10 @@ describe("workspace actions", () => {
     )
     const archivedAt = "2026-10-21T00:00:00.000Z"
     const { connection, closeThread } = fakeConnection({
-      "thread.archive": ({ threadId }) => ({ ...thread(threadId, "p1", "2026-10-20T03:00:00.000Z"), archivedAt }),
+      "thread.archive": ({ threadId }) => ({
+        ...thread(threadId, "p1", "2026-10-20T03:00:00.000Z"),
+        archivedAt,
+      }),
     })
 
     await expect(archiveThread(connection, store, "t1")).resolves.toBe("t4")
@@ -93,7 +96,10 @@ describe("workspace actions", () => {
       archivedAt: "2026-10-21T00:00:00.000Z",
     })
     const store = storeWith(
-      [thread("t1", "p1", "2026-10-20T03:00:00.000Z"), thread("t2", "p2", "2026-10-20T04:00:00.000Z")],
+      [
+        thread("t1", "p1", "2026-10-20T03:00:00.000Z"),
+        thread("t2", "p2", "2026-10-20T04:00:00.000Z"),
+      ],
       "t1",
     )
     const { connection } = fakeConnection({ "thread.archive": archive })
@@ -104,7 +110,10 @@ describe("workspace actions", () => {
     expect(store.getSnapshot().activeThreadId).toBeNull()
 
     const other = storeWith(
-      [thread("t1", "p1", "2026-10-20T03:00:00.000Z"), thread("t3", "p1", "2026-10-20T01:00:00.000Z")],
+      [
+        thread("t1", "p1", "2026-10-20T03:00:00.000Z"),
+        thread("t3", "p1", "2026-10-20T01:00:00.000Z"),
+      ],
       "t1",
     )
     await expect(archiveThread(connection, other, "t3")).resolves.toBeNull()

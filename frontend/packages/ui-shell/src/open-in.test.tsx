@@ -1,26 +1,39 @@
-/** 验证线程头的「IDE ↗」菜单：本机编辑器、文件管理器与复制路径。 */
+/** 验证线程头的「用…打开」分段按钮：应用图标、记住上次选的应用、失败提示与复制路径。 */
 // @vitest-environment jsdom
-import { cleanup, render, screen } from "@testing-library/react"
+import { cleanup, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
-import { afterEach, describe, expect, it, vi } from "vitest"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { LocaleProvider } from "@pigcode/ui-primitives"
-import { OpenInMenu } from "./open-in"
+import { OpenInButton } from "./open-in"
 import { ToastProvider } from "./toast"
+
+const APPS = [
+  {
+    id: "finder",
+    name: "Finder",
+    kind: "file-manager" as const,
+    icon: "data:image/png;base64,AAAA",
+  },
+  { id: "cursor", name: "Cursor", kind: "editor" as const, icon: "data:image/png;base64,BBBB" },
+  { id: "ghostty", name: "Ghostty", kind: "terminal" as const, icon: null },
+]
 
 /** 用替身代替 preload 暴露的原生桥。 */
 function mockNative(value: Partial<NonNullable<Window["pigcodeNative"]>>): void {
   Object.defineProperty(window, "pigcodeNative", { configurable: true, value })
 }
 
-function renderMenu(path: string) {
+function renderButton(path: string) {
   render(
     <LocaleProvider locale="zh-CN">
       <ToastProvider>
-        <OpenInMenu path={path} />
+        <OpenInButton path={path} />
       </ToastProvider>
     </LocaleProvider>,
   )
 }
+
+beforeEach(() => window.localStorage.clear())
 
 afterEach(() => {
   cleanup()
@@ -28,40 +41,53 @@ afterEach(() => {
   Reflect.deleteProperty(navigator, "clipboard")
 })
 
-describe("OpenInMenu", () => {
-  it("opens the project in an installed editor or in Finder", async () => {
-    const listEditors = vi.fn().mockResolvedValue([
-      { id: "cursor", name: "Cursor" },
-      { id: "vscode", name: "VS Code" },
+describe("OpenInButton", () => {
+  it("opens with the file manager first, then remembers the app picked from the list", async () => {
+    const listOpenApps = vi.fn().mockResolvedValue(APPS)
+    const openWithApp = vi.fn().mockResolvedValue(undefined)
+    mockNative({ platform: "darwin", listOpenApps, openWithApp })
+    renderButton("/Users/me/app")
+
+    const main = await screen.findByRole("button", { name: "在 Finder 中打开" })
+    expect(main.querySelector("img")?.getAttribute("src")).toBe(APPS[0]?.icon)
+    await userEvent.click(main)
+    expect(openWithApp).toHaveBeenLastCalledWith("finder", "/Users/me/app")
+
+    await userEvent.click(screen.getByRole("button", { name: "选择打开方式" }))
+    const items = await screen.findAllByRole("menuitem")
+    expect(items.map((item) => item.querySelector(".grow")?.textContent)).toEqual([
+      "Finder",
+      "Cursor",
+      "Ghostty",
+      "复制路径",
     ])
-    const openInEditor = vi.fn().mockResolvedValue(undefined)
-    const openFolder = vi.fn().mockResolvedValue(undefined)
-    mockNative({ platform: "darwin", listEditors, openInEditor, openFolder })
-    renderMenu("/Users/me/app")
-
-    await userEvent.click(screen.getByRole("button", { name: "IDE" }))
-    expect(await screen.findByRole("menuitem", { name: "在 VS Code 中打开" })).toBeTruthy()
-    await userEvent.click(screen.getByRole("menuitem", { name: "在 Cursor 中打开" }))
-    expect(openInEditor).toHaveBeenCalledExactlyOnceWith("cursor", "/Users/me/app")
-
-    await userEvent.click(screen.getByRole("button", { name: "IDE" }))
-    await userEvent.click(await screen.findByRole("menuitem", { name: "在访达中打开" }))
-    expect(openFolder).toHaveBeenCalledExactlyOnceWith("/Users/me/app")
+    expect(screen.getByRole("menuitem", { name: "Ghostty" })).toBeTruthy()
+    // 没有图标的应用显示首字母。
+    expect(items[2]?.querySelector(".app-icon.is-letter")?.textContent).toBe("G")
+    await userEvent.click(screen.getByRole("menuitem", { name: "Cursor" }))
+    expect(openWithApp).toHaveBeenLastCalledWith("cursor", "/Users/me/app")
+    expect(window.localStorage.getItem("pigcode.openInApp")).toBe("cursor")
+    expect(await screen.findByRole("button", { name: "在 Cursor 中打开" })).toBeTruthy()
     // 挂载时取一次，每次打开菜单再刷新。
-    expect(listEditors).toHaveBeenCalledTimes(3)
+    expect(listOpenApps).toHaveBeenCalledTimes(2)
   })
 
-  it("says when no editor is installed and still copies the path", async () => {
+  it("names the Windows file manager in the current language and copies the path", async () => {
     const writeText = vi.fn().mockResolvedValue(undefined)
     Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText } })
-    mockNative({ platform: "win32", listEditors: vi.fn().mockResolvedValue([]) })
-    renderMenu("C:\\work\\app")
+    mockNative({
+      platform: "win32",
+      listOpenApps: vi
+        .fn()
+        .mockResolvedValue([
+          { id: "explorer", name: "File Explorer", kind: "file-manager", icon: null },
+        ]),
+    })
+    renderButton("C:\\work\\app")
 
-    await userEvent.click(screen.getByRole("button", { name: "IDE" }))
-    expect(await screen.findByText("没有找到可用的编辑器")).toBeTruthy()
-    expect(screen.getByRole("menuitem", { name: "在资源管理器中打开" })).toBeTruthy()
-    await userEvent.click(screen.getByRole("menuitem", { name: "复制路径" }))
-
+    expect(await screen.findByRole("button", { name: "在 资源管理器 中打开" })).toBeTruthy()
+    await userEvent.click(screen.getByRole("button", { name: "选择打开方式" }))
+    await userEvent.click(await screen.findByRole("menuitem", { name: "复制路径" }))
     expect(writeText).toHaveBeenCalledExactlyOnceWith("C:\\work\\app")
     expect(await screen.findByText("已复制路径")).toBeTruthy()
   })
@@ -69,13 +95,17 @@ describe("OpenInMenu", () => {
   it("reports a folder that can't be opened", async () => {
     mockNative({
       platform: "linux",
-      listEditors: vi.fn().mockResolvedValue([{ id: "vscode", name: "VS Code" }]),
-      openInEditor: vi.fn().mockRejectedValue(new Error("FOLDER_NOT_FOUND")),
+      listOpenApps: vi.fn().mockResolvedValue([APPS[1]]),
+      openWithApp: vi.fn().mockRejectedValue(new Error("FOLDER_NOT_FOUND")),
     })
-    renderMenu("/home/me/gone")
+    renderButton("/home/me/gone")
 
-    await userEvent.click(screen.getByRole("button", { name: "IDE" }))
-    await userEvent.click(await screen.findByRole("menuitem", { name: "在 VS Code 中打开" }))
+    await userEvent.click(await screen.findByRole("button", { name: "在 Cursor 中打开" }))
     expect(await screen.findByText("无法打开文件夹 /home/me/gone")).toBeTruthy()
+  })
+
+  it("renders nothing without the native bridge", async () => {
+    renderButton("/home/me/app")
+    await waitFor(() => expect(screen.queryByRole("group")).toBeNull())
   })
 })

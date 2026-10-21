@@ -1,9 +1,20 @@
-/** 右侧面板验收：多标签 surface、内嵌浏览器的 loopback 限制、最大化与底部终端。 */
+/** 右侧面板验收：多标签 surface、内置浏览器（webview）的地址规则、最大化与底部终端。 */
 import { mkdirSync, rmSync } from "node:fs"
 import { createServer, type Server } from "node:http"
 import type { AddressInfo } from "node:net"
-import { _electron as electron, expect, test } from "@playwright/test"
+import { _electron as electron, expect, test, type ElectronApplication } from "@playwright/test"
 import { addProject } from "./projects"
+
+/** 在 guest 页面里执行脚本；webview 的内容只在 main 里拿得到。 */
+function inGuest(app: ElectronApplication, script: string): Promise<string> {
+  return app.evaluate(async ({ webContents }, code) => {
+    const guest = webContents.getAllWebContents().find((item) => item.getType() === "webview")
+    return guest ? String(await guest.executeJavaScript(code)) : ""
+  }, script)
+}
+
+const heading = (app: ElectronApplication) =>
+  inGuest(app, "document.querySelector('h1')?.textContent ?? ''")
 
 /** 过滤 undefined，满足 Playwright env 的 string 值约束。 */
 function launchEnv(): Record<string, string> {
@@ -14,12 +25,12 @@ function launchEnv(): Record<string, string> {
   )
 }
 
-/** 本机页面：首页链接到同源第二页，第二页链接到远程地址。 */
+/** 本机页面：首页链接到同源第二页，第二页有一个指向 file: 的链接。 */
 function startSite(): Promise<Server> {
   const server = createServer((request, response) => {
     response.setHeader("content-type", "text/html; charset=utf-8")
     if (request.url === "/second") {
-      response.end('<h1>second page</h1><a id="out" href="https://example.com/">leave</a>')
+      response.end('<h1>second page</h1><a id="out" href="file:///etc/passwd">leave</a>')
       return
     }
     response.end('<h1>local home</h1><a id="in" href="/second">next</a>')
@@ -63,47 +74,50 @@ test("right panel surfaces, embedded browser, maximize and bottom terminal", asy
     await page.keyboard.press("b")
     await expect(page.getByRole("tab", { name: "浏览器" })).toHaveAttribute("aria-selected", "true")
 
-    // 远程地址被地址栏拒绝；本机页面在 iframe 里加载，标签标题换成主机名。
-    const address = page.getByRole("textbox", { name: /输入本地地址/ })
-    await address.fill("https://example.com")
+    // 地址栏只接受 http/https；页面在 webview 里加载，标签标题换成主机名。
+    const address = page.getByRole("textbox", { name: /输入网址/ })
+    await address.fill("file:///etc/passwd")
     await address.press("Enter")
-    await expect(page.getByRole("alert")).toContainText("仅支持本地")
+    await expect(page.getByRole("alert")).toContainText("只支持 http/https 网址")
     await address.fill(base)
     await address.press("Enter")
-    const frame = page.frameLocator("iframe.browser-frame")
-    await expect(frame.getByRole("heading", { name: "local home" })).toBeVisible()
+    await expect.poll(() => heading(app)).toBe("local home")
+    await expect(page.locator(".browser-hosted[data-shown]")).toBeVisible()
     await expect(page.getByRole("tab", { name: new URL(base).host })).toBeVisible()
 
-    // 页面内的同源跳转放行，跳去远程地址被主进程拦下，iframe 留在本机页面。
-    await frame.locator("#in").click()
-    await expect(frame.getByRole("heading", { name: "second page" })).toBeVisible()
-    await frame.locator("#out").click()
+    // 页面内的跳转放行，跳去 file: 被主进程拦下，页面留在原地。
+    await inGuest(app, "document.querySelector('#in').click()")
+    await expect.poll(() => heading(app)).toBe("second page")
+    await inGuest(app, "document.querySelector('#out').click()")
     await page.waitForTimeout(800)
-    await expect(frame.getByRole("heading", { name: "second page" })).toBeVisible()
-    const frameUrls = page.frames().map((item) => item.url())
-    expect(frameUrls.some((url) => url.includes("example.com"))).toBe(false)
+    await expect.poll(() => heading(app)).toBe("second page")
+    expect(await inGuest(app, "location.protocol")).toBe("http:")
 
-    // 再开两个终端标签：序号递增，切换标签后浏览器保持挂载。
+    // 再开两个终端标签：序号递增；切到终端时 webview 移开，切回来页面还在原地。
+    const tabs = page.locator(".right-panel").getByRole("tab")
     await page.getByRole("button", { name: "添加面板" }).click()
     await page.getByRole("menuitem", { name: /终端/ }).click()
     await expect(page.locator(".surface-pane:not([hidden]) .xterm")).toBeVisible()
+    await expect(page.locator(".browser-hosted[data-shown]")).toHaveCount(0)
     await page.getByRole("button", { name: "新建终端" }).click()
-    await expect(page.getByRole("tab")).toHaveText([new URL(base).host, "终端 1", "终端 2"])
+    await expect(tabs).toHaveText([new URL(base).host, "终端 1", "终端 2"])
     await page.getByRole("tab", { name: new URL(base).host }).click()
-    await expect(frame.getByRole("heading", { name: "second page" })).toBeVisible()
+    await expect(page.locator(".browser-hosted[data-shown]")).toBeVisible()
+    await expect.poll(() => heading(app)).toBe("second page")
 
-    // 标签按线程保存：新线程显示启动器；切回来后浏览器按地址栏最近的地址恢复页面。
+    // 标签按线程保存：新线程显示启动器；切回来后浏览器还是离开时的页面，没有重新加载。
     await page
       .locator(".proj-block")
       .filter({ hasText: "pigcode-m6-e2e" })
       .locator(".proj-add")
       .click()
     await expect(page.getByLabel("打开一个面板")).toBeVisible()
+    await expect(page.locator(".browser-hosted[data-shown]")).toHaveCount(0)
     await page.locator('.sess:not([aria-current="page"])').click()
-    await expect(page.getByRole("tab")).toHaveText([new URL(base).host, "终端 1", "终端 2"])
+    await expect(tabs).toHaveText([new URL(base).host, "终端 1", "终端 2"])
     await page.getByRole("tab", { name: new URL(base).host }).click()
-    await expect(frame.getByRole("heading", { name: "local home" })).toBeVisible()
-    await expect(page.getByRole("textbox", { name: /输入本地地址/ })).toHaveValue(`${base}/`)
+    await expect.poll(() => heading(app)).toBe("second page")
+    await expect(page.getByRole("textbox", { name: /输入网址/ })).toHaveValue(`${base}/second`)
 
     // 关闭当前标签激活右侧邻居。
     await page.getByRole("button", { name: `关闭 ${new URL(base).host}` }).click()
@@ -134,7 +148,7 @@ test("right panel surfaces, embedded browser, maximize and bottom terminal", asy
     await expect(drawer).toBeHidden()
 
     await header.getByRole("button", { name: "切换右侧面板" }).click()
-    await expect(page.getByRole("tab")).toHaveText(["终端 1", "终端 2"])
+    await expect(tabs).toHaveText(["终端 1", "终端 2"])
   } finally {
     await app.close()
     site.close()

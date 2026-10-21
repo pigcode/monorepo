@@ -72,6 +72,8 @@ export function createMainWindowOptions({
       contextIsolation: true,
       nodeIntegration: false,
       devTools: !isPackaged,
+      // 右栏的内置浏览器是 <webview>；它的配置在 main 的 will-attach-webview 里统一收紧。
+      webviewTag: true,
     },
   }
   if (platform === "darwin") {

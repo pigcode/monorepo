@@ -206,7 +206,7 @@ describe("provider switching", () => {
   })
 
   it("puts the handoff before the user text in the Claude prompt", async () => {
-    const prompts: string[] = []
+    const prompts: unknown[] = []
     const replay = replayQuery("fixtures/simple.jsonl")
     const driver = new ClaudeDriver({
       queryFn: (params) => {

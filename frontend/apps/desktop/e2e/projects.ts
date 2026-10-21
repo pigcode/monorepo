@@ -1,5 +1,47 @@
-/** E2E 公用步骤：通过「创建项目」对话框添加项目。 */
-import { expect, type ElectronApplication, type Page } from "@playwright/test"
+/** E2E 公用步骤：通过「创建项目」对话框添加项目，在新项目里开会话。 */
+import { mkdirSync, rmSync, writeFileSync } from "node:fs"
+import { join } from "node:path"
+import {
+  _electron as electron,
+  expect,
+  type ElectronApplication,
+  type Page,
+} from "@playwright/test"
+
+/** 过滤 undefined，满足 Playwright env 的 string 值约束；默认用 fake provider。 */
+export function launchEnv(extra: Record<string, string>): Record<string, string> {
+  return {
+    ...Object.fromEntries(
+      Object.entries(process.env).filter(
+        (entry): entry is [string, string] => entry[1] !== undefined,
+      ),
+    ),
+    PIGCODE_PROVIDER: "fake",
+    ...extra,
+  }
+}
+
+/** 建一个带两个源文件的项目，启动应用并在里面开一个新会话。 */
+export async function openThread(
+  name: string,
+  extra: Record<string, string> = {},
+): Promise<{ app: ElectronApplication; page: Page; root: string }> {
+  const root = `/tmp/pigcode-e2e-${name}`
+  rmSync(root, { recursive: true, force: true })
+  mkdirSync(join(root, "src"), { recursive: true })
+  writeFileSync(join(root, "README.md"), "# Demo\n")
+  writeFileSync(join(root, "src/index.ts"), "export const answer = 42\n")
+  const app = await electron.launch({ args: ["."], env: launchEnv(extra) })
+  const page = await app.firstWindow()
+  await addProject(app, page, root)
+  await page
+    .locator(".proj-block")
+    .filter({ hasText: `pigcode-e2e-${name}` })
+    .locator(".proj-add")
+    .click()
+  await expect(page.locator(".tiptap")).toHaveAttribute("contenteditable", "true")
+  return { app, page, root }
+}
 
 /**
  * 系统文件夹选择框无法由 Playwright 操作，先在主进程里把它换成直接返回 rootPath，

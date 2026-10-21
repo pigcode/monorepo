@@ -23,14 +23,50 @@ contextBridge.exposeInMainWorld("pigcodeNative", {
   pickFolder: (labels?: { title?: string; buttonLabel?: string }): Promise<string | null> =>
     ipcRenderer.invoke("pigcode:pick-folder", labels),
   openFolder: (path: string): Promise<void> => ipcRenderer.invoke("pigcode:open-folder", path),
-  listEditors: (): Promise<Array<{ id: string; name: string }>> =>
-    ipcRenderer.invoke("pigcode:list-editors"),
-  openInEditor: (editorId: string, path: string): Promise<void> =>
-    ipcRenderer.invoke("pigcode:open-in-editor", editorId, path),
+  listOpenApps: (): Promise<
+    Array<{
+      id: string
+      name: string
+      kind: "file-manager" | "editor" | "terminal"
+      icon: string | null
+    }>
+  > => ipcRenderer.invoke("pigcode:list-open-apps"),
+  openWithApp: (appId: string, path: string): Promise<void> =>
+    ipcRenderer.invoke("pigcode:open-with-app", appId, path),
   previewOpen: (url: string): Promise<{ id: string }> =>
     ipcRenderer.invoke("pigcode:preview-open", url),
   previewClose: (id?: string): void => {
     void ipcRenderer.invoke("pigcode:preview-close", id).catch(() => undefined)
+  },
+  browser: {
+    register: (sessionId: string, threadId: string, webContentsId: number): Promise<void> =>
+      ipcRenderer.invoke("pigcode:browser-register", sessionId, threadId, webContentsId),
+    unregister: (sessionId: string): void => {
+      void ipcRenderer.invoke("pigcode:browser-unregister", sessionId).catch(() => undefined)
+    },
+    onOpen: (listener: (request: { threadId: string; url: string | null }) => void) => {
+      const handler = (_event: unknown, value: { threadId: string; url: string | null }) =>
+        listener(value)
+      ipcRenderer.on("pigcode:browser-open", handler)
+      return () => {
+        ipcRenderer.removeListener("pigcode:browser-open", handler)
+      }
+    },
+    onActivity: (
+      listener: (activity: {
+        threadId: string
+        sessionId: string
+        action: string
+        detail: string
+        point?: { x: number; y: number }
+      }) => void,
+    ) => {
+      const handler = (_event: unknown, value: Parameters<typeof listener>[0]) => listener(value)
+      ipcRenderer.on("pigcode:browser-activity", handler)
+      return () => {
+        ipcRenderer.removeListener("pigcode:browser-activity", handler)
+      }
+    },
   },
 })
 

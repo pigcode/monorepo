@@ -1,13 +1,23 @@
-/** 聊天主视图：标题、运行状态、消息时间线、composer 占位与环境抽屉。 */
-import { useEffect, useRef, useState, type ReactNode } from "react"
+/** 聊天主视图：标签栏（主会话与子代理）、消息时间线、输入框与环境抽屉。 */
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 import type { ProviderCapabilities, Thread, ThreadEvent } from "@pigcode/contracts"
-import { ArrowDown, Ellipsis, PanelRight, Square } from "lucide-react"
-import { Composer } from "@pigcode/ui-composer"
+import { ArrowDown, ArrowLeft, Ellipsis, PanelRight } from "lucide-react"
+import {
+  Composer,
+  type ComposerAgent,
+  type ComposerCommand,
+  type ComposerModelCatalog,
+  type ComposerSubmitOptions,
+  type PermissionMode,
+} from "@pigcode/ui-composer"
 import { Button, formatShortcut, useLocale } from "@pigcode/ui-primitives"
 import type { ApprovalDecision } from "./approval-card"
 import type { FileChangeSummary } from "./diff-summary"
 import { EnvironmentDrawer, type EnvironmentInfo } from "./environment-drawer"
-import { MessageList, hasPendingApproval } from "./message-list"
+import { MessageList, type EmptyStateText } from "./message-list"
+import type { SubagentCall } from "./subagent-card"
+import { SubagentView } from "./subagent-view"
+import { ThreadTabs, type ThreadTabsProps } from "./thread-tabs"
 import type { ToolCall } from "./tool-card"
 
 /** 线程头切换入口需要的 provider 展示信息。 */
@@ -23,22 +33,27 @@ export interface ChatViewProps {
   streamingText?: string
   /** 当前工作目录；Task 12 的容器可以传入项目根目录。 */
   cwd?: string
-  /** 发送消息；交给 composer 提交。 */
-  onStart?: (text: string) => void
+  /** 发送消息；交给 composer 提交，附带本次的思考深度。 */
+  onStart?: (text: string, options: ComposerSubmitOptions) => void
   /** 兼容计划接口里的 onSubmit 命名。 */
-  onSubmit?: (text: string) => void
+  onSubmit?: (text: string, options: ComposerSubmitOptions) => void
   onInterrupt?: () => void
   onApproval?: (requestId: string, decision: ApprovalDecision) => void
   /** 当前 provider 的能力；未提供时按全部可用处理，保持旧行为。 */
   capabilities?: ProviderCapabilities | null
-  /** 当前 provider 可选的模型 id；为空时不显示模型控件。 */
-  models?: readonly string[]
-  /** provider 列表；非空时在线程头显示切换入口。 */
-  providers?: readonly ProviderOption[]
-  /** 切换 provider；容器应调用 thread.switchProvider。 */
-  onSwitchProvider?: (providerId: string) => void
-  /** 切换模型；容器应调用 thread.switchProvider。 */
-  onSwitchModel?: (modelId: string) => void
+  /** 可选的 agent；输入框的模型选择器按 agent 分组列出各自的模型。 */
+  agents?: readonly ComposerAgent[]
+  /** 各 agent 的模型目录；选择器展开到某个 agent 时通过 onLoadModels 懒加载。 */
+  catalog?: ComposerModelCatalog
+  onLoadModels?: (agentId: string) => void
+  /** 切换 agent 与模型；容器应调用 thread.switchProvider。 */
+  onSelectModel?: (agentId: string, modelId: string) => void
+  /** 修改线程权限模式；容器应调用 thread.setPermissionMode。 */
+  onPermissionMode?: (mode: PermissionMode) => void
+  /** @ 引用时可选的项目文件。 */
+  files?: () => Promise<readonly string[]>
+  /** 输入框里的 / 命令。 */
+  commands?: readonly ComposerCommand[]
   onViewTool?: (tool: ToolCall) => void
   onViewDiff?: (summary: FileChangeSummary) => void
   /** 右栏是否展开；提供 onToggleRight 且没有 layoutControls 时在线程头显示右栏按钮。 */
@@ -49,6 +64,20 @@ export interface ChatViewProps {
   layoutControls?: ReactNode
   /** 线程头右侧「在编辑器中打开项目」的入口；由容器按项目目录组装。 */
   openIn?: ReactNode
+  /** 线程头的标签栏：主会话与子代理；不提供时只显示主会话标题。 */
+  tabs?: ThreadTabsProps | undefined
+  /** 正在查看的派生子代理；有值时显示它的只读过程，不显示输入框。 */
+  subagent?: SubagentCall | null | undefined
+  /** 在标签页中打开时间线里的派生子代理。 */
+  onOpenSubagent?: ((id: string) => void) | undefined
+  /** 从派生子代理的只读视图回到主会话。 */
+  onBackToMain?: (() => void) | undefined
+  /** 空会话的文案；子代理会话用它说明共用工作目录。 */
+  empty?: EmptyStateText | undefined
+  /** 运行中命令已经流出的输出，按工具调用 id。 */
+  liveOutput?: Readonly<Record<string, string>> | undefined
+  /** 回答 agent 的提问；容器应调用 run.answerQuestion。 */
+  onAnswer?: ((requestId: string, answers: string[]) => void) | undefined
 }
 
 /** 根据事件流判断当前 run 是否仍在进行。 */
@@ -78,16 +107,26 @@ export function ChatView({
   onInterrupt,
   onApproval,
   capabilities = null,
-  models = [],
-  providers = [],
-  onSwitchProvider,
-  onSwitchModel,
+  agents = [],
+  catalog = {},
+  onLoadModels,
+  onSelectModel,
+  onPermissionMode,
+  files,
+  commands,
   onViewTool,
   onViewDiff,
   rightOpen = false,
   onToggleRight,
   layoutControls,
   openIn,
+  tabs,
+  subagent = null,
+  onOpenSubagent,
+  onBackToMain,
+  empty,
+  liveOutput,
+  onAnswer,
 }: ChatViewProps) {
   const submit = onSubmit ?? onStart
   const { t } = useLocale()
@@ -98,45 +137,42 @@ export function ChatView({
   const canInterrupt = capabilities?.streaming ?? true
   const canPlan = capabilities?.plan ?? true
   const canApprove = capabilities?.approvals ?? true
-  const canSelectModel = capabilities?.modelCatalog ?? true
-  const visibleEvents = canApprove
-    ? events
-    : events.filter(
-        (event) => event.type !== "approval.requested" && event.type !== "approval.resolved",
-      )
-  const pendingApproval = hasPendingApproval(visibleEvents)
-  const running = Boolean(streamingText) || isRunOpen(events)
-  const status = pendingApproval
-    ? t("chat.status.waitingApproval")
-    : running
-      ? t("chat.status.running")
-      : t("chat.status.idle")
-  const statusClass = pendingApproval ? "warn" : running ? "ok" : ""
+  // 事件数组只在有新事件时变化；流式增量不触发这些整表扫描。
+  const visibleEvents = useMemo(
+    () =>
+      canApprove
+        ? events
+        : events.filter(
+            (event) => event.type !== "approval.requested" && event.type !== "approval.resolved",
+          ),
+    [events, canApprove],
+  )
+  const runOpen = useMemo(() => isRunOpen(events), [events])
+  const running = Boolean(streamingText) || runOpen
   const providerId = thread?.lastProviderId ?? thread?.defaultProviderId ?? null
   const modelId = thread?.lastModelId ?? null
-  const providerName =
-    providers.find((provider) => provider.id === providerId)?.displayName ??
-    providerId ??
-    t("chat.environment.provider")
+  const agentName = useCallback(
+    (agentId: string) => agents.find((agent) => agent.id === agentId)?.label ?? agentId,
+    [agents],
+  )
   const environment: EnvironmentInfo = {
     providerId: providerId ?? t("chat.environment.unknown"),
     cwd,
     modelId,
     permissionMode: thread?.permissionMode ?? "workspace-write",
   }
-  const assistantInitial =
-    providerId === "claude" ? "CL" : providerId === "codex" ? "CX" : providerName.slice(0, 2).toUpperCase()
   const projectName = cwd?.split(/[\\/]/).filter(Boolean).at(-1)
+  const viewKey = subagent ? `subagent:${subagent.id}` : (thread?.id ?? null)
 
   useEffect(() => {
     setPinned(true)
-  }, [thread?.id])
+  }, [viewKey])
 
   useEffect(() => {
     if (!pinned) return
     const element = threadRef.current
     if (element) element.scrollTop = element.scrollHeight
-  }, [events, streamingText, pinned])
+  }, [events, streamingText, liveOutput, pinned, subagent])
 
   function handleScroll(): void {
     const element = threadRef.current
@@ -150,31 +186,26 @@ export function ChatView({
     element?.scrollTo({ top: element.scrollHeight, behavior: "smooth" })
   }
 
+  const mainTitle = thread
+    ? projectName
+      ? `${projectName} / ${thread.title}`
+      : thread.title
+    : undefined
+
   return (
     <section className="view">
       <div className="panel-top">
-        {thread ? (
-          <div
-            className="title-chip"
-            title={projectName ? `${projectName} / ${thread.title}` : thread.title}
-          >
-            <span className="title-text truncate">{thread.title}</span>
-          </div>
+        {tabs ? (
+          <ThreadTabs {...tabs} />
+        ) : thread ? (
+          <ThreadTabs
+            tabs={[{ id: "main", kind: "main", title: thread.title, description: mainTitle }]}
+            activeId="main"
+            onSelect={() => undefined}
+          />
         ) : null}
-        {statusClass ? <span className={`status status-pill ${statusClass}`}>{status}</span> : null}
         <span className="spacer" />
         {thread ? openIn : null}
-        {running && canInterrupt ? (
-          <Button
-            variant="plain"
-            size="icon"
-            type="button"
-            aria-label={t("chat.interrupt")}
-            onClick={onInterrupt}
-          >
-            <Square className="ic" aria-hidden="true" />
-          </Button>
-        ) : null}
         <Button
           variant="plain"
           size="icon"
@@ -186,32 +217,39 @@ export function ChatView({
         >
           <Ellipsis className="ic" aria-hidden="true" />
         </Button>
-        {layoutControls !== undefined
-          ? layoutControls
-          : onToggleRight ? (
-            <Button
-              variant="plain"
-              size="icon"
-              type="button"
-              aria-label={t("panel.toggleRight")}
-              title={`${t("panel.toggleRight")} ${formatShortcut("Mod+j")}`}
-              aria-pressed={rightOpen}
-              onClick={onToggleRight}
-            >
-              <PanelRight className="ic" aria-hidden="true" />
-            </Button>
-          ) : null}
+        {layoutControls !== undefined ? (
+          layoutControls
+        ) : onToggleRight ? (
+          <Button
+            variant="plain"
+            size="icon"
+            type="button"
+            aria-label={t("panel.toggleRight")}
+            title={`${t("panel.toggleRight")} ${formatShortcut("Mod+j")}`}
+            aria-pressed={rightOpen}
+            onClick={onToggleRight}
+          >
+            <PanelRight className="ic" aria-hidden="true" />
+          </Button>
+        ) : null}
       </div>
       <div className="thread" ref={threadRef} onScroll={handleScroll}>
-        <MessageList
-          events={visibleEvents}
-          streamingText={streamingText}
-          assistantName={providerName}
-          assistantInitial={assistantInitial}
-          onApproval={onApproval ?? (() => undefined)}
-          onViewTool={onViewTool}
-          onViewDiff={onViewDiff}
-        />
+        {subagent ? (
+          <SubagentView subagent={subagent} onViewTool={onViewTool} />
+        ) : (
+          <MessageList
+            events={visibleEvents}
+            streamingText={streamingText}
+            agentName={agentName}
+            onApproval={onApproval ?? (() => undefined)}
+            onViewTool={onViewTool}
+            onViewDiff={onViewDiff}
+            onOpenSubagent={onOpenSubagent}
+            empty={empty}
+            liveOutput={liveOutput}
+            onAnswer={onAnswer}
+          />
+        )}
       </div>
       {!pinned ? (
         <button type="button" className="jump-latest" onClick={jumpToLatest}>
@@ -220,21 +258,38 @@ export function ChatView({
         </button>
       ) : null}
       <div className="composer-wrap">
-        <Composer
-          onSubmit={(text) => submit?.(text)}
-          onStop={onInterrupt ?? (() => undefined)}
-          running={running}
-          disabled={!thread}
-          autoFocus={Boolean(thread) && visibleEvents.length === 0 && !running}
-          {...(providerId ? { provider: providerId } : {})}
-          providers={providers.map((item) => ({ id: item.id, label: item.displayName }))}
-          {...(thread && onSwitchProvider ? { onProvider: onSwitchProvider } : {})}
-          {...(modelId && canSelectModel ? { model: modelId } : {})}
-          models={canSelectModel ? models : []}
-          {...(onSwitchModel ? { onModel: onSwitchModel } : {})}
-          canPlan={canPlan}
-          canInterrupt={canInterrupt}
-        />
+        {subagent ? (
+          <div className="subagent-readonly" role="note">
+            <span>{t("chat.subagent.readonly")}</span>
+            {onBackToMain ? (
+              <button type="button" className="subagent-back" onClick={onBackToMain}>
+                <ArrowLeft className="ic ic-sm" aria-hidden="true" />
+                {t("chat.subagent.back")}
+              </button>
+            ) : null}
+          </div>
+        ) : (
+          <Composer
+            onSubmit={(text, options) => submit?.(text, options)}
+            onStop={onInterrupt ?? (() => undefined)}
+            running={running}
+            disabled={!thread}
+            autoFocus={Boolean(thread) && visibleEvents.length === 0 && !running}
+            draftKey={thread?.id ?? null}
+            agents={agents}
+            agentId={providerId}
+            modelId={modelId}
+            catalog={catalog}
+            {...(onLoadModels ? { onLoadModels } : {})}
+            {...(thread && onSelectModel ? { onSelectModel } : {})}
+            permissionMode={thread?.permissionMode ?? "workspace-write"}
+            {...(thread && onPermissionMode ? { onPermissionMode } : {})}
+            {...(files ? { files } : {})}
+            {...(commands ? { commands } : {})}
+            canPlan={canPlan}
+            canInterrupt={canInterrupt}
+          />
+        )}
       </div>
       <EnvironmentDrawer
         open={drawerOpen}

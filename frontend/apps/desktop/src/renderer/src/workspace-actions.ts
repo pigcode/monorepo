@@ -14,12 +14,15 @@ function byCreation(projects: Project[]): Project[] {
   return [...projects].sort((left, right) => left.createdAt.localeCompare(right.createdAt))
 }
 
-/** 接着看的会话：优先同一项目里最近更新的，没有时取所有项目里最近的。 */
+/** 接着看的会话：优先同一项目里最近更新的，没有时取所有项目里最近的；子代理不算。 */
 function nextThread(store: AppStore, preferProjectId: string | null): string | null {
   const { threads, projects } = store.getSnapshot()
   const known = new Set(projects.map((project) => project.id))
   const live = threads
-    .filter((thread) => thread.archivedAt === null && known.has(thread.projectId))
+    .filter(
+      (thread) =>
+        thread.archivedAt === null && !thread.parentThreadId && known.has(thread.projectId),
+    )
     .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))
   return (live.find((thread) => thread.projectId === preferProjectId) ?? live[0])?.id ?? null
 }
@@ -110,5 +113,12 @@ export async function archiveThread(
   replaceThread(store, archived)
   const wasActive = store.getSnapshot().activeThreadId === threadId
   closeThread(connection, store, threadId)
+  // Host 把子代理和主会话一起归档了；这里同步记录并退订它们。
+  for (const child of store.getSnapshot().threads) {
+    if (child.parentThreadId !== threadId || child.archivedAt !== null) continue
+    replaceThread(store, { ...child, archivedAt: archived.archivedAt })
+    if (store.getSnapshot().openThreadIds.includes(child.id))
+      closeThread(connection, store, child.id)
+  }
   return wasActive ? nextThread(store, archived.projectId) : null
 }

@@ -1,6 +1,8 @@
 /** 示例 UI 插件：在调试侧栏添加一个面板。 */
-export function apply(ctx) {
-  ctx.registerPanel({
+import type { ClientPluginContext } from "@pigcode/plugin-sdk"
+
+export function apply(ctx: ClientPluginContext): () => void {
+  return ctx.registerPanel({
     id: "debug-panel",
     title: "Debug Panel",
     render(container) {

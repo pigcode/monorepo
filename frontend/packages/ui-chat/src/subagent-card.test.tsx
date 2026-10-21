@@ -79,7 +79,7 @@ describe("SubagentCard", () => {
 })
 
 describe("MessageList subagent timeline", () => {
-  it("renders one card and hides parent-scoped events from the top level", () => {
+  it("renders one card and hides parent-scoped events from the top level", async () => {
     const events = [
       event(1, "subagent.started", {
         toolCallId: "task_1",
@@ -102,6 +102,9 @@ describe("MessageList subagent timeline", () => {
     )
 
     expect(screen.getByText("parent reply")).toBeTruthy()
+    // 结束的轮把工作折叠在「已工作」下面，展开后才看到子 agent 卡片。
+    expect(container.querySelector("details.subagent-card")).toBeNull()
+    await userEvent.click(screen.getByRole("button", { name: /已工作|已处理/ }))
     expect(screen.getAllByText("child reply")).toHaveLength(1)
     // 子 agent 的工具不再渲染为顶层工具卡。
     expect(screen.getAllByText("Read")).toHaveLength(1)

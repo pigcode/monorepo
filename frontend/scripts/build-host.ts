@@ -1,12 +1,8 @@
-/** 把 Host utilityProcess 入口与核心服务打成可加载的 ESM bundle。 */
-import { copyFile, mkdir, writeFile } from "node:fs/promises"
-import { createRequire } from "node:module"
+/** 把 Host utilityProcess 入口、核心服务与 stdio MCP 桥打成可加载的 ESM bundle。 */
+import { mkdir, writeFile } from "node:fs/promises"
 import { join } from "node:path"
 import { fileURLToPath } from "node:url"
-
-// esbuild 声明在 apps/desktop 下，脚本仍从仓库根目录执行。
-const require = createRequire(new URL("../apps/desktop/package.json", import.meta.url))
-const { build } = require("esbuild")
+import { build, type BuildOptions } from "esbuild"
 
 /** 仓库根目录。 */
 const root = fileURLToPath(new URL("..", import.meta.url))
@@ -14,7 +10,7 @@ const root = fileURLToPath(new URL("..", import.meta.url))
 const outDir = join(root, "apps/desktop/out/host")
 
 /** 共用 esbuild 选项；CJS 依赖需要 require 才能加载 Node 内置模块。 */
-const shared = {
+const shared: BuildOptions = {
   bundle: true,
   platform: "node",
   format: "esm",
@@ -29,12 +25,13 @@ const shared = {
 }
 
 /** 核心服务作为独立条目，供 profile 以相对 URL 加载。 */
-const coreEntries = {
+const coreEntries: Record<string, string> = {
   storage: join(root, "apps/host/src/services/storage.ts"),
   projects: join(root, "apps/host/src/services/projects.ts"),
   threads: join(root, "apps/host/src/services/threads.ts"),
   sessions: join(root, "apps/host/src/services/sessions.ts"),
   "mcp-bridge": join(root, "apps/host/src/services/mcp-bridge.ts"),
+  browser: join(root, "apps/host/src/services/browser.ts"),
   providers: join(root, "apps/host/src/providers/registry.ts"),
   workspace: join(root, "apps/host/src/services/workspace.ts"),
   git: join(root, "apps/host/src/services/git.ts"),
@@ -52,13 +49,15 @@ await build({
 })
 await build({ entryPoints: coreEntries, outdir: join(outDir, "core"), ...shared })
 
-// stdio 桥由 Codex/Claude 以 node 子进程启动；它不属于 bundle，原样复制即可。
-const mcpDir = join(outDir, "mcp")
-await mkdir(mcpDir, { recursive: true })
-await copyFile(
-  join(root, "apps/host/src/mcp/stdio-bridge.mjs"),
-  join(mcpDir, "stdio-bridge.mjs"),
-)
+// stdio 桥由 Codex/Claude 以系统 node 子进程启动，不能依赖 Node 的类型剥离；单独编成 .mjs。
+await build({
+  entryPoints: [join(root, "apps/host/src/mcp/stdio-bridge.ts")],
+  outfile: join(outDir, "mcp/stdio-bridge.mjs"),
+  bundle: true,
+  platform: "node",
+  format: "esm",
+  target: "node18",
+})
 
 /** 与 core bundle 对应的默认 profile；相对 entry 由 loader 按 baseUrl 解析。 */
 const profileDir = join(outDir, "profile")
@@ -71,30 +70,9 @@ await writeFile(
     "    name: ../core/storage.mjs",
     "    config:",
     '      path: ":memory:"',
-    "  - id: core.projects",
-    "    name: ../core/projects.mjs",
-    "  - id: core.threads",
-    "    name: ../core/threads.mjs",
-    "  - id: core.sessions",
-    "    name: ../core/sessions.mjs",
-    "  - id: core.mcp-bridge",
-    "    name: ../core/mcp-bridge.mjs",
-    "  - id: core.providers",
-    "    name: ../core/providers.mjs",
-    "  - id: core.workspace",
-    "    name: ../core/workspace.mjs",
-    "  - id: core.git",
-    "    name: ../core/git.mjs",
-    "  - id: core.github",
-    "    name: ../core/github.mjs",
-    "  - id: core.worktrees",
-    "    name: ../core/worktrees.mjs",
-    "  - id: core.checkpoints",
-    "    name: ../core/checkpoints.mjs",
-    "  - id: core.terminal",
-    "    name: ../core/terminal.mjs",
-    "  - id: core.schedules",
-    "    name: ../core/schedules.mjs",
+    ...Object.keys(coreEntries)
+      .filter((name) => name !== "storage")
+      .flatMap((name) => [`  - id: core.${name}`, `    name: ../core/${name}.mjs`]),
     "",
   ].join("\n"),
   "utf8",

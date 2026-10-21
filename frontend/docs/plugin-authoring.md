@@ -11,7 +11,7 @@ Pigcode 插件就是普通的 npm 包：没有 `bundle-` 前缀，也没有第�
 ```text
 my-plugin/
 ├── package.json   # 唯一的 manifest：package.json 的 pigcode 字段
-└── index.mjs      # Host 入口，在 Host 进程内运行
+└── index.ts       # Host 入口（TypeScript），在 Host 进程内运行
 ```
 
 一个最小的 UI 插件：
@@ -19,11 +19,24 @@ my-plugin/
 ```text
 my-ui-plugin/
 ├── package.json   # pigcode.client 指向浏览器入口
-└── client.mjs     # client bundle，在渲染进程的受限 facade 中运行
+└── client.ts      # UI 入口（TypeScript），在渲染进程的受限 facade 中运行
 ```
 
-同时提供两类入口时，把 `index.mjs` 与 `client.mjs` 放在同一个包里，并在
+同时提供两类入口时，把 `index.ts` 与 `client.ts` 放在同一个包里，并在
 `pigcode.host` 和 `pigcode.client` 中分别声明即可。
+
+## TypeScript
+
+插件直接用 TypeScript 编写，不需要单独的构建步骤：
+
+- `main`、`pigcode.host`、`pigcode.client` 可以直接指向 `.ts` / `.mts` 文件。
+- 安装时 Host 用 Node 内置的 `stripTypeScriptTypes` 把包里的 `.ts` / `.mts` 转成同名 `.mjs`，
+  并把 profile 里那份副本的入口改指向转换结果；插件源目录保持不变。
+- 包内的相对导入写完整扩展名（`import { x } from "./util.ts"`），安装时会一起改成 `.mjs`。
+- 类型只用 `import type` 引入，例如 `import type { PluginHostContext } from "@pigcode/plugin-sdk"`；
+  类型导入在转换时被擦除，运行时不依赖 SDK。
+- `enum`、`namespace` 等需要改写的语法也能转换，但推荐只用可擦除的语法（`erasableSyntaxOnly`）。
+- 已经编译成 `.js` / `.mjs` 的 npm 包照常可用；入口不是 TypeScript 时 Host 不做任何转换。
 
 ## package.json 的 pigcode 声明
 
@@ -32,7 +45,7 @@ my-ui-plugin/
   "name": "pigcode-provider-echo",
   "version": "0.1.0",
   "type": "module",
-  "main": "./index.mjs",
+  "main": "./index.ts",
   "engines": {
     "pigcode": ">=0.1.0"
   },
@@ -40,8 +53,8 @@ my-ui-plugin/
     "apiVersion": 1,
     "kind": "provider",
     "displayName": "Echo",
-    "host": "./index.mjs",
-    "client": "./client.mjs",
+    "host": "./index.ts",
+    "client": "./client.ts",
     "inject": ["providers"],
     "provides": ["provider:echo"],
     "contributes": {
@@ -86,7 +99,7 @@ my-ui-plugin/
     "apiVersion": 1,
     "kind": "provider",
     "displayName": "Echo",
-    "host": "./index.mjs",
+    "host": "./index.ts",
     "provides": ["provider:echo"],
     "permissions": [],
     "contributes": {
@@ -98,15 +111,17 @@ my-ui-plugin/
 }
 ```
 
-`index.mjs` 导出 `apply(ctx)`，在 `ctx.providers` 上注册 driver：
+`index.ts` 导出 `apply(ctx)`，在 `ctx.providers` 上注册 driver：
 
-```js
+```ts
 /** 示例 provider：把输入原样回显。 */
+import type { PluginHostContext, ProviderPluginDriver } from "@pigcode/plugin-sdk"
+
 export const name = "provider-echo"
 export const inject = ["providers"]
 
-export function apply(ctx) {
-  const driver = {
+export function apply(ctx: PluginHostContext): void {
+  const driver: ProviderPluginDriver = {
     id: "echo",
     displayName: "Echo",
     capabilities: {
@@ -163,14 +178,16 @@ export function apply(ctx) {
 完整示例见 [`examples/capability-session-info`](../examples/capability-session-info)。
 capability 通过 `ctx.provide` 暴露能力，使用只读的 `ctx.sessions`：
 
-```js
+```ts
 /** 示例 capability：暴露当前线程的事件数量。 */
+import type { PluginHostContext } from "@pigcode/plugin-sdk"
+
 export const name = "capability-session-info"
 export const inject = ["sessions"]
 
-export function apply(ctx) {
+export function apply(ctx: PluginHostContext): void {
   ctx.provide("sessionInfo", {
-    count(threadId) {
+    count(threadId: string): number {
       return ctx.sessions.read(threadId, 0).length
     },
   })
@@ -191,12 +208,14 @@ capability 插件可以用 `ctx.mcp.registerTool` 注册工具；Host 会把它�
 Claude 或 Codex 会话。完整示例见
 [`examples/capability-clock`](../examples/capability-clock)：
 
-```js
+```ts
 /** 示例 capability：通过 MCP 向模型暴露当前时间。 */
+import type { PluginHostContext } from "@pigcode/plugin-sdk"
+
 export const name = "capability-clock"
 export const inject = ["mcp"]
 
-export function apply(ctx) {
+export function apply(ctx: PluginHostContext): void {
   // ctx.effect 保证插件停用/卸载时注销工具；工具随插件一起消失。
   ctx.effect(() =>
     ctx.mcp.registerTool(
@@ -231,9 +250,11 @@ export function apply(ctx) {
 
 完整示例见 [`examples/ui-debug-panel`](../examples/ui-debug-panel)。UI 插件只拿到受限 facade：
 
-```js
+```ts
 /** 侧栏 DOM 面板；不依赖 React。 */
-export function apply(ctx) {
+import type { ClientPluginContext } from "@pigcode/plugin-sdk"
+
+export function apply(ctx: ClientPluginContext): () => void {
   return ctx.registerPanel({
     id: "demo-panel",
     title: "Demo Panel",
@@ -248,13 +269,15 @@ export function apply(ctx) {
 
 也可以向内置 slot 注册条目：
 
-```js
-export function apply(ctx) {
+```ts
+import type { ClientPluginContext } from "@pigcode/plugin-sdk"
+
+export function apply(ctx: ClientPluginContext): () => void {
   const dispose = ctx.slots.register("settings.section", {
     id: "demo-settings",
     order: 20,
     // 返回值交给 React 渲染；纯 DOM 内容请用 registerPanel。
-    render: (props) => `Demo section: ${props?.section ?? "general"}`,
+    render: (props: { section?: string }) => `Demo section: ${props?.section ?? "general"}`,
   })
   return () => dispose()
 }
@@ -310,7 +333,7 @@ UI 插件运行在渲染进程，不应访问 Node 或 Electron API。
 ```bash
 pnpm create-plugin <dir> <kind> <name>
 # 等价于
-node scripts/create-plugin.mjs <dir> <kind> <name>
+node scripts/create-plugin.ts <dir> <kind> <name>
 ```
 
 - `kind`：`provider`、`capability` 或 `ui`。
@@ -328,8 +351,8 @@ pnpm create-plugin /tmp/pigcode-plugin-demo ui demo
 ```text
 /tmp/pigcode-plugin-demo/
 ├── package.json   # name: pigcode-ui-demo
-└── client.mjs     # 侧栏面板
+└── client.ts      # 侧栏面板
 ```
 
-provider / capability 会生成 `package.json` 和 `index.mjs`。脚本结束时打印本地安装路径，
+provider / capability 会生成 `package.json` 和 `index.ts`。脚本结束时打印本地安装路径，
 把它填进桌面端的“插件目录或 npm 包”即可安装。

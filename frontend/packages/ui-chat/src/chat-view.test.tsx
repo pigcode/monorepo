@@ -68,7 +68,11 @@ describe("ChatView", () => {
           thread={thread}
           events={[
             event(1, "run.started", { text: "long task" }),
-            event(2, "message.completed", { role: "assistant", text: "half an answer", partial: true }),
+            event(2, "message.completed", {
+              role: "assistant",
+              text: "half an answer",
+              partial: true,
+            }),
             event(3, "run.interrupted"),
           ]}
           onInterrupt={() => {}}
@@ -227,34 +231,37 @@ describe("ChatView", () => {
     expect(screen.queryAllByRole("button", { name: "中断" })).toHaveLength(0)
   })
 
-  /** modelCatalog 为 false 时，模型菜单在允许列表存在时也必须隐藏。 */
-  it("hides model menus when the catalog is unsupported", () => {
-    const modelThread = { ...thread, lastModelId: "gpt-5" }
-    const { rerender } = render(
+  /** 输入框的模型胶囊显示当前 agent 的模型；选别的 agent 的模型交给容器切换。 */
+  it("shows the thread's agent and model in the composer and switches across agents", async () => {
+    const onSelectModel = vi.fn()
+    render(
       <LocaleProvider locale="zh-CN">
         <ChatView
-          thread={modelThread}
+          thread={{ ...thread, lastProviderId: "codex", lastModelId: "gpt-5" }}
           capabilities={capabilitiesWith({})}
           events={[]}
-          models={["gpt-5"]}
-          onSwitchModel={() => {}}
+          agents={[
+            { id: "codex", label: "Codex" },
+            { id: "claude", label: "Claude Code" },
+          ]}
+          catalog={{
+            codex: [
+              { id: "gpt-5", label: "GPT-5", isDefault: true, efforts: [], defaultEffort: null },
+            ],
+            claude: [
+              { id: "opus", label: "Opus", isDefault: true, efforts: [], defaultEffort: null },
+            ],
+          }}
+          onSelectModel={onSelectModel}
         />
       </LocaleProvider>,
     )
-    expect(screen.getAllByText("gpt-5").length).toBeGreaterThan(0)
-
-    rerender(
-      <LocaleProvider locale="zh-CN">
-        <ChatView
-          thread={modelThread}
-          capabilities={capabilitiesWith({ modelCatalog: false })}
-          events={[]}
-          models={["gpt-5"]}
-          onSwitchModel={() => {}}
-        />
-      </LocaleProvider>,
-    )
-    expect(screen.queryByText("gpt-5")).toBeNull()
+    const chip = screen.getByRole("button", { name: /Agent 与模型/ })
+    expect(chip.textContent).toContain("GPT-5")
+    await userEvent.click(chip)
+    await userEvent.click(await screen.findByRole("tab", { name: "Claude Code" }))
+    await userEvent.click(await screen.findByText("Opus"))
+    expect(onSelectModel).toHaveBeenCalledWith("claude", "opus")
   })
 
   /** plan 为 false 时 composer 的权限菜单里不能出现计划模式。 */
@@ -265,12 +272,13 @@ describe("ChatView", () => {
           thread={thread}
           capabilities={capabilitiesWith({ plan: false })}
           events={[]}
+          onPermissionMode={() => {}}
         />
       </LocaleProvider>,
     )
-    await userEvent.click(screen.getByRole("button", { name: "每次询问" }))
-    expect(await screen.findByText("自动改文件")).toBeTruthy()
-    expect(screen.queryByText("只做计划")).toBeNull()
+    await userEvent.click(screen.getByRole("button", { name: "权限: 每次询问" }))
+    expect(await screen.findByRole("menuitem", { name: /只读/ })).toBeTruthy()
+    expect(screen.queryByText("计划模式")).toBeNull()
   })
 
   it("uses host layout controls in the header, or none when they live elsewhere", () => {

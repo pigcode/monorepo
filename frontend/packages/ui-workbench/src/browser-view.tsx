@@ -1,39 +1,46 @@
-/** 浏览器 surface：地址栏、前进后退与内嵌的 loopback 页面；也可以在独立窗口打开。 */
-import { useState, type FormEvent } from "react"
-import { ArrowLeft, ArrowRight, ExternalLink, Globe, RotateCw } from "lucide-react"
-import { Button } from "@pigcode/ui-primitives"
+/**
+ * 浏览器 surface：地址栏、前进后退、刷新、在新窗口打开，下面是页面区。页面本身是宿主盖上来的
+ * webview（这里只放占位槽 slot），所以 agent 在后台也能操作它。agent 动手时显示一条指示。
+ */
+import { useEffect, useState, type FormEvent, type ReactNode } from "react"
+import { ArrowLeft, ArrowRight, Bot, ExternalLink, Globe, RotateCw } from "lucide-react"
+import { Button, DotMatrix } from "@pigcode/ui-primitives"
 
 /** 在独立窗口打开页面的原生桥签名；测试可注入替身。 */
 export type PreviewOpen = (url: string) => Promise<{ id: string }>
 
-/** 允许的 loopback 主机名；与主进程 preview.ts 的校验保持一致。 */
-const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]"])
+const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]", "0.0.0.0"])
 
-/** 判断 URL 是否指向本机 http/https。 */
-export function isLoopbackUrl(value: string): boolean {
-  let url: URL
+/** 判断地址能否在内置浏览器里打开：只允许 http/https。 */
+export function isBrowserUrl(value: string): boolean {
   try {
-    url = new URL(value)
+    const url = new URL(value)
+    return url.protocol === "http:" || url.protocol === "https:"
   } catch {
     return false
   }
-  if (url.protocol !== "http:" && url.protocol !== "https:") return false
-  return LOOPBACK_HOSTS.has(url.hostname)
 }
 
 /**
- * 把地址栏输入补全为完整 URL：「3000」→ http://localhost:3000，「localhost:5173/a」补上 http://。
- * 不是 loopback 地址时返回 null。
+ * 把地址栏输入补全为完整 URL：「3000」→ http://localhost:3000，「localhost:5173/a」与 IP 补 http://，
+ * 其他主机名补 https://。不是 http/https 时返回 null。
  */
 export function normalizeBrowserUrl(input: string): string | null {
   const value = input.trim()
   if (value.length === 0) return null
   let candidate = value
+  const hasScheme =
+    /^[a-z][a-z\d+.-]*:\/\//i.test(value) ||
+    /^(about|javascript|data|file|mailto|blob|chrome|devtools|pigcode|pigcode-plugin):/i.test(value)
   if (/^\d{2,5}(\/.*)?$/.test(value)) candidate = `http://localhost:${value}`
-  else if (!/^[a-z][a-z\d+.-]*:\/\//i.test(value)) candidate = `http://${value}`
+  else if (!hasScheme) {
+    const host = value.split(/[/?#]/)[0]?.replace(/:\d+$/, "").toLowerCase() ?? ""
+    const local = LOCAL_HOSTS.has(host) || /^\d+\.\d+\.\d+\.\d+$/.test(host)
+    candidate = `${local ? "http" : "https"}://${value}`
+  }
   try {
     const url = new URL(candidate)
-    return isLoopbackUrl(url.href) ? url.href : null
+    return isBrowserUrl(url.href) ? url.href : null
   } catch {
     return null
   }
@@ -50,19 +57,52 @@ export interface BrowserViewLabels {
   emptyHint: string
   invalid: string
   bridgeMissing: string
+  agent: string
+  actions: Record<string, string>
 }
 
 /** 默认中文文案。 */
 export const DEFAULT_BROWSER_LABELS: BrowserViewLabels = {
-  address: "输入本地地址，例如 localhost:3000",
+  address: "输入网址，例如 localhost:3000",
   back: "后退",
   forward: "前进",
   reload: "重新加载",
   external: "在新窗口打开",
-  empty: "还没有预览",
-  emptyHint: "在上方输入本地地址，或先在终端里启动 dev server。",
-  invalid: "仅支持本地 http/https 地址（localhost、127.0.0.1、[::1]）",
+  empty: "还没有打开页面",
+  emptyHint: "输入网址，或者让 agent 打开 dev server 检查页面。",
+  invalid: "只支持 http/https 网址",
   bridgeMissing: "当前环境不支持预览窗口",
+  agent: "Agent 正在操作",
+  actions: {
+    open: "打开",
+    navigate: "打开",
+    back: "后退",
+    forward: "前进",
+    reload: "刷新",
+    snapshot: "读取页面",
+    click: "点击",
+    type: "输入",
+    press: "按键",
+    scroll: "滚动",
+    wait: "等待",
+    evaluate: "执行脚本",
+    screenshot: "截图",
+  },
+}
+
+/** 页面状态，来自 webview 的导航事件。 */
+export interface BrowserPageView {
+  url: string
+  title: string
+  loading: boolean
+  canGoBack: boolean
+  canGoForward: boolean
+}
+
+/** agent 最近一次在这个浏览器里的动作。 */
+export interface BrowserAgentView {
+  action: string
+  detail: string
 }
 
 /** 默认通过 preload 暴露的 pigcodeNative 打开窗口。 */
@@ -82,37 +122,43 @@ function openError(error: unknown, labels: BrowserViewLabels): string {
 
 /** 浏览器属性。 */
 export interface BrowserViewProps {
-  initialUrl?: string | undefined
-  /** 每次导航后回调，容器用主机名更新标签标题。 */
-  onNavigate?: (url: string) => void
+  page: BrowserPageView
+  agent?: BrowserAgentView | null | undefined
+  onNavigate: (url: string) => void
+  onBack: () => void
+  onForward: () => void
+  onReload: () => void
   openExternal?: PreviewOpen
+  /** 页面区的占位槽；宿主把 webview 盖在它上面。 */
+  slot: ReactNode
   labels?: Partial<BrowserViewLabels>
 }
 
-/** 浏览器 surface；历史只记录地址栏导航，页面内部跳转留在 iframe 里。 */
+/** 浏览器 surface。 */
 export function BrowserView({
-  initialUrl,
+  page,
+  agent,
   onNavigate,
+  onBack,
+  onForward,
+  onReload,
   openExternal = openInNativeWindow,
+  slot,
   labels: overrides,
 }: BrowserViewProps) {
-  const labels: BrowserViewLabels = { ...DEFAULT_BROWSER_LABELS, ...overrides }
-  const initial = initialUrl ? normalizeBrowserUrl(initialUrl) : null
-  const [history, setHistory] = useState<string[]>(initial ? [initial] : [])
-  const [index, setIndex] = useState(initial ? 0 : -1)
-  const [reloads, setReloads] = useState(0)
-  const [address, setAddress] = useState(initial ?? "")
-  const [error, setError] = useState<string | null>(null)
-  const current = history[index] ?? null
-
-  function go(nextIndex: number): void {
-    const url = history[nextIndex]
-    if (url === undefined) return
-    setIndex(nextIndex)
-    setAddress(url)
-    setError(null)
-    onNavigate?.(url)
+  const labels: BrowserViewLabels = {
+    ...DEFAULT_BROWSER_LABELS,
+    ...overrides,
+    actions: { ...DEFAULT_BROWSER_LABELS.actions, ...overrides?.actions },
   }
+  const current = page.url && page.url !== "about:blank" ? page.url : ""
+  const [address, setAddress] = useState(current)
+  const [editing, setEditing] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!editing) setAddress(current)
+  }, [current, editing])
 
   function submit(event: FormEvent<HTMLFormElement>): void {
     event.preventDefault()
@@ -123,13 +169,9 @@ export function BrowserView({
     }
     setError(null)
     setAddress(url)
-    if (url === current) {
-      setReloads((value) => value + 1)
-      return
-    }
-    setHistory((list) => [...list.slice(0, index + 1), url])
-    setIndex(index + 1)
-    onNavigate?.(url)
+    setEditing(false)
+    if (url === current) onReload()
+    else onNavigate(url)
   }
 
   async function openWindow(): Promise<void> {
@@ -143,7 +185,7 @@ export function BrowserView({
   }
 
   return (
-    <div className="browser-view">
+    <div className="browser-view" data-agent={agent ? true : undefined}>
       <div className="browser-toolbar">
         <Button
           variant="plain"
@@ -151,8 +193,8 @@ export function BrowserView({
           type="button"
           aria-label={labels.back}
           title={labels.back}
-          disabled={index <= 0}
-          onClick={() => go(index - 1)}
+          disabled={!page.canGoBack}
+          onClick={onBack}
         >
           <ArrowLeft className="ic ic-sm" aria-hidden="true" />
         </Button>
@@ -162,8 +204,8 @@ export function BrowserView({
           type="button"
           aria-label={labels.forward}
           title={labels.forward}
-          disabled={index >= history.length - 1}
-          onClick={() => go(index + 1)}
+          disabled={!page.canGoForward}
+          onClick={onForward}
         >
           <ArrowRight className="ic ic-sm" aria-hidden="true" />
         </Button>
@@ -174,9 +216,9 @@ export function BrowserView({
           aria-label={labels.reload}
           title={labels.reload}
           disabled={!current}
-          onClick={() => setReloads((value) => value + 1)}
+          onClick={onReload}
         >
-          <RotateCw className="ic ic-sm" aria-hidden="true" />
+          <RotateCw className="ic ic-sm" aria-hidden="true" data-spin={page.loading || undefined} />
         </Button>
         <form className="browser-address" onSubmit={submit}>
           <input
@@ -187,8 +229,12 @@ export function BrowserView({
             aria-invalid={error === labels.invalid || undefined}
             spellCheck={false}
             autoComplete="off"
-            onChange={(event) => setAddress(event.target.value)}
+            onChange={(event) => {
+              setEditing(true)
+              setAddress(event.target.value)
+            }}
             onFocus={(event) => event.currentTarget.select()}
+            onBlur={() => setEditing(false)}
           />
         </form>
         <Button
@@ -203,29 +249,35 @@ export function BrowserView({
           <ExternalLink className="ic ic-sm" aria-hidden="true" />
         </Button>
       </div>
+      {agent ? (
+        <div className="browser-agent" role="status" aria-live="polite">
+          <Bot className="ic ic-sm" aria-hidden="true" />
+          <span className="browser-agent-label">{labels.agent}</span>
+          <span className="browser-agent-action truncate">
+            {[labels.actions[agent.action] ?? agent.action, agent.detail]
+              .filter(Boolean)
+              .join(" · ")}
+          </span>
+          <DotMatrix />
+        </div>
+      ) : null}
       {error ? (
         <p className="browser-error" role="alert">
           {error}
         </p>
       ) : null}
-      {current ? (
-        <iframe
-          key={`${index}:${reloads}`}
-          className="browser-frame"
-          src={current}
-          title={current}
-          sandbox="allow-scripts allow-forms allow-same-origin allow-modals allow-downloads"
-          referrerPolicy="no-referrer"
-        />
-      ) : (
-        <div className="browser-empty">
-          <span className="browser-empty-icon">
-            <Globe className="ic" aria-hidden="true" />
-          </span>
-          <strong>{labels.empty}</strong>
-          <p>{labels.emptyHint}</p>
-        </div>
-      )}
+      <div className="browser-page">
+        {current ? null : (
+          <div className="browser-empty">
+            <span className="browser-empty-icon">
+              <Globe className="ic" aria-hidden="true" />
+            </span>
+            <strong>{labels.empty}</strong>
+            <p>{labels.emptyHint}</p>
+          </div>
+        )}
+        {slot}
+      </div>
     </div>
   )
 }

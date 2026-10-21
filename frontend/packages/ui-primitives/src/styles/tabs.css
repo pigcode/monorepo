@@ -1,0 +1,359 @@
+/* ─── 线程头标签栏：主会话与子代理 ───────────────────────── */
+.thread-tabs {
+  display: flex;
+  align-items: center;
+  flex: 0 1 auto;
+  gap: 2px;
+  min-width: 0;
+  max-width: 70%;
+}
+.thread-tab-list {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.thread-tab-list::-webkit-scrollbar {
+  display: none;
+}
+.thread-tab {
+  position: relative;
+  display: flex;
+  align-items: center;
+  flex: 0 1 auto;
+  min-width: 0;
+  height: 26px;
+  border-radius: var(--r-md);
+  color: var(--muted);
+}
+.thread-tab:hover {
+  background: var(--hover);
+  color: var(--fg-2);
+}
+.thread-tab[data-active] {
+  background: var(--active);
+  color: var(--fg);
+}
+.thread-tab[data-kind="main"] {
+  flex-shrink: 0;
+  max-width: 320px;
+}
+.thread-tab:not([data-kind="main"]) {
+  max-width: 220px;
+}
+.thread-tab-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  height: 100%;
+  padding: 0 9px;
+  border-radius: inherit;
+  color: inherit;
+  font-size: var(--fs-md);
+  outline: none;
+}
+.thread-tab-label:focus-visible {
+  box-shadow: inset 0 0 0 1.5px var(--accent);
+}
+.thread-tab-title {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+}
+/* 标题放不下时在右缘渐隐，和侧栏标题一致 */
+.thread-tab-title[data-overflow] {
+  -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 18px), transparent);
+  mask-image: linear-gradient(to right, #000 calc(100% - 18px), transparent);
+}
+.thread-tab-title.title-text {
+  color: inherit;
+}
+.thread-tab-icon {
+  flex: none;
+  color: var(--accent-text);
+}
+.thread-tab .dot-matrix {
+  color: var(--accent-text);
+}
+.thread-tab-wait {
+  width: 6px;
+  height: 6px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--warn);
+}
+.thread-tab-close {
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  margin-right: 4px;
+  margin-left: -4px;
+  flex: none;
+  border-radius: var(--r-sm);
+  color: var(--faint);
+  opacity: 0;
+}
+.thread-tab:hover .thread-tab-close,
+.thread-tab[data-active] .thread-tab-close,
+.thread-tab-close:focus-visible {
+  opacity: 1;
+}
+.thread-tab-close:hover {
+  background: var(--hover);
+  color: var(--fg);
+}
+.thread-tab-add {
+  width: 26px;
+  height: 26px;
+  flex: none;
+  border-radius: var(--r-md);
+  color: var(--muted);
+}
+.thread-tab-add:hover,
+.thread-tab-add[data-popup-open] {
+  background: var(--hover);
+  color: var(--fg);
+}
+.thread-tab-menu {
+  min-width: 220px;
+}
+.thread-tab-menu .menu-note {
+  max-width: 240px;
+  padding: 6px 8px 4px;
+  border-top: var(--hair) solid var(--divider);
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: var(--fs-xs);
+  line-height: 1.5;
+}
+
+/* ─── 派生子代理的只读视图 ──────────────────────────────── */
+.subagent-view {
+  gap: 12px;
+}
+.subagent-view-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: var(--r-lg);
+  background: var(--surface);
+  box-shadow: var(--shadow-raised);
+}
+.subagent-view-head .subagent-icon {
+  margin-top: 1px;
+}
+.subagent-view-title {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  gap: 3px;
+  min-width: 0;
+}
+.subagent-view-name {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: var(--fs-md);
+  font-weight: 600;
+}
+.subagent-view-model {
+  color: var(--muted);
+  font-size: var(--fs-xs);
+  font-weight: 400;
+}
+.subagent-view-task {
+  color: var(--fg-2);
+  font-size: calc(var(--ui-scale) * 12.5px);
+  line-height: 1.55;
+}
+.subagent-view-task-text {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.subagent-view-task[data-clamped] .subagent-view-task-text {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 4;
+}
+.subagent-view-more {
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: var(--fs-xs);
+}
+.subagent-view-more:hover {
+  color: var(--fg);
+}
+.subagent-view-head .subagent-status:has(.dot-matrix)::before {
+  display: none;
+}
+.subagent-view-steps {
+  margin-top: 2px;
+}
+.subagent-view-result {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.subagent-view-label {
+  color: var(--muted);
+  font-size: var(--fs-xs);
+}
+.subagent-readonly {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  max-width: var(--chat-col);
+  min-height: 44px;
+  margin: 0 auto;
+  padding: 0 8px 0 14px;
+  border-radius: var(--r-lg);
+  background: var(--field);
+  color: var(--muted);
+  font-size: var(--fs-sm);
+}
+.subagent-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 10px;
+  border-radius: var(--r-md);
+  color: var(--fg-2);
+}
+.subagent-back:hover {
+  background: var(--hover);
+  color: var(--fg);
+}
+.subagent-open {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  margin-right: -6px;
+  flex: none;
+  border-radius: var(--r-sm);
+  color: var(--faint);
+}
+.subagent-open:hover {
+  background: var(--active);
+  color: var(--fg);
+}
+.turn-brief {
+  margin-top: 4px;
+}
+
+/* ─── agent 的提问 ─────────────────────────────────────── */
+.question-card {
+  gap: 12px;
+}
+.question {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.question legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px;
+  margin-bottom: 4px;
+  padding: 0;
+  color: var(--fg);
+  font-size: var(--fs-md);
+}
+.question-header {
+  padding: 1px 6px;
+  border-radius: var(--r-sm);
+  background: var(--warn-soft);
+  color: var(--warn-text);
+  font-size: var(--fs-xs);
+}
+.question-hint {
+  color: var(--muted);
+  font-size: var(--fs-xs);
+}
+.question-option {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 5px 8px;
+  border-radius: var(--r-md);
+  cursor: pointer;
+}
+.question-option:hover {
+  background: var(--hover);
+}
+.question-option input {
+  flex: none;
+  accent-color: var(--accent);
+}
+.question-option-label {
+  color: var(--fg);
+  font-size: var(--fs-md);
+}
+.question-option-desc {
+  color: var(--muted);
+  font-size: var(--fs-sm);
+}
+.question-other {
+  height: 30px;
+  margin: 2px 0 0;
+  padding: 0 10px;
+  border: 0;
+  border-radius: var(--r-md);
+  outline: 0;
+  background: var(--field);
+  color: var(--fg);
+  font: inherit;
+  font-size: var(--fs-sm);
+}
+.question-other:focus {
+  box-shadow:
+    0 0 0 1px var(--border-focus),
+    0 0 0 3px var(--accent-ring);
+}
+.question-done {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  color: var(--muted);
+  font-size: var(--fs-sm);
+}
+.question-done-row {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+.question-done-row .ic {
+  flex: none;
+  align-self: center;
+  color: var(--ok-text);
+}
+.question-done-q {
+  color: var(--fg-2);
+}
+.question-done-a {
+  color: var(--fg);
+  font-weight: 500;
+}
+
+/* 计划模式交出的计划 */
+.plan-approval-body {
+  max-height: 360px;
+  overflow: auto;
+  padding: 2px 2px 0 26px;
+  color: var(--fg);
+  white-space: normal;
+}

@@ -80,6 +80,7 @@ describe("codex replay integration", () => {
       name: "Bash",
       output: "hi",
       isError: false,
+      exitCode: 0,
     })
     expect(events).toContainEqual({ type: "message.completed", text: "done" })
     expect(events.at(-1)).toEqual({ type: "run.completed" })

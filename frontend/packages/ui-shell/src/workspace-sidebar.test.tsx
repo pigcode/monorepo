@@ -1,6 +1,6 @@
 /** 验证侧栏渲染导航、项目与会话，以及会话的右键菜单与数字快捷键。 */
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen } from "@testing-library/react"
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import type { ComponentProps } from "react"
 import { afterEach, describe, expect, it, vi } from "vitest"
@@ -67,14 +67,21 @@ describe("visibleThreads", () => {
       thread("t1", "p1", "older", "2026-10-20T01:00:00.000Z"),
       thread("t2", "p2", "newest", "2026-10-20T03:00:00.000Z"),
       thread("t3", "p1", "middle", "2026-10-20T02:00:00.000Z"),
-      { ...thread("t4", "p1", "archived", "2026-10-20T04:00:00.000Z"), archivedAt: "2026-10-21T00:00:00.000Z" },
+      {
+        ...thread("t4", "p1", "archived", "2026-10-20T04:00:00.000Z"),
+        archivedAt: "2026-10-21T00:00:00.000Z",
+      },
       thread("t5", "gone", "no project", "2026-10-20T05:00:00.000Z"),
     ]
     const ids = (list: Array<{ id: string }>) => list.map((item) => item.id)
 
     expect(ids(visibleThreads(projects, threads, "project", {}))).toEqual(["t1", "t3", "t2"])
     expect(ids(visibleThreads(projects, threads, "project", { p1: false }))).toEqual(["t2"])
-    expect(ids(visibleThreads(projects, threads, "time", { p1: false }))).toEqual(["t2", "t3", "t1"])
+    expect(ids(visibleThreads(projects, threads, "time", { p1: false }))).toEqual([
+      "t2",
+      "t3",
+      "t1",
+    ])
   })
 })
 
@@ -152,6 +159,41 @@ describe("WorkspaceSidebar", () => {
     expect(formatThreadTime("2026-10-21T10:00:00Z", "en-US", now)).toBe("2h")
     expect(formatThreadTime("2026-10-16T12:00:00Z", "en-US", now)).toBe("5d")
     expect(formatThreadTime("not a date", "en-US", now)).toBe("")
+  })
+
+  it("animates a dot matrix for running threads and keeps a status dot for the rest", () => {
+    renderSidebar({
+      threads: [
+        thread("t1", "p1", "Running thread", "2026-10-20T01:00:00.000Z"),
+        thread("t2", "p1", "Finished thread", "2026-10-20T00:30:00.000Z"),
+      ],
+      threadStatus: { t1: "running", t2: "completed" },
+    })
+    const running = screen.getByRole("button", { name: /Running thread/ })
+    expect(running.querySelector(".sess-indicator .dot-matrix")).not.toBeNull()
+    expect(running.querySelectorAll(".dot-matrix-cell")).toHaveLength(9)
+    expect(running.querySelector(".sess-dot")).toBeNull()
+    expect(running.textContent).toContain("运行中")
+    const finished = screen.getByRole("button", { name: /Finished thread/ })
+    expect(finished.querySelector(".dot-matrix")).toBeNull()
+    expect(finished.querySelector(".sess-dot")?.getAttribute("data-status")).toBe("completed")
+    // 长标题靠渐隐收尾，完整标题放在 title 上。
+    expect(running.querySelector(".sess-title")?.getAttribute("title")).toBe("Running thread")
+  })
+
+  it("keeps relative times current by refreshing them every minute", () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date("2026-10-21T08:00:30.000Z"))
+    try {
+      renderSidebar({ threads: [thread("t1", "p1", "Fresh thread", "2026-10-21T08:00:00.000Z")] })
+      expect(document.querySelector(".sess time")?.textContent).toBe("刚刚")
+      act(() => {
+        vi.advanceTimersByTime(3 * 60_000)
+      })
+      expect(document.querySelector(".sess time")?.textContent).toBe("3分钟")
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it("renders projects and threads", () => {
@@ -275,7 +317,10 @@ describe("WorkspaceSidebar", () => {
   })
 
   it("says so when the project folder can't be opened, naming it after the platform's file manager", async () => {
-    mockNative({ platform: "darwin", openFolder: vi.fn().mockRejectedValue(new Error("FOLDER_NOT_FOUND")) })
+    mockNative({
+      platform: "darwin",
+      openFolder: vi.fn().mockRejectedValue(new Error("FOLDER_NOT_FOUND")),
+    })
     renderSidebar({ onRenameProject: vi.fn(), onRemoveProject: vi.fn() })
 
     fireEvent.contextMenu(screen.getByRole("button", { name: "alpha" }))
@@ -288,9 +333,20 @@ describe("WorkspaceSidebar", () => {
       thread(`t${index}`, "p1", `Thread ${index}`, "2026-10-20T01:00:00.000Z"),
     )
     const { rerender } = renderSidebar({ threads, shortcutHints: true })
-    const badges = () => Array.from(document.querySelectorAll(".sess-kbd")).map((node) => node.textContent)
+    const badges = () =>
+      Array.from(document.querySelectorAll(".sess-kbd")).map((node) => node.textContent)
 
-    expect(badges()).toEqual(["Ctrl+1", "Ctrl+2", "Ctrl+3", "Ctrl+4", "Ctrl+5", "Ctrl+6", "Ctrl+7", "Ctrl+8", "Ctrl+9"])
+    expect(badges()).toEqual([
+      "Ctrl+1",
+      "Ctrl+2",
+      "Ctrl+3",
+      "Ctrl+4",
+      "Ctrl+5",
+      "Ctrl+6",
+      "Ctrl+7",
+      "Ctrl+8",
+      "Ctrl+9",
+    ])
     expect(document.querySelectorAll(".sess time")).toHaveLength(1)
 
     rerender(

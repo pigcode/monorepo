@@ -1,0 +1,258 @@
+/*
+  聊天时间线（按轮）：右侧用户气泡；助手一侧是「工作中 / 已工作」折叠头、工作区（工具行、过程消息、
+  计划、子 agent）、最终回答与悬停操作栏。规则都挂在 .turn 下，压过旧版的逐条消息样式。
+*/
+.msgs:has(> .turn) {
+  gap: 0;
+}
+.turn {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 22px 0 6px;
+}
+.turn:first-child {
+  padding-top: 8px;
+}
+
+/* 用户气泡：靠右、最多 80% 宽，右上角收成小圆角；悬停时下方出现复制 */
+.turn-user {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+}
+.turn .turn-user .msg-user {
+  align-self: flex-end;
+  max-width: min(80%, 560px);
+  margin: 0;
+  padding: 9px 14px;
+  border-radius: 14px 4px 14px 14px;
+  background: var(--surface-raised);
+  box-shadow: inset 0 0 0 var(--hair) var(--border-strong);
+  color: var(--fg);
+  font-size: var(--fs-content);
+  line-height: 1.6;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.turn-user-actions {
+  display: flex;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity var(--t-fast);
+}
+.turn-user:hover .turn-user-actions,
+.turn-user-actions:focus-within {
+  opacity: 1;
+}
+
+/* 助手一侧 */
+.turn-agent {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 10px;
+}
+.work-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-bottom: 7px;
+  border-bottom: var(--hair) solid color-mix(in oklab, var(--border-strong) 70%, transparent);
+}
+.work-toggle {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: 7px;
+  color: var(--muted);
+  font-size: var(--fs-md);
+  text-align: left;
+}
+.work-toggle:not(:disabled):hover {
+  color: var(--fg);
+}
+.work-toggle:disabled {
+  cursor: default;
+}
+.work-head[data-status="running"] .work-toggle,
+.work-head[data-status="waiting"] .work-toggle {
+  color: var(--fg-2);
+}
+.work-head[data-status="waiting"] .work-label {
+  color: var(--warn-text);
+}
+.work-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.work-chev {
+  flex: none;
+  color: var(--faint);
+  transition: transform var(--t-fast);
+}
+.work-toggle[aria-expanded="true"] .work-chev {
+  transform: rotate(90deg);
+}
+.work-agent {
+  flex: none;
+  color: var(--faint);
+  font-size: var(--fs-xs);
+}
+.turn-work {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 2px 0 4px;
+}
+.work-message {
+  color: var(--fg-2);
+  font-family: var(--font-content);
+  font-size: var(--fs-content);
+  line-height: 1.7;
+}
+.work-message p {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.turn .msg-ai {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  color: var(--fg);
+}
+
+/* 工具行：图标 + 动作 + 对象，运行中显示点阵，悬停出现展开箭头 */
+.tool-row {
+  min-width: 0;
+}
+.tool-row-head {
+  display: inline-flex;
+  max-width: 100%;
+  align-items: center;
+  gap: 8px;
+  min-height: 26px;
+  color: var(--fg-2);
+  font-size: var(--fs-md);
+  text-align: left;
+}
+.tool-row-icon {
+  flex: none;
+  color: var(--faint);
+}
+.tool-row-kind {
+  flex: none;
+  color: var(--fg-2);
+}
+.tool-row-target {
+  min-width: 0;
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: calc(var(--fs-code) + 0.5px);
+}
+.tool-row-status {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  color: var(--muted);
+  font-size: var(--fs-xs);
+}
+.tool-row-status.is-failed {
+  color: var(--bad-text);
+}
+.tool-row-chev {
+  flex: none;
+  color: var(--faint);
+  opacity: 0;
+  transition:
+    opacity var(--t-fast),
+    transform var(--t-fast);
+}
+.tool-row-head:hover .tool-row-chev,
+.tool-row.is-open > .tool-row-head .tool-row-chev,
+.tool-row-head:focus-visible .tool-row-chev {
+  opacity: 1;
+}
+.tool-row.is-open > .tool-row-head .tool-row-chev {
+  transform: rotate(90deg);
+}
+.tool-row-head:hover .tool-row-kind {
+  color: var(--fg);
+}
+.tool-row[data-status="failed"] .tool-row-icon {
+  color: var(--bad-text);
+}
+.tool-row-body {
+  margin: 4px 0 6px 24px;
+  overflow: hidden;
+  border-radius: 10px;
+  background: var(--surface);
+  box-shadow: inset 0 0 0 var(--hair) var(--border-strong);
+}
+.tool-row-label {
+  padding: 7px 12px 0;
+  color: var(--muted);
+  font-size: var(--fs-xs);
+}
+.tool-row-body pre {
+  max-height: 260px;
+  margin: 0;
+  overflow: auto;
+  padding: 4px 12px 10px;
+  color: var(--fg-2);
+  font-family: var(--font-mono);
+  font-size: var(--fs-code);
+  line-height: 1.55;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.tool-group-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 2px 0 4px 24px;
+}
+
+/* 切换 agent 的分隔线 */
+.turn-switch {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 18px 0 2px;
+  color: var(--faint);
+  font-size: var(--fs-xs);
+}
+.turn-switch::before,
+.turn-switch::after {
+  height: var(--hair);
+  flex: 1;
+  background: var(--border-strong);
+  content: "";
+}
+
+/* 回答下方的复制与时间：悬停这一轮时才出现 */
+.turn .turn-actions {
+  margin: -2px 0 0 -5px;
+  opacity: 0;
+  transition: opacity var(--t-fast);
+}
+.turn:hover .turn-actions,
+.turn .turn-actions:focus-within {
+  opacity: 1;
+}
+.turn .event-line {
+  margin-left: 0;
+}
+.turn .msg-ai.is-streaming p:last-of-type {
+  display: inline;
+}
+@media (prefers-reduced-motion: reduce) {
+  .work-chev,
+  .tool-row-chev {
+    transition: none;
+  }
+}

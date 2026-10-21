@@ -7,7 +7,8 @@ import {
   rpcFailureSchema,
   rpcSuccessSchema,
 } from "@pigcode/contracts"
-import type { CommandMethod } from "@pigcode/contracts"
+import type { CommandMethod, PermissionMode, ReasoningEffort } from "@pigcode/contracts"
+import { buildSubagentBrief } from "../providers/switching"
 
 /** 基于 Cordis 服务处理 RPC 请求的 Host 侧服务器。 */
 export class RpcServer {
@@ -108,24 +109,57 @@ export class RpcServer {
       case "thread.archive": {
         const value = parsed as { threadId: string }
         // 归档的会话从界面上消失；还在跑或排队的 run 先停下，免得在看不见的地方改代码或卡在审批上。
+        // 子代理随主会话一起归档，它们的 run 也一并停下。
+        const archived = new Set([
+          value.threadId,
+          ...this.ctx.threads.children(value.threadId).map((child) => child.id),
+        ])
         for (const run of this.ctx.providers.listRuns()) {
-          if (run.threadId === value.threadId) this.ctx.providers.cancelRun(run.runId)
+          if (archived.has(run.threadId)) this.ctx.providers.cancelRun(run.runId)
         }
         const thread = this.ctx.threads.archive(value.threadId)
         if (!thread) throw new Error(`thread not found: ${value.threadId}`)
         return thread
       }
       case "thread.create": {
-        const value = parsed as { projectId: string; title: string; providerId: string }
-        const thread = this.ctx.threads.create(value.projectId, value.title, value.providerId)
+        const value = parsed as {
+          projectId: string
+          title: string
+          providerId: string
+          parentThreadId?: string
+        }
+        const thread = this.ctx.threads.create(
+          value.projectId,
+          value.title,
+          value.providerId,
+          value.parentThreadId,
+        )
+        const now = new Date().toISOString()
         this.ctx.sessions.append({
           threadId: thread.id,
           runId: null,
           type: "thread.created",
-          payload: { title: thread.title },
+          payload: {
+            title: thread.title,
+            ...(value.parentThreadId ? { parentThreadId: value.parentThreadId } : {}),
+          },
           schemaVersion: 1,
-          createdAt: new Date().toISOString(),
+          createdAt: now,
         })
+        // 子代理的第一条消息前带上主会话的近况；只注入一次，之后按子代理自己的会话继续。
+        const brief = value.parentThreadId
+          ? buildSubagentBrief(this.ctx, value.parentThreadId)
+          : null
+        if (brief) {
+          this.ctx.sessions.append({
+            threadId: thread.id,
+            runId: null,
+            type: "thread.updated",
+            payload: { handoff: brief },
+            schemaVersion: 1,
+            createdAt: now,
+          })
+        }
         return thread
       }
       case "thread.subscribe": {
@@ -161,15 +195,34 @@ export class RpcServer {
           value.modelId ?? null,
         )
       }
-      case "run.start": {
-        const value = parsed as { threadId: string; text: string }
-        const { runId } = await this.ctx.providers.startRun(value.threadId, value.text, (event) => {
-          this.transport.send({
-            jsonrpc: "2.0",
-            method: "thread.delta",
-            params: { threadId: value.threadId, event },
-          })
+      case "thread.setPermissionMode": {
+        const value = parsed as { threadId: string; permissionMode: PermissionMode }
+        const thread = this.ctx.threads.setPermissionMode(value.threadId, value.permissionMode)
+        if (!thread) throw new Error(`thread not found: ${value.threadId}`)
+        this.ctx.sessions.append({
+          threadId: thread.id,
+          runId: null,
+          type: "thread.updated",
+          payload: { permissionMode: thread.permissionMode },
+          schemaVersion: 1,
+          createdAt: new Date().toISOString(),
         })
+        return thread
+      }
+      case "run.start": {
+        const value = parsed as { threadId: string; text: string; effort?: ReasoningEffort }
+        const { runId } = await this.ctx.providers.startRun(
+          value.threadId,
+          value.text,
+          (event) => {
+            this.transport.send({
+              jsonrpc: "2.0",
+              method: "thread.delta",
+              params: { threadId: value.threadId, event },
+            })
+          },
+          value.effort ? { effort: value.effort } : {},
+        )
         return { runId }
       }
       case "run.list":
@@ -190,6 +243,21 @@ export class RpcServer {
           value.runId,
           value.requestId,
           value.decision,
+        )
+        return { ok: true }
+      }
+      case "run.answerQuestion": {
+        const value = parsed as {
+          threadId: string
+          runId: string
+          requestId: string
+          answers: string[]
+        }
+        this.ctx.providers.answerQuestion(
+          value.threadId,
+          value.runId,
+          value.requestId,
+          value.answers,
         )
         return { ok: true }
       }

@@ -12,14 +12,30 @@ export class CodexRpcClient {
   private readonly pending = new Map<number, Pending>()
   private readonly notificationHandlers = new Map<string, Set<(params: unknown) => void>>()
   private readonly requestHandlers = new Map<string, (params: unknown) => Promise<unknown>>()
+  private readonly closeHandlers = new Set<(reason: Error) => void>()
   private readonly disposeLine: () => void
+  private readonly disposeClose: () => void
+  private closedReason: Error | null = null
 
   constructor(private readonly transport: CodexTransport) {
     this.disposeLine = transport.onLine((line) => this.handleLine(line))
+    this.disposeClose =
+      transport.onClose?.((reason) => this.handleClose(reason)) ?? (() => undefined)
+  }
+
+  /** app-server 进程不在了（没装、崩溃或被关掉）时回调一次。 */
+  onClose(handler: (reason: Error) => void): () => void {
+    if (this.closedReason) {
+      handler(this.closedReason)
+      return () => undefined
+    }
+    this.closeHandlers.add(handler)
+    return () => this.closeHandlers.delete(handler)
   }
 
   /** 发送请求，等待同 id 的响应；超时后拒绝。 */
   request(method: string, params: unknown): Promise<unknown> {
+    if (this.closedReason) return Promise.reject(this.closedReason)
     const id = this.nextId++
     return new Promise((resolve, reject) => {
       this.pending.set(id, { resolve, reject })
@@ -63,7 +79,18 @@ export class CodexRpcClient {
   /** 停止监听并关闭底层传输。 */
   close(): void {
     this.disposeLine()
+    this.disposeClose()
     this.transport.close()
+  }
+
+  /** 进程不在了：等待中的请求立即失败，而不是等到超时。 */
+  private handleClose(reason: Error): void {
+    if (this.closedReason) return
+    this.closedReason = reason
+    for (const entry of this.pending.values()) entry.reject(reason)
+    this.pending.clear()
+    for (const handler of [...this.closeHandlers]) handler(reason)
+    this.closeHandlers.clear()
   }
 
   private handleLine(line: string): void {

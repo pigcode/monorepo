@@ -18,7 +18,38 @@ Pigcode 桌面端的 pnpm monorepo，包含 `apps/`（desktop、host）与 `pack
 - New sessions are automatically titled from the first user message.
 - The workbench width is draggable; double-click the divider to reset it.
 - Running, queued, waiting-approval, completed, failed, and interrupted states are shown
-  on both tabs and the sidebar.
+  on both tabs and the sidebar; a running thread shows an animated 3×3 dot matrix.
+- The thread header's split button opens the project folder in the file manager, an
+  installed editor (VS Code, Cursor, Windsurf, Trae, Zed, CodeBuddy, JetBrains…) or a
+  terminal (Terminal, iTerm, Ghostty, Warp, Windows Terminal, GNOME Terminal…), with the
+  app's own icon; the last choice becomes the default.
+
+## Composer
+
+- The model chip opens a picker with the agents (Claude Code, Codex, plugin providers)
+  on the left; only the selected agent's models are listed. Search, `⌘1…9`, and stars
+  for favorites work inside it; `⌘/` opens it from the input box.
+- Thinking depth lists only the levels the current model supports (Codex
+  `supportedReasoningEfforts`, Claude effort levels) and is remembered per model.
+- Permissions: ask every time, plan mode, read only, and full access (asks for
+  confirmation). `⇧Tab` cycles the first three; the choice is stored on the thread.
+- `@` references a project file, `/` at the start of a line runs a command, `↑`/`↓` in
+  an empty box bring back sent messages, and each thread keeps its own draft. The input
+  is plain text: Markdown markers are sent as typed, and `⇧↵` adds a line break.
+
+## Timeline
+
+Each run is one turn: the user's message on the right, then the agent's work (tool calls,
+plans, intermediate messages, subagents) under a "Working for…" header that folds into
+"Worked for N s" when the run ends, leaving the final answer, file changes and the copy
+button. Pending approvals always stay visible.
+
+## TypeScript
+
+Everything is TypeScript, including scripts and configs. Scripts run with Node's built-in
+type stripping (Node 22.18 or newer), for example `pnpm build:host` or
+`node scripts/create-plugin.ts`. Plugins can point `main`, `pigcode.host`, and
+`pigcode.client` at `.ts` files; see [docs/plugin-authoring.md](docs/plugin-authoring.md).
 
 ## Workbench
 

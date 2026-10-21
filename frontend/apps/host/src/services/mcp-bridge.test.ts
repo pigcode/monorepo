@@ -8,8 +8,8 @@ import { Context } from "cordis"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import { apply as mcpBridge } from "./mcp-bridge"
 
-/** 仓库内的 stdio 桥入口；构建时由 build-host.mjs 复制到 out/host/mcp。 */
-const BRIDGE_PATH = fileURLToPath(new URL("../mcp/stdio-bridge.mjs", import.meta.url))
+/** 仓库内的 stdio 桥入口；构建时由 build-host.ts 编译到 out/host/mcp/stdio-bridge.mjs。 */
+const BRIDGE_PATH = fileURLToPath(new URL("../mcp/stdio-bridge.ts", import.meta.url))
 
 /** 所有测试创建的 context 与子进程，afterEach 统一回收。 */
 const contexts: Context[] = []

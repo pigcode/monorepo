@@ -1,6 +1,13 @@
 @import "./tokens.css";
 @import "./glass.css";
 @import "./controls.css";
+@import "./indicators.css";
+@import "./composer.css";
+@import "./open-in.css";
+@import "./chat.css";
+@import "./terminal.css";
+@import "./tabs.css";
+@import "./browser.css";
 
 /*
   pigclaude 设计系统 · 组件（v5：浮层工作区）
@@ -4785,13 +4792,6 @@ body.is-resizing-rows iframe {
   background: var(--bad-soft);
   color: var(--bad-text);
   font-size: var(--fs-sm);
-}
-.browser-frame {
-  flex: 1;
-  min-height: 0;
-  width: 100%;
-  border: 0;
-  background: #fff;
 }
 .browser-empty {
   display: flex;

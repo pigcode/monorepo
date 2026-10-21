@@ -72,8 +72,12 @@ export function mapProviderEvent(run: ActiveRun, event: ProviderEvent, hooks: Ru
         output: event.output,
         isError: event.isError,
         status: event.isError ? "failed" : "completed",
+        ...(typeof event.exitCode === "number" ? { exitCode: event.exitCode } : {}),
         ...parentField(event.parentToolUseId),
       })
+      return
+    case "tool.outputDelta":
+      run.emitLive?.(event)
       return
     case "subagent.started":
       hooks.append(run.threadId, run.runId, "subagent.started", {
@@ -81,6 +85,7 @@ export function mapProviderEvent(run: ActiveRun, event: ProviderEvent, hooks: Ru
         id: event.toolCallId,
         name: event.name,
         ...(event.description === undefined ? {} : { description: event.description }),
+        ...(event.prompt === undefined ? {} : { prompt: event.prompt }),
         ...(event.model === undefined ? {} : { model: event.model }),
         ...parentField(event.parentToolUseId),
       })

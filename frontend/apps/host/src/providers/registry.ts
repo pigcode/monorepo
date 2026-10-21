@@ -1,13 +1,6 @@
 /** 注册 provider driver，并把一次 run 的规范化事件映射为线程事件。 */
 import type { Context } from "cordis"
-import type {
-  PendingRequest,
-  ProviderCapabilities,
-  ProviderEvent,
-  ProviderSession,
-  RunStatus,
-  ThreadEvent,
-} from "@pigcode/contracts"
+import type { RunStatus, ThreadEvent } from "@pigcode/contracts"
 import { randomUUID } from "node:crypto"
 import type {
   ApprovalDecision,
@@ -18,17 +11,17 @@ import type {
   UserInput,
 } from "./driver"
 import { FakeProviderDriver } from "./fake"
-import { detectClaude, type ClaudeDetection } from "./claude/detect"
+import { detectClaude } from "./claude/detect"
 import { ClaudeDriver } from "./claude/driver"
-import { detectCodex, type CodexDetection } from "./codex/detect"
+import { detectCodex } from "./codex/detect"
 import { CodexDriver } from "./codex/driver"
-import type { CodexModelInfo } from "./codex/models"
 import { RunAlreadyActiveError, RunQueueFullError, TooManyActiveRunsError } from "./errors"
-import { RunQueue, type ActiveRun, type QueuedRun, type RunSummary } from "./run-queue"
+import { RunQueue, type ActiveRun, type QueuedRun } from "./run-queue"
 import { launchRun, type LaunchDeps } from "./run-launch"
-import { recoverAfterRestart, type RestartRecovery } from "./restart"
+import { recoverAfterRestart } from "./restart"
 import { maybeAutoTitle } from "./title"
 import { mapProviderEvent, type RunEventHooks } from "./run-events"
+import { createModelCatalogCache, normalizeModels } from "./model-catalog"
 import {
   defaultProvider,
   disposeSession,
@@ -36,67 +29,16 @@ import {
   pendingForkFromNativeSessionId,
   resolveThreadCwd,
   switchProvider,
-  type Switch,
 } from "./switching"
 import { ApprovalBridge } from "./claude/permissions"
 import { ProviderSessionStore } from "./claude/session-store"
 import { PendingRequestStore } from "../storage/pending-request-store"
 import { RunStore } from "../storage/run-store"
+import type { ApprovalHandle, ProvidersService } from "./service"
+import { createQuestionFlow } from "./questions"
 
-/** 一次 run 的句柄；done 在 run 进入终态后 resolve。 */
-export interface StartRunResult {
-  runId: string
-  done: Promise<void>
-}
+export type { ApprovalHandle, ProvidersService, StartRunOptions, StartRunResult } from "./service"
 
-/** 一次审批请求的句柄；decision 在 UI 决议后 resolve。 */
-export interface ApprovalHandle {
-  requestId: string
-  decision: Promise<ApprovalDecision>
-}
-
-/** provider 注册表与运行生命周期入口。 */
-export interface ProvidersService {
-  register(driver: ProviderDriver): void
-  /** 移除插件注册的 driver；插件卸载时由其 effect 清理调用。 */
-  unregister(driverId: string): void
-  list(): Array<{ id: string; displayName: string; capabilities: ProviderCapabilities }>
-  detect(): Promise<{
-    claude: ClaudeDetection
-    codex: CodexDetection
-    fake: { installed: true }
-  }>
-  /** 读取 provider 的模型目录；M2 只有 Codex 最终会返回真实列表。 */
-  models(providerId: string): Promise<CodexModelInfo[]>
-  /** 选择新线程默认 provider：显式 env 优先，否则 Claude 已安装且登录时用 Claude。 */
-  defaultProvider(): Promise<string>
-  /** 切换线程 provider/model；同 provider 写 fork 源，跨 provider 写 handoff。 */
-  switchProvider(threadId: string, providerId: string, modelId?: string | null): Promise<Switch>
-  startRun(
-    threadId: string,
-    text: string,
-    emitLive?: (event: ProviderEvent) => void,
-  ): Promise<StartRunResult>
-  requestApproval(threadId: string, runId: string, request: ApprovalRequest): ApprovalHandle
-  respondApproval(
-    threadId: string,
-    runId: string,
-    requestId: string,
-    decision: ApprovalDecision,
-  ): void
-  getRunStatus(runId: string): RunStatus | null
-  cancelRun(runId: string): boolean
-  /** 列出运行中与排队中的 run，供 run.list 查询。 */
-  listRuns(): RunSummary[]
-  /** Host 退出时中断所有活跃与排队中的 run。 */
-  cancelAll(): void
-  /** 读取线程的 provider 会话记录，用于验证 native session 复用。 */
-  listSessions(threadId: string): ProviderSession[]
-  /** 读取线程仍未处理的审批/提问请求。 */
-  listPendingRequests(threadId: string): PendingRequest[]
-  /** Host 启动后清理上一个进程遗留的 run、session 与 pending 请求。 */
-  recoverAfterRestart(): RestartRecovery
-}
 declare module "cordis" {
   interface Context {
     providers: ProvidersService
@@ -111,7 +53,13 @@ export function apply(ctx: Context, config: ProviderRunConfig = {}): void {
   const maxConcurrentRuns = config.maxConcurrentRuns ?? 4
   const maxQueuedRuns = config.maxQueuedRuns ?? 32
   const drivers = new Map<string, ProviderDriver>()
-  const fake = new FakeProviderDriver()
+  const fake = new FakeProviderDriver({
+    callTool: (threadId, name, input) => {
+      const bridge = ctx.reflect.get("mcpBridge")
+      if (!bridge) return Promise.reject(new Error("MCP tools are not available"))
+      return bridge.callTool(threadId, name, input)
+    },
+  })
   drivers.set(fake.id, fake)
   const claude = new ClaudeDriver()
   drivers.set(claude.id, claude)
@@ -120,6 +68,7 @@ export function apply(ctx: Context, config: ProviderRunConfig = {}): void {
   const pendingRequests = new PendingRequestStore(ctx.storage.db)
   const providerSessions = new ProviderSessionStore(ctx.storage.db)
   const approvals = new ApprovalBridge()
+  const catalogs = createModelCatalogCache()
   const activeRuns = new Map<string, ActiveRun>()
   const activeThreads = new Set<string>()
   const queue = new RunQueue<QueuedRun>(maxQueuedRuns)
@@ -171,9 +120,10 @@ export function apply(ctx: Context, config: ProviderRunConfig = {}): void {
     pump()
   }
 
-  /** 把 run 的未决审批以 deny 结束，避免 driver 永久等待。 */
+  /** 把 run 的未决审批以 deny、未答问题以空答案结束，避免 driver 永久等待。 */
   function settlePending(run: ActiveRun): void {
     for (const requestId of run.approvals) {
+      if (questions.cancel(run, requestId)) continue
       if (!approvals.resolve(requestId, "deny")) continue
       pendingRequests.resolve(requestId)
       append(run.threadId, run.runId, "approval.resolved", {
@@ -185,6 +135,8 @@ export function apply(ctx: Context, config: ProviderRunConfig = {}): void {
     }
     run.approvals.clear()
   }
+
+  const questions = createQuestionFlow({ append, pendingRequests, runs, activeRuns })
 
   /** provider 事件映射所需的 Host 回调。 */
   const runEventHooks: RunEventHooks = {
@@ -253,6 +205,8 @@ export function apply(ctx: Context, config: ProviderRunConfig = {}): void {
         if (activeRuns.get(run.runId) !== run) return Promise.resolve<ApprovalDecision>("deny")
         return requestApproval(run.threadId, run.runId, request).decision
       },
+      askQuestions: (request) =>
+        activeRuns.get(run.runId) === run ? questions.ask(run, request) : Promise.resolve([]),
     }
     try {
       await run.driver.send(run.session, input, runtime)
@@ -317,9 +271,11 @@ export function apply(ctx: Context, config: ProviderRunConfig = {}): void {
   const service: ProvidersService = {
     register(driver) {
       drivers.set(driver.id, driver)
+      catalogs.invalidate(driver.id)
     },
     unregister(driverId) {
       drivers.delete(driverId)
+      catalogs.invalidate(driverId)
     },
     list() {
       return [...drivers.values()].map((driver) => ({
@@ -334,7 +290,8 @@ export function apply(ctx: Context, config: ProviderRunConfig = {}): void {
       return { claude, codex, fake: { installed: true } }
     },
     async models(providerId) {
-      return listProviderModels(drivers.get(providerId))
+      const driver = drivers.get(providerId)
+      return catalogs.get(providerId, async () => normalizeModels(await listProviderModels(driver)))
     },
     defaultProvider() {
       return defaultProvider((id) => drivers.has(id)) // 只接受已注册 driver。
@@ -352,7 +309,7 @@ export function apply(ctx: Context, config: ProviderRunConfig = {}): void {
         (session) => disposeSession(drivers, session),
       )
     },
-    async startRun(threadId, text, emitLive) {
+    async startRun(threadId, text, emitLive, options = {}) {
       const thread = ctx.threads.get(threadId)
       if (!thread) throw new Error(`thread not found: ${threadId}`)
       if (activeThreads.has(threadId)) throw new RunAlreadyActiveError(threadId)
@@ -392,7 +349,7 @@ export function apply(ctx: Context, config: ProviderRunConfig = {}): void {
           runId,
           threadId,
           driver,
-          input: { text },
+          input: { text, ...(options.effort ? { effort: options.effort } : {}) },
           emitLive,
           controller: new AbortController(),
           done,
@@ -442,6 +399,9 @@ export function apply(ctx: Context, config: ProviderRunConfig = {}): void {
         run.approvals.delete(requestId)
       }
     },
+    answerQuestion(threadId, runId, requestId, answers) {
+      questions.answer(threadId, runId, requestId, answers)
+    },
     getRunStatus(runId) {
       const active = activeRuns.get(runId)
       if (active) return active.status
@@ -489,6 +449,7 @@ export function apply(ctx: Context, config: ProviderRunConfig = {}): void {
     activeRuns.clear()
     activeThreads.clear()
     approvals.rejectAll(new Error("host disposed"))
+    questions.dispose()
   })
 }
 apply.inject = inject

@@ -1,30 +1,27 @@
 /** 应用外壳：把 store/connection 接到 Shell、聊天、设置与插件管理器。 */
-import { useEffect, useRef, useState, type ReactNode } from "react"
+import { Suspense, lazy, useEffect, useMemo, useRef, useState } from "react"
 import type { Project, Thread } from "@pigcode/contracts"
-import {
-  AppRenderer,
-  SlotHost,
-  useAppStore,
-  type AppStore,
-  type Connection,
-  type SlotRegistry,
-} from "@pigcode/client-runtime"
+import { AppRenderer, SlotHost, useAppStore, type SlotRegistry } from "@pigcode/client-runtime"
 import {
   useAppearance,
   useLocale,
   type AppearanceController,
   type Locale,
 } from "@pigcode/ui-primitives"
-import { ChatView, type ApprovalDecision, type ProviderOption } from "@pigcode/ui-chat"
-import { OpenInMenu, type SettingsSection, type ShellView, type ThreadStatus } from "@pigcode/ui-shell"
+export type { ChatSlotProps, CoreDeps } from "./chat-container"
+export { ChatViewContainer } from "./chat-container"
+import type { SettingsSection, ShellView, ThreadStatus } from "@pigcode/ui-shell"
 import {
   EMPTY_SURFACE_STATE,
   PanelLayoutControls,
+  addSurface,
+  updateSurface,
   type PanelLayoutControlsProps,
   type PanelSurfaceState,
 } from "@pigcode/ui-workbench"
-import type { ClientPluginController } from "./client-plugins"
+import { BrowserHost } from "./browser-host"
 import { PluginPanels } from "./client-plugins"
+import type { ChatSlotProps, CoreDeps } from "./chat-container"
 import { ConnectionBanner } from "./connection-banner"
 import {
   EMPTY_HISTORY,
@@ -38,9 +35,15 @@ import {
   type NavHistory,
   type NavLocation,
 } from "./navigation"
-import { listProviders, loadProviderContext, pickProviderId } from "./providers"
-import { TerminalDrawer } from "./terminal-drawer"
-import { WorkbenchPanel } from "./workbench"
+import { loadProviderContext, pickProviderId } from "./providers"
+
+// 工作台（xterm、diff）与底部终端在第一次打开时才加载，冷启动只加载聊天需要的代码。
+const WorkbenchPanel = lazy(() =>
+  import("./workbench").then((module) => ({ default: module.WorkbenchPanel })),
+)
+const TerminalDrawer = lazy(() =>
+  import("./terminal-drawer").then((module) => ({ default: module.TerminalDrawer })),
+)
 import { layoutLabels } from "./workbench-labels"
 import {
   addProject,
@@ -49,22 +52,6 @@ import {
   renameProject,
   renameThread,
 } from "./workspace-actions"
-
-/** 核心容器共享的依赖。 */
-export interface CoreDeps {
-  connection: Connection
-  store: AppStore
-  plugins: ClientPluginController
-}
-
-/** chat.view slot 传入聊天容器的右栏控制；第三方聊天视图可以忽略。 */
-export interface ChatSlotProps {
-  rightOpen?: boolean
-  onToggleRight?: () => void
-  /** 线程头末尾的布局按钮；右栏展开时为 null，按钮在右栏标签栏里。 */
-  layoutControls?: ReactNode
-  onNewThread?: () => void
-}
 
 /** settings.section slot 传给核心设置视图的属性。 */
 export interface SettingsSlotProps {
@@ -85,135 +72,26 @@ function messageOf(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
 }
 
-/** 聊天页容器：从 store 读取线程与事件，把操作交给 connection。 */
-export function ChatViewContainer({
-  deps,
-  rightOpen = false,
-  onToggleRight,
-  layoutControls,
-}: { deps: CoreDeps } & ChatSlotProps) {
-  const state = useAppStore(deps.store)
-  const thread = state.threads.find((item) => item.id === state.activeThreadId) ?? null
-  const project = state.projects.find((item) => item.id === thread?.projectId)
-  const [providerOptions, setProviderOptions] = useState<ProviderOption[]>([])
-  const { t } = useLocale()
-  const [providerNotice, setProviderNotice] = useState<string | null>(null)
+const BUSY: ReadonlySet<ThreadStatus> = new Set(["running", "queued", "waiting-approval"])
 
-  // provider 列表只用于线程头切换入口；插件启停后按 revision 重新拉取。
-  useEffect(() => {
-    let cancelled = false
-    void listProviders(deps.connection)
-      .then((providers) => {
-        if (!cancelled) {
-          setProviderOptions(
-            providers.map((provider) => ({ id: provider.id, displayName: provider.displayName })),
-          )
-        }
-      })
-      .catch(() => undefined)
-    return () => {
-      cancelled = true
+/** 侧栏状态：主会话空闲但有子代理在忙时，主会话显示子代理的状态。 */
+export function mergeChildStatus(
+  threads: readonly Thread[],
+  threadStates: Readonly<Record<string, { status: ThreadStatus }>>,
+): Record<string, ThreadStatus> {
+  const result: Record<string, ThreadStatus> = {}
+  for (const [threadId, viewState] of Object.entries(threadStates)) {
+    result[threadId] = viewState.status
+  }
+  for (const thread of threads) {
+    if (!thread.parentThreadId || thread.archivedAt !== null) continue
+    const status = threadStates[thread.id]?.status
+    const parent = result[thread.parentThreadId]
+    if (status && BUSY.has(status) && !(parent && BUSY.has(parent))) {
+      result[thread.parentThreadId] = status
     }
-  }, [deps.connection, state.providerRevision])
-
-  function interrupt(): void {
-    const runId = [...state.events].reverse().find((event) => event.runId !== null)?.runId
-    if (!runId || !state.activeThreadId) return
-    void deps.connection
-      .call("run.interrupt", { threadId: state.activeThreadId, runId })
-      .catch((error: unknown) => deps.store.update({ error: messageOf(error) }))
   }
-
-  /** 把审批决议提交给 Host；runId 取最近一条带 runId 的事件。 */
-  function respondApproval(requestId: string, decision: ApprovalDecision): void {
-    const runId = [...state.events].reverse().find((event) => event.runId !== null)?.runId
-    if (!runId || !state.activeThreadId) return
-    void deps.connection
-      .call("run.respondApproval", {
-        threadId: state.activeThreadId,
-        runId,
-        requestId,
-        decision,
-      })
-      .catch((error: unknown) => deps.store.update({ error: messageOf(error) }))
-  }
-
-  /** 切换 provider；Host 端语义由 Task 6 的 thread.switchProvider 落地。 */
-  function switchProvider(providerId: string): void {
-    if (!thread) return
-    void deps.connection
-      .call("thread.switchProvider", {
-        threadId: thread.id,
-        providerId,
-        modelId: null,
-      })
-      .then(() => {
-        const threads = deps.store
-          .getSnapshot()
-          .threads.map((item) =>
-            item.id === thread.id
-              ? { ...item, lastProviderId: providerId, lastModelId: null }
-              : item,
-          )
-        deps.store.update({ threads })
-        const name = providerOptions.find((provider) => provider.id === providerId)?.displayName
-        setProviderNotice(`${t("chat.provider.next")} ${name ?? providerId}`)
-        setTimeout(() => setProviderNotice(null), 4000)
-      })
-      .catch((error: unknown) => deps.store.update({ error: messageOf(error) }))
-  }
-
-  /** 切换模型；通过同一个 thread.switchProvider 命令交给 Host。 */
-  function switchModel(modelId: string): void {
-    if (!thread) return
-    const providerId = thread.lastProviderId ?? thread.defaultProviderId
-    void deps.connection
-      .call("thread.switchProvider", {
-        threadId: thread.id,
-        providerId,
-        modelId,
-      })
-      .then(() => {
-        const threads = deps.store
-          .getSnapshot()
-          .threads.map((item) => (item.id === thread.id ? { ...item, lastModelId: modelId } : item))
-        deps.store.update({ threads })
-      })
-      .catch((error: unknown) => deps.store.update({ error: messageOf(error) }))
-  }
-
-  return (
-    <>
-      {providerNotice ? (
-        <div className="toast-stack" role="status" aria-live="polite">
-          <div className="toast">{providerNotice}</div>
-        </div>
-      ) : null}
-      <ChatView
-        thread={thread}
-        events={state.events}
-        streamingText={state.streamingText}
-        capabilities={state.providerCapabilities}
-        models={state.providerModels}
-        providers={providerOptions}
-        {...(project ? { cwd: project.rootPath } : {})}
-        onStart={(text) => {
-          if (!state.activeThreadId) return
-          void deps.connection
-            .startRun(state.activeThreadId, text)
-            .catch((error: unknown) => deps.store.update({ error: messageOf(error) }))
-        }}
-        onInterrupt={interrupt}
-        onApproval={respondApproval}
-        onSwitchProvider={switchProvider}
-        onSwitchModel={switchModel}
-        rightOpen={rightOpen}
-        {...(onToggleRight ? { onToggleRight } : {})}
-        {...(layoutControls !== undefined ? { layoutControls } : {})}
-        {...(project ? { openIn: <OpenInMenu path={project.rootPath} /> } : {})}
-      />
-    </>
-  )
+  return result
 }
 
 /** 布局按钮；App 位于 LocaleProvider 之外，文案在渲染处读取。 */
@@ -229,6 +107,8 @@ export function App({ store, slots, connection, plugins, locale }: AppProps) {
   const [view, setView] = useState<ShellView>("chat")
   const [section, setSection] = useState<SettingsSection>("general")
   const [rightOpen, setRightOpen] = useState(false)
+  // 右栏第一次打开后才挂载（按需加载工作台代码），之后收起只隐藏，终端与浏览器标签保留。
+  const [rightStarted, setRightStarted] = useState(false)
   const [rightMaximized, setRightMaximized] = useState(false)
   const [terminalOpen, setTerminalOpen] = useState(false)
   // 底部终端第一次打开后才挂载，之后收起只隐藏，shell 会话保留到切换线程。
@@ -236,6 +116,10 @@ export function App({ store, slots, connection, plugins, locale }: AppProps) {
   const [panels, setPanels] = useState<Record<string, PanelSurfaceState>>({})
   const [history, setHistory] = useState<NavHistory>(EMPTY_HISTORY)
   const initialLoadDone = useRef(false)
+
+  useEffect(() => {
+    if (rightOpen) setRightStarted(true)
+  }, [rightOpen])
 
   // 每次落到新的位置都记一笔；从历史里跳转时当前位置已经对上，不会重复记录。
   useEffect(() => {
@@ -266,15 +150,20 @@ export function App({ store, slots, connection, plugins, locale }: AppProps) {
     })()
   }, [state.status, connection, store])
 
-  // 当前线程变化时刷新能力与模型列表，驱动按 capability 隐藏控件。
+  // 当前线程或它的 provider 变化时刷新能力，驱动按 capability 隐藏控件。
+  // 只依赖 provider id：线程标题、更新时间这类变化不需要重新查询。
+  const activeThread = state.threads.find((item) => item.id === state.activeThreadId)
+  const activeProviderId = activeThread
+    ? (activeThread.lastProviderId ?? activeThread.defaultProviderId)
+    : null
   useEffect(() => {
-    if (state.status !== "connected") return
-    const thread = state.threads.find((item) => item.id === state.activeThreadId)
+    if (state.status !== "connected" || !activeProviderId) return
+    const thread = store.getSnapshot().threads.find((item) => item.id === state.activeThreadId)
     if (!thread) return
     void loadProviderContext(connection, store, thread).catch((error: unknown) =>
       store.update({ error: messageOf(error) }),
     )
-  }, [state.status, state.activeThreadId, state.threads, connection, store])
+  }, [state.status, state.activeThreadId, activeProviderId, connection, store])
 
   /** 新建会话；没指定项目时放进当前会话所在的项目，再退回第一个项目。 */
   async function createThread(projectId?: string): Promise<void> {
@@ -341,10 +230,15 @@ export function App({ store, slots, connection, plugins, locale }: AppProps) {
   }
 
   const effectiveSection: SettingsSection = view === "plugins" ? "plugins" : section
-  const threadStatus: Record<string, ThreadStatus> = {}
-  for (const [threadId, viewState] of Object.entries(state.threadStates)) {
-    threadStatus[threadId] = viewState.status
-  }
+  // 子代理只在主会话的标签栏里出现；侧栏和命令面板只列主会话。
+  const mainThreads = useMemo(
+    () => state.threads.filter((thread) => !thread.parentThreadId),
+    [state.threads],
+  )
+  const threadStatus = useMemo(
+    () => mergeChildStatus(state.threads, state.threadStates),
+    [state.threads, state.threadStates],
+  )
   const activeThreadId = view === "chat" ? state.activeThreadId : null
 
   function toggleRight(): void {
@@ -365,6 +259,71 @@ export function App({ store, slots, connection, plugins, locale }: AppProps) {
     }))
   }
 
+  // agent 调用浏览器工具时，main 让这里给它的线程开（或亮出）浏览器标签；正在看这个线程时展开右栏。
+  const openState = useRef({ panels, activeThreadId: state.activeThreadId, view })
+  openState.current = { panels, activeThreadId: state.activeThreadId, view }
+  useEffect(
+    () =>
+      window.pigcodeNative?.browser?.onOpen(({ threadId, url }) => {
+        const existing = openState.current.panels[threadId]?.surfaces
+          .filter((surface) => surface.kind === "browser")
+          .at(-1)
+        const id = existing?.id ?? `browser-${crypto.randomUUID()}`
+        setPanels((current) => {
+          const panel = current[threadId] ?? EMPTY_SURFACE_STATE
+          return {
+            ...current,
+            [threadId]: panel.surfaces.some((surface) => surface.id === id)
+              ? { ...panel, activeId: id }
+              : {
+                  surfaces: [
+                    ...panel.surfaces,
+                    {
+                      id,
+                      kind: "browser",
+                      title: url ? new URL(url).host : locale === "en-US" ? "Browser" : "浏览器",
+                      ...(url ? { url } : {}),
+                    },
+                  ],
+                  activeId: id,
+                },
+          }
+        })
+        const { activeThreadId, view: currentView } = openState.current
+        if (threadId === activeThreadId && currentView === "chat") {
+          setRightOpen(true)
+          setRightMaximized(false)
+        }
+      }),
+    [locale],
+  )
+
+  /** 从聊天里打开文件或 Diff：当前线程的右栏切到对应标签并展开。 */
+  function openSurface(kind: "files" | "diff", path?: string): void {
+    const threadId = state.activeThreadId
+    if (!threadId) return
+    const title = kind === "files" ? (locale === "en-US" ? "Files" : "文件") : "Diff"
+    updatePanel(threadId, (panel) => {
+      const next = addSurface(panel, kind, `${kind}-${crypto.randomUUID()}`, () => title)
+      return path && next.activeId ? updateSurface(next, next.activeId, { path }) : next
+    })
+    setRightOpen(true)
+    setRightMaximized(false)
+  }
+
+  const browsers = useMemo(() => {
+    const live = new Set(
+      state.threads.filter((thread) => thread.archivedAt === null).map((thread) => thread.id),
+    )
+    return Object.entries(panels).flatMap(([threadId, panel]) =>
+      live.has(threadId)
+        ? panel.surfaces
+            .filter((surface) => surface.kind === "browser")
+            .map((surface) => ({ id: surface.id, threadId, initialUrl: surface.url }))
+        : [],
+    )
+  }, [panels, state.threads])
+
   const layoutControls = (maximizable: boolean) => (
     <LayoutControls
       rightOpen={rightOpen}
@@ -372,7 +331,10 @@ export function App({ store, slots, connection, plugins, locale }: AppProps) {
       terminalOpen={terminalOpen}
       onToggleTerminal={toggleTerminal}
       {...(maximizable
-        ? { maximized: rightMaximized, onToggleMaximize: () => setRightMaximized((value) => !value) }
+        ? {
+            maximized: rightMaximized,
+            onToggleMaximize: () => setRightMaximized((value) => !value),
+          }
         : {})}
       disabled={!activeThreadId}
     />
@@ -383,7 +345,7 @@ export function App({ store, slots, connection, plugins, locale }: AppProps) {
       locale={locale}
       view={view}
       projects={state.projects}
-      threads={state.threads}
+      threads={mainThreads}
       activeThreadId={state.activeThreadId}
       threadStatus={threadStatus}
       onToggleRight={toggleRight}
@@ -430,31 +392,43 @@ export function App({ store, slots, connection, plugins, locale }: AppProps) {
       rightOpen={rightOpen}
       rightMaximized={rightMaximized}
       rightPanel={
-        activeThreadId ? (
-          <WorkbenchPanel
-            key={activeThreadId}
-            connection={connection}
-            threadId={activeThreadId}
-            panel={panels[activeThreadId] ?? EMPTY_SURFACE_STATE}
-            onPanelChange={(update) => updatePanel(activeThreadId, update)}
-            controls={layoutControls(true)}
-            onError={(message) => store.update({ error: message })}
-          />
+        activeThreadId && (rightStarted || rightOpen) ? (
+          <Suspense fallback={null}>
+            <WorkbenchPanel
+              key={activeThreadId}
+              connection={connection}
+              threadId={activeThreadId}
+              panel={panels[activeThreadId] ?? EMPTY_SURFACE_STATE}
+              onPanelChange={(update) => updatePanel(activeThreadId, update)}
+              controls={layoutControls(true)}
+              onError={(message) => store.update({ error: message })}
+            />
+          </Suspense>
         ) : undefined
       }
       bottomPanel={
         activeThreadId && terminalStarted ? (
-          <TerminalDrawer
-            key={activeThreadId}
-            connection={connection}
-            threadId={activeThreadId}
-            open={terminalOpen}
-            onClose={() => setTerminalOpen(false)}
-          />
+          <Suspense fallback={null}>
+            <TerminalDrawer
+              key={activeThreadId}
+              connection={connection}
+              threadId={activeThreadId}
+              open={terminalOpen}
+              onClose={() => setTerminalOpen(false)}
+            />
+          </Suspense>
         ) : undefined
       }
     >
       <ConnectionBanner store={store} />
+      <BrowserHost
+        browsers={browsers}
+        onNavigate={(browser, url) =>
+          updatePanel(browser.threadId, (panel) =>
+            updateSurface(panel, browser.id, { title: new URL(url).host, url }),
+          )
+        }
+      />
       {view === "chat" ? (
         <SlotHost<ChatSlotProps>
           registry={slots}
@@ -464,6 +438,8 @@ export function App({ store, slots, connection, plugins, locale }: AppProps) {
             onToggleRight: toggleRight,
             layoutControls: rightOpen && activeThreadId ? null : layoutControls(false),
             onNewThread: () => void createThread(),
+            onOpenFile: (path: string) => openSurface("files", path),
+            onOpenDiff: () => openSurface("diff"),
           }}
         />
       ) : (

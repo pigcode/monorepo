@@ -2,12 +2,12 @@
   "name": "pigcode-provider-echo",
   "version": "0.1.0",
   "type": "module",
-  "main": "./index.mjs",
+  "main": "./index.ts",
   "pigcode": {
     "apiVersion": 1,
     "kind": "provider",
     "displayName": "Echo",
-    "host": "./index.mjs",
+    "host": "./index.ts",
     "provides": [
       "provider:echo"
     ],
@@ -17,5 +17,8 @@
         "id": "echo"
       }
     }
+  },
+  "devDependencies": {
+    "@pigcode/plugin-sdk": "workspace:*"
   }
 }

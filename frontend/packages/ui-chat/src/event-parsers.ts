@@ -3,8 +3,9 @@ import type { ThreadEvent } from "@pigcode/contracts"
 import type { ApprovalDecision, ApprovalRequest } from "./approval-card"
 import type { DiffFile, FileChangeSummary } from "./diff-summary"
 import type { PlanStep, PlanStepStatus, PlanUpdate } from "./plan-card"
+import type { QuestionRequestView, QuestionView } from "./question-card"
 import type { SubagentCall, SubagentStatus } from "./subagent-card"
-import type { ToolCall, ToolStatus } from "./tool-card"
+import type { ToolCall, ToolStatus } from "./tool-meta"
 
 /** 把 unknown payload 收窄为对象。 */
 export function asRecord(value: unknown): Record<string, unknown> | undefined {
@@ -49,6 +50,7 @@ export function toolFromEvent(event: ThreadEvent, status: ToolStatus): ToolCall 
     asText(payload.toolCallId) ??
     asText(payload.callId) ??
     `tool-${event.seq}`
+  const exitCode = asNumber(payload.exitCode)
   return {
     id,
     name,
@@ -58,18 +60,27 @@ export function toolFromEvent(event: ThreadEvent, status: ToolStatus): ToolCall 
       displayValue(payload.command) ??
       displayValue(payload.arguments),
     output: displayValue(payload.output) ?? displayValue(payload.result),
+    ...(event.type === "tool.started" ? { startedAt: event.createdAt } : {}),
+    ...(event.type === "tool.completed" ? { endedAt: event.createdAt } : {}),
+    ...(exitCode === undefined ? {} : { exitCode }),
   }
 }
 
 /** 合并同一工具的 started / completed 事件。 */
 function mergeTool(existing: ToolCall | undefined, next: ToolCall): ToolCall {
   if (!existing) return next
+  const startedAt = existing.startedAt ?? next.startedAt
+  const endedAt = next.endedAt ?? existing.endedAt
+  const exitCode = next.exitCode ?? existing.exitCode
   return {
     id: existing.id,
     name: next.name === "tool" ? existing.name : next.name,
     status: next.status,
     input: next.input ?? existing.input,
     output: next.output ?? existing.output,
+    ...(startedAt ? { startedAt } : {}),
+    ...(endedAt ? { endedAt } : {}),
+    ...(exitCode === undefined ? {} : { exitCode }),
   }
 }
 
@@ -79,7 +90,8 @@ export function collectTools(events: ThreadEvent[]): Map<string, ToolCall> {
   for (const event of events) {
     if (event.type !== "tool.started" && event.type !== "tool.completed") continue
     const payload = asRecord(event.payload)
-    const failed = payload?.error !== undefined || payload?.status === "failed"
+    const failed =
+      payload?.error !== undefined || payload?.status === "failed" || payload?.isError === true
     const status: ToolStatus =
       event.type === "tool.started" ? "running" : failed ? "failed" : "completed"
     const next = toolFromEvent(event, status)
@@ -93,11 +105,14 @@ export function collectTools(events: ThreadEvent[]): Map<string, ToolCall> {
 export function approvalFromEvent(event: ThreadEvent): ApprovalRequest | undefined {
   const payload = asRecord(event.payload)
   if (!payload) return undefined
+  const plan =
+    asText(payload.toolName) === "ExitPlanMode" ? asText(asRecord(payload.input)?.plan) : undefined
   return {
     id: asText(payload.id) ?? asText(payload.requestId) ?? `approval-${event.seq}`,
     title: asText(payload.title),
     description: asText(payload.description) ?? asText(payload.reason) ?? asText(payload.question),
     command: displayValue(payload.command),
+    ...(plan ? { plan } : {}),
   }
 }
 
@@ -133,6 +148,47 @@ export function collectResolved(events: ThreadEvent[]): Map<string, ApprovalDeci
     if (id && decision) resolved.set(id, decision)
   }
   return resolved
+}
+
+/** 解析 question.requested 事件。 */
+export function questionFromEvent(event: ThreadEvent): QuestionRequestView | undefined {
+  const payload = asRecord(event.payload)
+  if (!payload) return undefined
+  const id = asText(payload.id) ?? asText(payload.requestId)
+  if (!id) return undefined
+  const questions: QuestionView[] = []
+  for (const entry of asArray(payload.questions)) {
+    const record = asRecord(entry)
+    const question = asText(record?.question)
+    if (!record || !question) continue
+    questions.push({
+      question,
+      header: asText(record.header),
+      multiSelect: record.multiSelect === true,
+      options: asArray(record.options).flatMap((option) => {
+        const value = asRecord(option)
+        const label = asText(value?.label)
+        return label ? [{ label, description: asText(value?.description) }] : []
+      }),
+    })
+  }
+  return questions.length > 0 ? { id, questions } : undefined
+}
+
+/** 收集已回答的问题：请求 id → 每个问题的答案。 */
+export function collectAnswers(events: ThreadEvent[]): Map<string, string[]> {
+  const answers = new Map<string, string[]>()
+  for (const event of events) {
+    if (event.type !== "question.answered") continue
+    const payload = asRecord(event.payload)
+    const id = asText(payload?.id) ?? asText(payload?.requestId)
+    if (!id) continue
+    answers.set(
+      id,
+      asArray(payload?.answers).map((answer) => (typeof answer === "string" ? answer : "")),
+    )
+  }
+  return answers
 }
 
 /** 归一化计划步骤状态。 */
@@ -245,6 +301,21 @@ function asSubagentStatus(value: unknown, isError: boolean): SubagentStatus {
   }
 }
 
+/** 子 agent 交回的结果：字符串、文本块数组或带 content 的对象，取出其中的文字。 */
+function subagentOutput(value: unknown): string | undefined {
+  if (typeof value === "string") return value.trim() || undefined
+  if (Array.isArray(value)) {
+    const text = value
+      .map((block) => (typeof block === "string" ? block : asText(asRecord(block)?.text)))
+      .filter((part): part is string => Boolean(part))
+      .join("\n\n")
+    return text.trim() || undefined
+  }
+  const record = asRecord(value)
+  if (!record) return undefined
+  return subagentOutput(record.content) ?? asText(record.text) ?? asText(record.result)
+}
+
 /** 判断事件是否属于某个子 agent；这类事件只在卡片内部展示。 */
 export function isParentScoped(type: ThreadEvent["type"]): boolean {
   return type === "message.completed" || type === "tool.started" || type === "tool.completed"
@@ -275,9 +346,12 @@ export function collectSubagents(events: ThreadEvent[]): Map<string, SubagentCal
         name: asText(payload.name) ?? id,
         status: "running",
         events: children.get(id) ?? [],
+        runId: event.runId,
       }
       const description = asText(payload.description)
       if (description) entry.description = description
+      const prompt = asText(payload.prompt)
+      if (prompt) entry.prompt = prompt
       const model = asText(payload.model)
       if (model) entry.model = model
       subagents.set(id, entry)
@@ -285,7 +359,10 @@ export function collectSubagents(events: ThreadEvent[]): Map<string, SubagentCal
     }
     if (event.type === "subagent.completed") {
       const entry = subagents.get(id)
-      if (entry) entry.status = asSubagentStatus(payload.status, payload.isError === true)
+      if (!entry) continue
+      entry.status = asSubagentStatus(payload.status, payload.isError === true)
+      const output = subagentOutput(payload.output)
+      if (output) entry.output = output
     }
   }
   return subagents

@@ -1,15 +1,22 @@
-/** 在本机编辑器或系统文件管理器里打开项目文件夹：线程头的「IDE ↗」与侧栏项目菜单共用。 */
+/**
+ * 在本机应用里打开项目文件夹：线程头的分段按钮（左边用上次选的应用打开，右边展开应用列表），
+ * 以及侧栏项目菜单里的「在文件管理器中打开」。
+ */
 import { useCallback, useEffect, useState } from "react"
 import { Menu, copyText, useLocale, type MessageKey } from "@pigcode/ui-primitives"
 import { Icon } from "./icon"
 import { useToast } from "./toast"
 import { nativePlatform } from "./window-state"
 
-/** 本机装了的编辑器。 */
-export interface EditorInfo {
+/** 本机装了的一个应用。 */
+export interface OpenApp {
   id: string
   name: string
+  kind: "file-manager" | "editor" | "terminal"
+  icon: string | null
 }
+
+const PREFERRED_KEY = "pigcode.openInApp"
 
 /** 按系统习惯称呼文件管理器：访达、资源管理器，其他平台统称文件管理器。 */
 export function revealLabelKey(platform: string = nativePlatform()): MessageKey {
@@ -32,70 +39,125 @@ export function useOpenFailure(): (path: string) => void {
   return (path) => toast(`${t("openIn.failed")} ${path}`, "alert")
 }
 
-/** 本机编辑器列表；挂载时取一次，菜单每次打开再刷新，装了新编辑器不用重启。 */
-function useEditors(): [EditorInfo[], () => void] {
-  const [editors, setEditors] = useState<EditorInfo[]>([])
-  const refresh = useCallback(() => {
-    void window.pigcodeNative
-      ?.listEditors?.()
-      .then(setEditors)
-      .catch(() => setEditors([]))
-  }, [])
-  useEffect(refresh, [refresh])
-  return [editors, refresh]
+/** 读取上次选的应用。 */
+function readPreferred(): string | null {
+  try {
+    return window.localStorage.getItem(PREFERRED_KEY)
+  } catch {
+    return null
+  }
 }
 
-/** 线程头右侧的「IDE ↗」：选一个本机编辑器打开项目，或者在文件管理器里打开、复制路径。 */
-export function OpenInMenu({ path }: { path: string }) {
+/** 本机应用列表；挂载时取一次，菜单每次打开再刷新，装了新应用不用重启。 */
+function useOpenApps(): [OpenApp[], () => void] {
+  const [apps, setApps] = useState<OpenApp[]>([])
+  const refresh = useCallback(() => {
+    void window.pigcodeNative
+      ?.listOpenApps?.()
+      .then(setApps)
+      .catch(() => setApps([]))
+  }, [])
+  useEffect(refresh, [refresh])
+  return [apps, refresh]
+}
+
+/** 应用图标；拿不到图标时显示名字的首字母。 */
+export function AppIcon({ app }: { app: OpenApp }) {
+  if (app.icon) return <img className="app-icon" src={app.icon} alt="" draggable={false} />
+  return (
+    <span className="app-icon is-letter" data-kind={app.kind} aria-hidden="true">
+      {app.name.slice(0, 1).toUpperCase()}
+    </span>
+  )
+}
+
+/** Windows 与 Linux 的文件管理器用本地化的称呼，其他应用用自己的名字。 */
+function useAppName(): (app: OpenApp) => string {
+  const { t } = useLocale()
+  return (app) =>
+    app.id === "explorer"
+      ? t("openIn.app.explorer")
+      : app.id === "file-manager"
+        ? t("openIn.app.files")
+        : app.name
+}
+
+/** 线程头右侧的分段按钮：左边用选中的应用打开项目，右边换一个应用或复制路径。 */
+export function OpenInButton({ path }: { path: string }) {
   const { t } = useLocale()
   const toast = useToast()
   const failed = useOpenFailure()
-  const fail = () => failed(path)
-  const [editors, refresh] = useEditors()
+  const nameOf = useAppName()
+  const [apps, refresh] = useOpenApps()
+  const [preferred, setPreferred] = useState<string | null>(readPreferred)
+  const selected = apps.find((app) => app.id === preferred) ?? apps[0] ?? null
 
+  function open(app: OpenApp): void {
+    setPreferred(app.id)
+    try {
+      window.localStorage.setItem(PREFERRED_KEY, app.id)
+    } catch {
+      // 存储不可用时只记在本次运行里。
+    }
+    void window.pigcodeNative?.openWithApp?.(app.id, path).catch(() => failed(path))
+  }
+
+  if (!selected) return null
+  const openLabel = t("openIn.editor").replace("{name}", nameOf(selected))
   return (
-    <Menu.Root
-      onOpenChange={(open) => {
-        if (open) refresh()
-      }}
-    >
-      <Menu.Trigger className="chip-btn open-in" type="button" title={t("openIn.title")}>
-        IDE
-        <Icon name="arrow-up-right" small />
-      </Menu.Trigger>
-      <Menu.Portal>
-        <Menu.Positioner className="menu-positioner" side="bottom" align="end" sideOffset={6}>
-          <Menu.Popup className="menu-popup">
-            {editors.map((editor) => (
+    <div className="open-in-split" role="group" aria-label={t("openIn.title")}>
+      <button
+        type="button"
+        className="open-in-main"
+        aria-label={openLabel}
+        title={openLabel}
+        onClick={() => open(selected)}
+      >
+        <AppIcon app={selected} />
+      </button>
+      <Menu.Root
+        onOpenChange={(next) => {
+          if (next) refresh()
+        }}
+      >
+        <Menu.Trigger
+          className="open-in-more"
+          type="button"
+          aria-label={t("openIn.choose")}
+          title={t("openIn.choose")}
+        >
+          <Icon name="down" />
+        </Menu.Trigger>
+        <Menu.Portal>
+          <Menu.Positioner className="menu-positioner" side="bottom" align="end" sideOffset={6}>
+            <Menu.Popup className="menu-popup open-in-menu">
+              {apps.map((app) => (
+                <Menu.Item
+                  key={app.id}
+                  className="menu-item open-in-item"
+                  onClick={() => open(app)}
+                >
+                  <AppIcon app={app} />
+                  <span className="grow">{nameOf(app)}</span>
+                  {app.id === selected.id ? (
+                    <Icon name="check" small className="check-mark" />
+                  ) : null}
+                </Menu.Item>
+              ))}
+              <Menu.Separator className="menu-sep" />
               <Menu.Item
-                key={editor.id}
                 className="menu-item"
                 onClick={() => {
-                  void window.pigcodeNative?.openInEditor?.(editor.id, path).catch(fail)
+                  void copyText(path).then(() => toast(t("openIn.copied")))
                 }}
               >
-                <Icon name="external" small />
-                <span className="grow">{t("openIn.editor").replace("{name}", editor.name)}</span>
+                <Icon name="copy" small />
+                <span className="grow">{t("openIn.copyPath")}</span>
               </Menu.Item>
-            ))}
-            {editors.length === 0 ? <div className="menu-label">{t("openIn.noEditor")}</div> : null}
-            <Menu.Separator className="menu-sep" />
-            <Menu.Item className="menu-item" onClick={() => void openFolder(path).catch(fail)}>
-              <Icon name="folder-open" small />
-              <span className="grow">{t(revealLabelKey())}</span>
-            </Menu.Item>
-            <Menu.Item
-              className="menu-item"
-              onClick={() => {
-                void copyText(path).then(() => toast(t("openIn.copied")))
-              }}
-            >
-              <Icon name="copy" small />
-              <span className="grow">{t("openIn.copyPath")}</span>
-            </Menu.Item>
-          </Menu.Popup>
-        </Menu.Positioner>
-      </Menu.Portal>
-    </Menu.Root>
+            </Menu.Popup>
+          </Menu.Positioner>
+        </Menu.Portal>
+      </Menu.Root>
+    </div>
   )
 }
