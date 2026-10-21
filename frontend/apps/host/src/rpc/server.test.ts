@@ -1,5 +1,6 @@
 import { Context } from "cordis"
 import { describe, expect, it } from "vitest"
+import { apply as providers } from "../providers/registry"
 import { apply as projects } from "../services/projects"
 import { apply as sessions } from "../services/sessions"
 import { apply as storage } from "../services/storage"
@@ -13,6 +14,7 @@ async function createServer() {
   await ctx.plugin(projects)
   await ctx.plugin(threads)
   await ctx.plugin(sessions)
+  await ctx.plugin(providers)
   const transport = new MemoryTransport()
   const server = new RpcServer(ctx, transport.host)
   server.start()
@@ -56,6 +58,27 @@ describe("rpc server", () => {
       params: { threadId: "missing" },
     })
     expect(await transport.client.next()).toMatchObject({ id: "3", error: expect.anything() })
+    await ctx.fiber.dispose()
+  })
+
+  it("stops the thread's running agent when it is archived", async () => {
+    const { ctx, transport } = await createServer()
+    const project = ctx.projects.add("/tmp/pigcode-archive-running")
+    const thread = ctx.threads.create(project.id, "Busy", "fake")
+    const other = ctx.threads.create(project.id, "Also busy", "fake")
+    const busy = await ctx.providers.startRun(thread.id, "long")
+    const untouched = await ctx.providers.startRun(other.id, "long")
+
+    transport.client.send({
+      jsonrpc: "2.0",
+      id: "1",
+      method: "thread.archive",
+      params: { threadId: thread.id },
+    })
+    expect(await transport.client.next()).toMatchObject({ id: "1", result: { id: thread.id } })
+    await busy.done
+    expect(ctx.providers.getRunStatus(busy.runId)).toBe("interrupted")
+    expect(ctx.providers.getRunStatus(untouched.runId)).toBe("running")
     await ctx.fiber.dispose()
   })
 

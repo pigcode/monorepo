@@ -89,6 +89,10 @@ export class RpcServer {
       }
       case "thread.archive": {
         const value = parsed as { threadId: string }
+        // 归档的会话从界面上消失；还在跑或排队的 run 先停下，免得在看不见的地方改代码或卡在审批上。
+        for (const run of this.ctx.providers.listRuns()) {
+          if (run.threadId === value.threadId) this.ctx.providers.cancelRun(run.runId)
+        }
         const thread = this.ctx.threads.archive(value.threadId)
         if (!thread) throw new Error(`thread not found: ${value.threadId}`)
         return thread
