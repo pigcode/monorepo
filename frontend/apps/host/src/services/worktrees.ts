@@ -55,7 +55,7 @@ export const apply: WorktreesPlugin = (ctx) => {
     async create(threadId) {
       const thread = ctx.threads.get(threadId)
       if (!thread) throw new Error(`thread not found: ${threadId}`)
-      const project = ctx.projects.list().find((item) => item.id === thread.projectId)
+      const project = ctx.projects.get(thread.projectId)
       if (!project) throw new Error(`project not found: ${thread.projectId}`)
 
       // 重复 create 时复用仍然存在的活动 worktree，避免同一线程堆积目录。
@@ -105,7 +105,7 @@ export const apply: WorktreesPlugin = (ctx) => {
       if (!active) throw new Error(`worktree not found: ${threadId}`)
       const thread = ctx.threads.get(threadId)
       if (!thread) throw new Error(`thread not found: ${threadId}`)
-      const project = ctx.projects.list().find((item) => item.id === thread.projectId)
+      const project = ctx.projects.get(thread.projectId)
       if (!project) throw new Error(`project not found: ${thread.projectId}`)
 
       if (await pathExists(active.path)) {

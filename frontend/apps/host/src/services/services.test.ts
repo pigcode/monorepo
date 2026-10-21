@@ -29,4 +29,29 @@ describe("host services", () => {
     expect(ctx.sessions.read(thread.id, 0)[0]!.seq).toBe(event.seq)
     void ctx.fiber.dispose()
   })
+
+  it("renames, removes and restores a project without losing its threads", async () => {
+    const ctx = new Context()
+    await ctx.plugin(storage, { path: ":memory:" })
+    await ctx.plugin(projects)
+    await ctx.plugin(threads)
+
+    const project = ctx.projects.add("/tmp/pigcode-projects", "Original")
+    const thread = ctx.threads.create(project.id, "Kept", "fake")
+    expect(ctx.projects.add("/tmp/pigcode-projects", "Again")).toEqual(project)
+
+    expect(ctx.projects.rename(project.id, "Renamed")).toEqual({ ...project, name: "Renamed" })
+    expect(ctx.projects.remove(project.id)?.id).toBe(project.id)
+    expect(ctx.projects.list()).toEqual([])
+    expect(ctx.projects.rename(project.id, "Hidden")).toBeUndefined()
+    // 移除后会话仍能找到所在项目的目录。
+    expect(ctx.projects.get(thread.projectId)?.rootPath).toBe("/tmp/pigcode-projects")
+
+    const restored = ctx.projects.add("/tmp/pigcode-projects", "Back")
+    expect(restored).toEqual({ ...project, name: "Back" })
+    expect(ctx.projects.list()).toEqual([restored])
+    expect(ctx.threads.list(project.id).map((item) => item.id)).toEqual([thread.id])
+    expect(ctx.projects.remove("missing")).toBeUndefined()
+    void ctx.fiber.dispose()
+  })
 })

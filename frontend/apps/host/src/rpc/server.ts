@@ -71,6 +71,24 @@ export class RpcServer {
         const value = parsed as { rootPath: string; name?: string }
         return this.ctx.projects.add(value.rootPath, value.name)
       }
+      case "project.rename": {
+        const value = parsed as { projectId: string; name: string }
+        const project = this.ctx.projects.rename(value.projectId, value.name)
+        if (!project) throw new Error(`project not found: ${value.projectId}`)
+        return project
+      }
+      case "project.remove": {
+        const value = parsed as { projectId: string }
+        const project = this.ctx.projects.remove(value.projectId)
+        if (!project) throw new Error(`project not found: ${value.projectId}`)
+        // 项目的会话随项目一起从侧栏消失，还在跑的 run 同样先停下。
+        for (const run of this.ctx.providers.listRuns()) {
+          if (this.ctx.threads.get(run.threadId)?.projectId === value.projectId) {
+            this.ctx.providers.cancelRun(run.runId)
+          }
+        }
+        return project
+      }
       case "thread.list":
         return this.ctx.threads.list((parsed as { projectId?: string }).projectId)
       case "thread.rename": {

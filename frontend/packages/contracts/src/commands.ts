@@ -9,6 +9,12 @@ export const commandSchemas = {
     name: z.string().trim().min(1).max(120).optional(),
   }),
   "project.list": z.object({}),
+  "project.rename": z.object({
+    projectId: z.string().min(1),
+    name: z.string().trim().min(1).max(120),
+  }),
+  /** 只从侧栏移除；文件夹与会话都保留，再次添加同一路径时恢复。 */
+  "project.remove": z.object({ projectId: z.string().min(1) }),
   "thread.create": z.object({
     projectId: z.string().min(1),
     title: z.string().min(1).default("New thread"),
