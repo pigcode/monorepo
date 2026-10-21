@@ -65,6 +65,9 @@ export interface ShellProps {
   /** 会话行右键菜单的重命名与归档；两个都传时才有右键菜单。 */
   onRenameThread?: (threadId: string, title: string) => void
   onArchiveThread?: (threadId: string) => void
+  /** 项目行右键菜单的重命名与从侧栏移除；两个都传时才有右键菜单。 */
+  onRenameProject?: (projectId: string, name: string) => void
+  onRemoveProject?: (projectId: string) => void
   /** 侧栏底部扩展区，用于宿主渲染第三方 UI 插件面板。 */
   sidebarExtra?: ReactNode
   children?: ReactNode
@@ -122,6 +125,8 @@ export function Shell({
   onOpenThread,
   onRenameThread,
   onArchiveThread,
+  onRenameProject,
+  onRemoveProject,
   sidebarExtra,
   children,
 }: ShellProps) {
@@ -348,6 +353,8 @@ export function Shell({
               onOpenPlugins={() => selectSection("plugins")}
               onRenameThread={onRenameThread}
               onArchiveThread={onArchiveThread}
+              onRenameProject={onRenameProject}
+              onRemoveProject={onRemoveProject}
               shortcutHints={shortcutHints}
             />
           )}

@@ -108,8 +108,10 @@ export function CommandPalette(props: CommandPaletteProps) {
   const inputRef = useRef<HTMLInputElement>(null)
 
   const items = useMemo<PaletteItem[]>(() => {
+    // 与侧栏一致：已归档的会话和已从侧栏移除的项目里的会话都不列出。
+    const known = new Set(props.projects.map((project) => project.id))
     const threads = props.threads
-      .filter((thread) => thread.archivedAt === null)
+      .filter((thread) => thread.archivedAt === null && known.has(thread.projectId))
       .map((thread) => ({
         id: `thread-${thread.id}`,
         group: "threads" as const,

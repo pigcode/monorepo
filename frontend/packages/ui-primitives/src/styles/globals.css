@@ -2964,11 +2964,12 @@ body.is-resizing-rows iframe {
   font-size: calc(var(--ui-scale) * 12px);
   font-variant-numeric: tabular-nums;
 }
-/* 右键菜单的触发区只是包住会话行，不参与布局；菜单打开期间标出它针对的那一行 */
-.sess-menu-area {
+/* 右键菜单的触发区只是包住项目行或会话行，不参与布局；菜单打开期间标出它针对的那一行 */
+.row-menu-area {
   display: block;
 }
-.sess-menu-area[data-popup-open] .sess:not(.is-active) {
+.row-menu-area[data-popup-open] .sess:not(.is-active),
+.row-menu-area[data-popup-open] .proj {
   background: var(--hover);
 }
 /* 按住 ⌘/Ctrl 时，前九个会话右侧的数字快捷键 */
@@ -2990,12 +2991,16 @@ body.is-resizing-rows iframe {
 .sidebar.show-shortcuts .nav-kbd {
   opacity: 1;
 }
-/* 重命名时整行换成输入框，状态点留在原位 */
+/* 重命名时整行换成输入框，状态点或文件夹图标留在原位 */
 .sess.is-editing,
-.sess.is-editing:hover {
+.sess.is-editing:hover,
+.proj.is-editing {
   background: var(--active);
 }
-.sess-rename {
+.proj.is-editing {
+  padding-right: 9px;
+}
+.row-rename {
   flex: 1;
   min-width: 0;
   height: 22px;

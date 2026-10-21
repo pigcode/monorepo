@@ -5,6 +5,7 @@ import userEvent from "@testing-library/user-event"
 import type { ComponentProps } from "react"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import { LocaleProvider } from "@pigcode/ui-primitives"
+import { ToastProvider } from "./toast"
 import { WorkspaceSidebar, formatThreadTime, visibleThreads } from "./workspace-sidebar"
 
 afterEach(cleanup)
@@ -33,20 +34,31 @@ const thread = (id: string, projectId: string, title: string, updatedAt: string)
 function renderSidebar(props: Partial<ComponentProps<typeof WorkspaceSidebar>> = {}) {
   return render(
     <LocaleProvider locale="zh-CN">
-      <WorkspaceSidebar
-        projects={[project("p1", "alpha")]}
-        threads={[thread("t1", "p1", "First thread", "2026-10-20T01:00:00.000Z")]}
-        activeThreadId={null}
-        expandedProjects={{}}
-        onAddProject={() => {}}
-        onToggleProject={() => {}}
-        onOpenThread={() => {}}
-        onNewThread={() => {}}
-        {...props}
-      />
+      <ToastProvider>
+        <WorkspaceSidebar
+          projects={[project("p1", "alpha")]}
+          threads={[thread("t1", "p1", "First thread", "2026-10-20T01:00:00.000Z")]}
+          activeThreadId={null}
+          expandedProjects={{}}
+          onAddProject={() => {}}
+          onToggleProject={() => {}}
+          onOpenThread={() => {}}
+          onNewThread={() => {}}
+          {...props}
+        />
+      </ToastProvider>
     </LocaleProvider>,
   )
 }
+
+/** 用替身代替 preload 暴露的原生桥。 */
+function mockNative(value: Partial<NonNullable<Window["pigcodeNative"]>>): void {
+  Object.defineProperty(window, "pigcodeNative", { configurable: true, value })
+}
+
+afterEach(() => {
+  Reflect.deleteProperty(window, "pigcodeNative")
+})
 
 describe("visibleThreads", () => {
   it("lists live threads top to bottom as the sidebar shows them", () => {
@@ -232,7 +244,43 @@ describe("WorkspaceSidebar", () => {
     renderSidebar()
 
     fireEvent.contextMenu(screen.getByRole("button", { name: /First thread/ }))
+    fireEvent.contextMenu(screen.getByRole("button", { name: "alpha" }))
     expect(screen.queryByRole("menu")).toBeNull()
+  })
+
+  it("renames a project, opens its folder and removes it from the project's context menu", async () => {
+    const openFolder = vi.fn().mockResolvedValue(undefined)
+    mockNative({ platform: "linux", openFolder })
+    const onRenameProject = vi.fn()
+    const onRemoveProject = vi.fn()
+    renderSidebar({ onRenameProject, onRemoveProject })
+    const openMenu = () => fireEvent.contextMenu(screen.getByRole("button", { name: "alpha" }))
+
+    openMenu()
+    await userEvent.click(await screen.findByRole("menuitem", { name: "在文件管理器中打开" }))
+    expect(openFolder).toHaveBeenCalledExactlyOnceWith("/tmp/alpha")
+
+    openMenu()
+    await userEvent.click(await screen.findByRole("menuitem", { name: "重命名" }))
+    const input = await screen.findByRole("textbox", { name: "项目名称" })
+    expect(document.activeElement).toBe(input)
+    await userEvent.clear(input)
+    await userEvent.type(input, "客户门户{Enter}")
+    expect(onRenameProject).toHaveBeenCalledExactlyOnceWith("p1", "客户门户")
+
+    openMenu()
+    await userEvent.click(await screen.findByRole("menuitem", { name: "从侧栏移除" }))
+    expect(onRemoveProject).toHaveBeenCalledExactlyOnceWith("p1")
+    expect(screen.getByText("已移除「alpha」，再次添加这个文件夹即可恢复")).toBeTruthy()
+  })
+
+  it("says so when the project folder can't be opened, naming it after the platform's file manager", async () => {
+    mockNative({ platform: "darwin", openFolder: vi.fn().mockRejectedValue(new Error("FOLDER_NOT_FOUND")) })
+    renderSidebar({ onRenameProject: vi.fn(), onRemoveProject: vi.fn() })
+
+    fireEvent.contextMenu(screen.getByRole("button", { name: "alpha" }))
+    await userEvent.click(await screen.findByRole("menuitem", { name: "在访达中打开" }))
+    expect(await screen.findByText("无法打开文件夹 /tmp/alpha")).toBeTruthy()
   })
 
   it("shows Ctrl+1…9 on the first nine visible threads instead of their time", () => {

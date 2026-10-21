@@ -2,7 +2,13 @@
 import { describe, expect, it, vi } from "vitest"
 import type { Project, Thread } from "@pigcode/contracts"
 import { AppStore, type Connection } from "@pigcode/client-runtime"
-import { archiveThread, renameThread } from "./workspace-actions"
+import {
+  addProject,
+  archiveThread,
+  removeProject,
+  renameProject,
+  renameThread,
+} from "./workspace-actions"
 
 const project = (id: string): Project => ({
   id,
@@ -26,13 +32,15 @@ const thread = (id: string, projectId: string, updatedAt: string): Thread => ({
 })
 
 /** 只实现 call 与 closeThread 的连接替身；call 按方法名返回 Host 的结果。 */
-function fakeConnection(results: Record<string, (params: { threadId: string }) => unknown>) {
+function fakeConnection(
+  results: Record<string, (params: { threadId: string; projectId: string }) => unknown>,
+) {
   const call = vi.fn(async (method: string, params: unknown) => {
     const result = results[method]
     if (!result) throw new Error(`unexpected ${method}`)
-    return result(params as { threadId: string })
+    return result(params as { threadId: string; projectId: string })
   })
-  const closeThread = vi.fn(async () => undefined)
+  const closeThread = vi.fn<(threadId: string) => Promise<void>>(async () => undefined)
   return { connection: { call, closeThread } as unknown as Connection, call, closeThread }
 }
 
@@ -101,5 +109,49 @@ describe("workspace actions", () => {
     )
     await expect(archiveThread(connection, other, "t3")).resolves.toBeNull()
     expect(other.getSnapshot().activeThreadId).toBe("t1")
+  })
+
+  it("adds a project once and keeps projects in creation order when one comes back", async () => {
+    const store = new AppStore()
+    const restored = { ...project("p0"), createdAt: "2026-10-01T00:00:00.000Z" }
+    store.update({ projects: [project("p1")] })
+    const { connection } = fakeConnection({ "project.add": () => restored })
+
+    await addProject(connection, store, "/tmp/p0")
+    await addProject(connection, store, "/tmp/p0")
+
+    expect(store.getSnapshot().projects.map((item) => item.id)).toEqual(["p0", "p1"])
+    expect(store.getSnapshot().activeProjectId).toBe("p0")
+  })
+
+  it("renames a project with the record the Host returns", async () => {
+    const store = storeWith([], null)
+    const { connection, call } = fakeConnection({
+      "project.rename": () => ({ ...project("p2"), name: "新名字" }),
+    })
+
+    await renameProject(connection, store, "p2", "新名字")
+
+    expect(call).toHaveBeenCalledWith("project.rename", { projectId: "p2", name: "新名字" })
+    expect(store.getSnapshot().projects.map((item) => item.name)).toEqual(["p1", "新名字"])
+  })
+
+  it("removes a project, closes its threads and moves to the latest thread elsewhere", async () => {
+    const store = storeWith(
+      [
+        thread("t1", "p1", "2026-10-20T03:00:00.000Z"),
+        thread("t2", "p1", "2026-10-20T04:00:00.000Z"),
+        thread("t3", "p2", "2026-10-20T01:00:00.000Z"),
+      ],
+      "t1",
+    )
+    const { connection, closeThread } = fakeConnection({ "project.remove": () => project("p1") })
+
+    await expect(removeProject(connection, store, "p1")).resolves.toBe("t3")
+    const state = store.getSnapshot()
+    expect(state.projects.map((item) => item.id)).toEqual(["p2"])
+    expect(state.openThreadIds).toEqual(["t3"])
+    expect(closeThread.mock.calls.map(([id]) => id)).toEqual(["t1", "t2"])
+    await expect(removeProject(connection, store, "p1")).resolves.toBeNull()
   })
 })

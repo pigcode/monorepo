@@ -42,7 +42,13 @@ import { listProviders, loadProviderContext, pickProviderId } from "./providers"
 import { TerminalDrawer } from "./terminal-drawer"
 import { WorkbenchPanel } from "./workbench"
 import { layoutLabels } from "./workbench-labels"
-import { archiveThread, renameThread } from "./workspace-actions"
+import {
+  addProject,
+  archiveThread,
+  removeProject,
+  renameProject,
+  renameThread,
+} from "./workspace-actions"
 
 /** 核心容器共享的依赖。 */
 export interface CoreDeps {
@@ -269,23 +275,6 @@ export function App({ store, slots, connection, plugins, locale }: AppProps) {
     )
   }, [state.status, state.activeThreadId, state.threads, connection, store])
 
-  async function addProject(path: string, name?: string): Promise<void> {
-    try {
-      const project = (await connection.call(
-        "project.add",
-        name ? { rootPath: path, name } : { rootPath: path },
-      )) as Project
-      const current = store.getSnapshot()
-      store.update({
-        projects: [...current.projects, project],
-        activeProjectId: project.id,
-        error: null,
-      })
-    } catch (error) {
-      store.update({ error: messageOf(error) })
-    }
-  }
-
   /** 新建会话；没指定项目时放进当前会话所在的项目，再退回第一个项目。 */
   async function createThread(projectId?: string): Promise<void> {
     const snapshot = store.getSnapshot()
@@ -405,7 +394,11 @@ export function App({ store, slots, connection, plugins, locale }: AppProps) {
       settingsSection={effectiveSection}
       onView={setView}
       onSettingsSection={setSection}
-      onAddProject={(path, name) => void addProject(path, name)}
+      onAddProject={(path, name) => {
+        void addProject(connection, store, path, name).catch((error: unknown) =>
+          store.update({ error: messageOf(error) }),
+        )
+      }}
       onNewThread={(projectId) => void createThread(projectId)}
       onOpenThread={openThread}
       onRenameThread={(threadId, title) => {
@@ -415,6 +408,18 @@ export function App({ store, slots, connection, plugins, locale }: AppProps) {
       }}
       onArchiveThread={(threadId) => {
         void archiveThread(connection, store, threadId)
+          .then((next) => {
+            if (next) openThread(next)
+          })
+          .catch((error: unknown) => store.update({ error: messageOf(error) }))
+      }}
+      onRenameProject={(projectId, name) => {
+        void renameProject(connection, store, projectId, name).catch((error: unknown) =>
+          store.update({ error: messageOf(error) }),
+        )
+      }}
+      onRemoveProject={(projectId) => {
+        void removeProject(connection, store, projectId)
           .then((next) => {
             if (next) openThread(next)
           })
