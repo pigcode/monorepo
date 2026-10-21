@@ -4,7 +4,12 @@ import { Check, Copy } from "lucide-react"
 import { copyText, useLocale } from "@pigcode/ui-primitives"
 
 /** 把时间写成「刚刚 / 5 分钟前 / 昨天」；超过一周显示日期。 */
-export function formatReplyTime(value: string, locale: string, justNow: string, now = Date.now()): string {
+export function formatReplyTime(
+  value: string,
+  locale: string,
+  justNow: string,
+  now = Date.now(),
+): string {
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return ""
   const seconds = Math.round((now - date.getTime()) / 1000)

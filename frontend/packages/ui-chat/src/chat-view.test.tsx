@@ -68,7 +68,11 @@ describe("ChatView", () => {
           thread={thread}
           events={[
             event(1, "run.started", { text: "long task" }),
-            event(2, "message.completed", { role: "assistant", text: "half an answer", partial: true }),
+            event(2, "message.completed", {
+              role: "assistant",
+              text: "half an answer",
+              partial: true,
+            }),
             event(3, "run.interrupted"),
           ]}
           onInterrupt={() => {}}
@@ -241,8 +245,12 @@ describe("ChatView", () => {
             { id: "claude", label: "Claude Code" },
           ]}
           catalog={{
-            codex: [{ id: "gpt-5", label: "GPT-5", isDefault: true, efforts: [], defaultEffort: null }],
-            claude: [{ id: "opus", label: "Opus", isDefault: true, efforts: [], defaultEffort: null }],
+            codex: [
+              { id: "gpt-5", label: "GPT-5", isDefault: true, efforts: [], defaultEffort: null },
+            ],
+            claude: [
+              { id: "opus", label: "Opus", isDefault: true, efforts: [], defaultEffort: null },
+            ],
           }}
           onSelectModel={onSelectModel}
         />

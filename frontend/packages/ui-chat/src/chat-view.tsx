@@ -1,5 +1,5 @@
 /** 聊天主视图：标题、运行状态、消息时间线、composer 占位与环境抽屉。 */
-import { useEffect, useRef, useState, type ReactNode } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 import type { ProviderCapabilities, Thread, ThreadEvent } from "@pigcode/contracts"
 import { ArrowDown, Ellipsis, PanelRight, Square } from "lucide-react"
 import {
@@ -113,13 +113,19 @@ export function ChatView({
   const canInterrupt = capabilities?.streaming ?? true
   const canPlan = capabilities?.plan ?? true
   const canApprove = capabilities?.approvals ?? true
-  const visibleEvents = canApprove
-    ? events
-    : events.filter(
-        (event) => event.type !== "approval.requested" && event.type !== "approval.resolved",
-      )
-  const pendingApproval = hasPendingApproval(visibleEvents)
-  const running = Boolean(streamingText) || isRunOpen(events)
+  // 事件数组只在有新事件时变化；流式增量不触发这些整表扫描。
+  const visibleEvents = useMemo(
+    () =>
+      canApprove
+        ? events
+        : events.filter(
+            (event) => event.type !== "approval.requested" && event.type !== "approval.resolved",
+          ),
+    [events, canApprove],
+  )
+  const pendingApproval = useMemo(() => hasPendingApproval(visibleEvents), [visibleEvents])
+  const runOpen = useMemo(() => isRunOpen(events), [events])
+  const running = Boolean(streamingText) || runOpen
   const status = pendingApproval
     ? t("chat.status.waitingApproval")
     : running
@@ -128,18 +134,16 @@ export function ChatView({
   const statusClass = pendingApproval ? "warn" : running ? "ok" : ""
   const providerId = thread?.lastProviderId ?? thread?.defaultProviderId ?? null
   const modelId = thread?.lastModelId ?? null
-  const providerName =
-    agents.find((agent) => agent.id === providerId)?.label ??
-    providerId ??
-    t("chat.environment.provider")
+  const agentName = useCallback(
+    (agentId: string) => agents.find((agent) => agent.id === agentId)?.label ?? agentId,
+    [agents],
+  )
   const environment: EnvironmentInfo = {
     providerId: providerId ?? t("chat.environment.unknown"),
     cwd,
     modelId,
     permissionMode: thread?.permissionMode ?? "workspace-write",
   }
-  const assistantInitial =
-    providerId === "claude" ? "CL" : providerId === "codex" ? "CX" : providerName.slice(0, 2).toUpperCase()
   const projectName = cwd?.split(/[\\/]/).filter(Boolean).at(-1)
 
   useEffect(() => {
@@ -207,28 +211,27 @@ export function ChatView({
         >
           <Ellipsis className="ic" aria-hidden="true" />
         </Button>
-        {layoutControls !== undefined
-          ? layoutControls
-          : onToggleRight ? (
-            <Button
-              variant="plain"
-              size="icon"
-              type="button"
-              aria-label={t("panel.toggleRight")}
-              title={`${t("panel.toggleRight")} ${formatShortcut("Mod+j")}`}
-              aria-pressed={rightOpen}
-              onClick={onToggleRight}
-            >
-              <PanelRight className="ic" aria-hidden="true" />
-            </Button>
-          ) : null}
+        {layoutControls !== undefined ? (
+          layoutControls
+        ) : onToggleRight ? (
+          <Button
+            variant="plain"
+            size="icon"
+            type="button"
+            aria-label={t("panel.toggleRight")}
+            title={`${t("panel.toggleRight")} ${formatShortcut("Mod+j")}`}
+            aria-pressed={rightOpen}
+            onClick={onToggleRight}
+          >
+            <PanelRight className="ic" aria-hidden="true" />
+          </Button>
+        ) : null}
       </div>
       <div className="thread" ref={threadRef} onScroll={handleScroll}>
         <MessageList
           events={visibleEvents}
           streamingText={streamingText}
-          assistantName={providerName}
-          assistantInitial={assistantInitial}
+          agentName={agentName}
           onApproval={onApproval ?? (() => undefined)}
           onViewTool={onViewTool}
           onViewDiff={onViewDiff}
