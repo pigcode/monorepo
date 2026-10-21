@@ -14,7 +14,7 @@ import { AddProjectDialog } from "./add-project-dialog"
 import { CommandPalette } from "./command-palette"
 import { Icon } from "./icon"
 import { SettingsSidebar, type SettingsSection } from "./settings-sidebar"
-import type { ThreadTabStatus } from "./thread-tabs"
+import type { ThreadStatus } from "./thread-status"
 import { WindowControls } from "./window-controls"
 import { WorkspaceSidebar } from "./workspace-sidebar"
 
@@ -48,16 +48,22 @@ export interface ShellProps {
   projects: Project[]
   threads: Thread[]
   activeThreadId: string | null
-  /** 线程运行状态；用于侧栏和 tab 的状态点。 */
-  threadStatus?: Record<string, ThreadTabStatus>
+  /** 线程运行状态；用于侧栏的状态点。 */
+  threadStatus?: Record<string, ThreadStatus>
   expandedProjects?: Record<string, boolean>
   sidebarOpen?: boolean
-  /** 右栏内容；由调用方按当前线程组装。 */
+  /** 右栏内容；由调用方按当前线程组装。收起时只隐藏，不卸载，终端与页面得以保留。 */
   rightPanel?: ReactNode
   /** 右栏是否展开；缺省视为展开。 */
   rightOpen?: boolean
+  /** 右栏占满工作区，聊天区暂时隐藏。 */
+  rightMaximized?: boolean
   /** 右栏折叠切换；供调用方接入快捷键或头部按钮。 */
   onToggleRight?: () => void
+  /** 聊天区下方的抽屉，例如底部终端。 */
+  bottomPanel?: ReactNode
+  /** 底部终端切换；接入 ⌃` 快捷键。 */
+  onToggleTerminal?: () => void
   canGoBack?: boolean
   canGoForward?: boolean
   settingsSection?: SettingsSection
@@ -109,7 +115,10 @@ export function Shell({
   sidebarOpen,
   rightPanel,
   rightOpen = true,
+  rightMaximized = false,
   onToggleRight,
+  bottomPanel,
+  onToggleTerminal,
   canGoBack = false,
   canGoForward = false,
   settingsSection,
@@ -157,9 +166,15 @@ export function Shell({
     return () => window.removeEventListener("resize", handleResize)
   }, [])
 
-  // 全局快捷键：⌘K 面板、⌘N 新会话、⌘B 侧栏、⌘J 工作台、⌘, 设置。
+  // 全局快捷键：⌘K 面板、⌘N 新会话、⌘B 侧栏、⌘J 右栏、⌃` 底部终端、⌘, 设置。
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent): void {
+      if (event.ctrlKey && !event.metaKey && !event.altKey && event.code === "Backquote") {
+        if (!onToggleTerminal) return
+        event.preventDefault()
+        onToggleTerminal()
+        return
+      }
       if (!event.metaKey && !event.ctrlKey) return
       const target = event.target as HTMLElement | null
       const editing =
@@ -188,7 +203,7 @@ export function Shell({
     }
     window.addEventListener("keydown", onKeyDown)
     return () => window.removeEventListener("keydown", onKeyDown)
-  }, [onNewThread, onToggleRight, onView, sidebarOpen])
+  }, [onNewThread, onToggleRight, onToggleTerminal, onView, sidebarOpen])
 
   const expanded = expandedProjects ?? localExpanded
   const open = sidebarOpen ?? localSidebarOpen
@@ -212,7 +227,12 @@ export function Shell({
   }
 
   const showRight = rightPanel !== undefined && rightOpen
-  const appClass = ["app", open ? "" : "is-collapsed", showRight ? "has-right" : ""]
+  const appClass = [
+    "app",
+    open ? "" : "is-collapsed",
+    showRight ? "has-right" : "",
+    showRight && rightMaximized ? "is-right-max" : "",
+  ]
     .filter(Boolean)
     .join(" ")
   const appStyle = { "--right-w": `${rightWidth}px` } as CSSProperties
@@ -315,25 +335,32 @@ export function Shell({
           ) : null}
         </div>
       </aside>
-      <main className="panel">{children}</main>
-      {showRight ? (
-        <div className="right-panel-slot">
-          <div
-            className="panel-resizer"
-            role="separator"
-            aria-orientation="vertical"
-            aria-label={t("palette.toggleWorkbench")}
-            aria-valuemin={RIGHT_MIN}
-            aria-valuemax={clampRightWidth(Number.MAX_SAFE_INTEGER)}
-            aria-valuenow={rightWidth}
-            tabIndex={0}
-            onPointerDown={startResize}
-            onKeyDown={onResizerKey}
-            onDoubleClick={() => setRightWidth(clampRightWidth(460))}
-          />
-          {rightPanel}
-        </div>
-      ) : null}
+      <div className="workspace">
+        <main className="panel">
+          {children}
+          {bottomPanel}
+        </main>
+        {rightPanel !== undefined ? (
+          <div className="right-panel-slot" hidden={!showRight}>
+            {showRight && !rightMaximized ? (
+              <div
+                className="panel-resizer"
+                role="separator"
+                aria-orientation="vertical"
+                aria-label={t("panel.label")}
+                aria-valuemin={RIGHT_MIN}
+                aria-valuemax={clampRightWidth(Number.MAX_SAFE_INTEGER)}
+                aria-valuenow={rightWidth}
+                tabIndex={0}
+                onPointerDown={startResize}
+                onKeyDown={onResizerKey}
+                onDoubleClick={() => setRightWidth(clampRightWidth(460))}
+              />
+            ) : null}
+            {rightPanel}
+          </div>
+        ) : null}
+      </div>
       <AddProjectDialog
         open={dialogOpen}
         onOpenChange={setDialogOpen}

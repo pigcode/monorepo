@@ -2,14 +2,14 @@
 import type { Project, Thread } from "@pigcode/contracts"
 import { Button, useLocale } from "@pigcode/ui-primitives"
 import { Icon } from "./icon"
-import type { ThreadTabStatus } from "./thread-tabs"
+import { THREAD_STATUS_MESSAGE, type ThreadStatus } from "./thread-status"
 
 /** 工作区侧栏所需的数据与事件；数据由 store 传入。 */
 export interface WorkspaceSidebarProps {
   projects: Project[]
   threads: Thread[]
   activeThreadId: string | null
-  threadStatus?: Record<string, ThreadTabStatus> | undefined
+  threadStatus?: Record<string, ThreadStatus> | undefined
   expandedProjects: Record<string, boolean>
   onAddProject: () => void
   onToggleProject: (projectId: string, expanded: boolean) => void
@@ -61,7 +61,7 @@ export function WorkspaceSidebar({
     <>
       <nav className="side-actions" aria-label={t("nav.projects")}>
         <Button
-          variant="primary"
+          variant="plain"
           className="new-thread-btn"
           type="button"
           aria-label={t("nav.newThread")}
@@ -149,6 +149,7 @@ export function WorkspaceSidebar({
                 {projectThreads.map((thread) => {
                   const active = thread.id === activeThreadId
                   const status = threadStatus[thread.id] ?? "idle"
+                  const statusKey = THREAD_STATUS_MESSAGE[status]
                   return (
                     <Button
                       variant="plain"
@@ -160,6 +161,7 @@ export function WorkspaceSidebar({
                       onClick={() => onOpenThread(thread.id)}
                     >
                       <span className="sess-dot" data-status={status} />
+                      {statusKey ? <span className="sr-only">{t(statusKey)}</span> : null}
                       <span className="sess-provider">{providerMark(thread)}</span>
                       <span className="sess-title truncate">{thread.title}</span>
                       <time>{formatThreadTime(thread.updatedAt, locale)}</time>

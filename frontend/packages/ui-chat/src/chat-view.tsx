@@ -1,7 +1,7 @@
 /** 聊天主视图：标题、运行状态、消息时间线、composer 占位与环境抽屉。 */
 import { useEffect, useRef, useState, type ReactNode } from "react"
 import type { ProviderCapabilities, Thread, ThreadEvent } from "@pigcode/contracts"
-import { ArrowDown, Check, ChevronDown, Folder, PanelRight, PanelRightOpen, Square } from "lucide-react"
+import { ArrowDown, Check, ChevronDown, Folder, PanelRight, SquareMenu, Square } from "lucide-react"
 import { Composer } from "@pigcode/ui-composer"
 import { Button, Menu, useLocale } from "@pigcode/ui-primitives"
 import type { ApprovalDecision } from "./approval-card"
@@ -41,12 +41,12 @@ export interface ChatViewProps {
   onSwitchModel?: (modelId: string) => void
   onViewTool?: (tool: ToolCall) => void
   onViewDiff?: (summary: FileChangeSummary) => void
-  /** 右栏是否展开；提供 onToggleRight 时在线程头显示工作台按钮。 */
+  /** 右栏是否展开；提供 onToggleRight 且没有 layoutControls 时在线程头显示右栏按钮。 */
   rightOpen?: boolean
   /** 切换右栏；由容器维护展开状态。 */
   onToggleRight?: () => void
-  /** 多会话 tab 栏；渲染在面板顶栏上方。 */
-  tabs?: ReactNode
+  /** 线程头末尾的布局按钮；右栏收起时由容器传入，替代单个右栏按钮。 */
+  layoutControls?: ReactNode
 }
 
 /** 线程头下拉菜单；provider 与模型切换共用。 */
@@ -116,7 +116,7 @@ export function ChatView({
   onViewDiff,
   rightOpen = false,
   onToggleRight,
-  tabs,
+  layoutControls,
 }: ChatViewProps) {
   const submit = onSubmit ?? onStart
   const { t } = useLocale()
@@ -181,7 +181,6 @@ export function ChatView({
 
   return (
     <section className="view">
-      {tabs}
       <div className="panel-top">
         <div className="title">
           <Folder className="ic muted" aria-hidden="true" />
@@ -231,28 +230,31 @@ export function ChatView({
             <Square className="ic" aria-hidden="true" />
           </Button>
         ) : null}
-        {onToggleRight ? (
-          <Button
-            variant="plain"
-            size="icon"
-            type="button"
-            aria-label={t("workbench.title")}
-            aria-pressed={rightOpen}
-            onClick={onToggleRight}
-          >
-            <PanelRightOpen className="ic" aria-hidden="true" />
-          </Button>
-        ) : null}
         <Button
           variant="plain"
           size="icon"
           type="button"
           aria-label={t("chat.environment")}
+          title={t("chat.environment")}
           aria-expanded={drawerOpen}
           onClick={() => setDrawerOpen((value) => !value)}
         >
-          <PanelRight className="ic" aria-hidden="true" />
+          <SquareMenu className="ic" aria-hidden="true" />
         </Button>
+        {layoutControls ??
+          (onToggleRight ? (
+            <Button
+              variant="plain"
+              size="icon"
+              type="button"
+              aria-label={t("panel.toggleRight")}
+              title={`${t("panel.toggleRight")} ⌘J`}
+              aria-pressed={rightOpen}
+              onClick={onToggleRight}
+            >
+              <PanelRight className="ic" aria-hidden="true" />
+            </Button>
+          ) : null)}
       </div>
       <div className="thread" ref={threadRef} onScroll={handleScroll}>
         <MessageList
