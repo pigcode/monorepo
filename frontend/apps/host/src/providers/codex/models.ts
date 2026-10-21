@@ -1,8 +1,25 @@
 /** 把 model/list 的未知响应收窄为 Pigcode 的模型条目。 */
-export interface CodexModelInfo {
-  id: string
-  displayName: string
-  isDefault: boolean
+import type { ReasoningEffort } from "@pigcode/contracts"
+import type { ProviderModelInfo } from "../driver"
+import { asReasoningEffort } from "../model-catalog"
+
+/** Codex 模型条目；思考深度来自 supportedReasoningEfforts / defaultReasoningEffort。 */
+export type CodexModelInfo = ProviderModelInfo
+
+/** supportedReasoningEfforts 既可能是字符串数组，也可能是 { reasoningEffort } 对象数组。 */
+function parseEfforts(value: unknown): ReasoningEffort[] {
+  if (!Array.isArray(value)) return []
+  const efforts: ReasoningEffort[] = []
+  for (const entry of value) {
+    const raw =
+      typeof entry === "object" && entry !== null
+        ? ((entry as Record<string, unknown>).reasoningEffort ??
+          (entry as Record<string, unknown>).effort)
+        : entry
+    const effort = asReasoningEffort(raw)
+    if (effort && !efforts.includes(effort)) efforts.push(effort)
+  }
+  return efforts
 }
 
 /** 兼容 data/models 两种列表包裹，并跳过缺少 id 的条目。 */
@@ -21,7 +38,7 @@ export function parseCodexModels(value: unknown): CodexModelInfo[] {
     const id =
       typeof model.id === "string" ? model.id : typeof model.model === "string" ? model.model : null
     if (!id) continue
-    result.push({
+    const entry: CodexModelInfo = {
       id,
       displayName:
         typeof model.displayName === "string"
@@ -30,7 +47,16 @@ export function parseCodexModels(value: unknown): CodexModelInfo[] {
             ? model.name
             : id,
       isDefault: model.isDefault === true,
-    })
+    }
+    if (typeof model.description === "string" && model.description) {
+      entry.description = model.description
+    }
+    const efforts = parseEfforts(model.supportedReasoningEfforts)
+    if (efforts.length > 0) {
+      entry.efforts = efforts
+      entry.defaultEffort = asReasoningEffort(model.defaultReasoningEffort)
+    }
+    result.push(entry)
   }
   return result
 }

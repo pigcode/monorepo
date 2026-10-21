@@ -14,6 +14,8 @@ export interface ThreadsService {
   archive(threadId: string): Thread | undefined
   /** 记录线程最近选择的 provider/model，切换后下一次 run 生效。 */
   updateSelection(threadId: string, providerId: string, modelId: string | null): void
+  /** 修改权限模式；下一次 run 起生效，返回更新后的记录。 */
+  setPermissionMode(threadId: string, mode: Thread["permissionMode"]): Thread | undefined
 }
 
 declare module "cordis" {
@@ -102,6 +104,12 @@ export const apply: ThreadsPlugin = (ctx) => {
            WHERE id = ?`,
         )
         .run(providerId, modelId, new Date().toISOString(), threadId)
+    },
+    setPermissionMode(threadId, mode) {
+      ctx.storage.db
+        .prepare(`UPDATE threads SET permission_mode = ?, updated_at = ? WHERE id = ?`)
+        .run(mode, new Date().toISOString(), threadId)
+      return service.get(threadId)
     },
   }
   ctx.provide("threads", service)

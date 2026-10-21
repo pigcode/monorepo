@@ -1,5 +1,5 @@
 /** Provider adapter 的 Host 侧契约；应用层只依赖规范化事件。 */
-import type { ProviderCapabilities, ProviderEvent } from "@pigcode/contracts"
+import type { ProviderCapabilities, ProviderEvent, ReasoningEffort } from "@pigcode/contracts"
 
 /** 审批决议；UI 只提交这三种。 */
 export type ApprovalDecision = "allow-once" | "allow-for-session" | "deny"
@@ -52,6 +52,8 @@ export interface CreateSessionInput {
 export interface UserInput {
   text: string
   handoff?: string
+  /** 本次 run 的思考深度；不支持的 driver 忽略。 */
+  effort?: ReasoningEffort
 }
 
 /** 单次 run 交给 driver 的运行时能力：取消信号、事件出口与审批回调。 */
@@ -66,6 +68,10 @@ export interface ProviderModelInfo {
   id: string
   displayName: string
   isDefault: boolean
+  description?: string | undefined
+  /** 该模型可选的思考深度；缺省或为空表示不可调。 */
+  efforts?: ReasoningEffort[]
+  defaultEffort?: ReasoningEffort | null
 }
 
 /** provider 插件运行配置；并发默认 4，排队上限默认 32。 */

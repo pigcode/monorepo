@@ -6,6 +6,7 @@ import {
   type PermissionResult,
   type PermissionUpdate,
   type Query,
+  type SDKUserMessage,
 } from "@anthropic-ai/claude-agent-sdk"
 import type { ProviderCapabilities } from "@pigcode/contracts"
 import { existsSync } from "node:fs"
@@ -16,20 +17,27 @@ import type {
   ApprovalRequest,
   CreateSessionInput,
   ProviderDriver,
+  ProviderModelInfo,
   ProviderRuntime,
   ProviderSessionHandle,
   SessionMcp,
   UserInput,
 } from "../driver"
+import { detectClaude, type ClaudeDetection } from "./detect"
+import { claudeModelOption, listClaudeModels, toClaudeEffort } from "./models"
 import { createNormalizeState, normalizeSdkMessage } from "./normalize"
 
 /** 可注入的 query 实现，便于测试替换真实 CLI 进程。 */
-export type ClaudeQueryFn = (params: { prompt: string; options: Options }) => Query
+export type ClaudeQueryFn = (params: {
+  prompt: string | AsyncIterable<SDKUserMessage>
+  options: Options
+}) => Query
 
-/** driver 的可选依赖；测试可替换 query 与 CLI 可执行文件路径。 */
+/** driver 的可选依赖；测试可替换 query、CLI 可执行文件路径与安装检测。 */
 export interface ClaudeDriverOptions {
   queryFn?: ClaudeQueryFn
   executable?: string
+  detect?: () => Promise<Pick<ClaudeDetection, "installed" | "loggedIn">>
 }
 
 /** 单个 provider 会话的运行时状态；承载取消信号与当前 SDK Query。 */
@@ -66,6 +74,7 @@ export class ClaudeDriver implements ProviderDriver {
 
   private readonly queryFn: ClaudeQueryFn
   private readonly executable: string | undefined
+  private readonly detect: () => Promise<Pick<ClaudeDetection, "installed" | "loggedIn">>
   private readonly sessionStates = new Map<string, DriverSessionState>()
 
   constructor(options: ClaudeDriverOptions = {}) {
@@ -73,6 +82,16 @@ export class ClaudeDriver implements ProviderDriver {
     // 打包后的 Host 不再位于 SDK 包内，SDK 无法按自身路径找到原生二进制；
     // 默认从 PATH 解析已安装的 Claude Code CLI。
     this.executable = options.executable ?? resolveClaudeExecutable()
+    this.detect = options.detect ?? (() => detectClaude())
+  }
+
+  /** 模型目录：CLI 已登录时从 SDK 读取，否则返回 CLI 认得的模型别名。 */
+  async listModels(): Promise<ProviderModelInfo[]> {
+    return listClaudeModels({
+      queryFn: this.queryFn,
+      executable: this.executable,
+      detect: this.detect,
+    })
   }
 
   /** 创建或复用会话状态；复用时会刷新 MCP 工具表，插件启停对下一次 run 生效。 */
@@ -121,10 +140,14 @@ export class ClaudeDriver implements ProviderDriver {
     // 同一 provider 切换优先原生 fork：resume 父会话并 forkSession，得到新的会话 id。
     const forkFromNativeSessionId = state.forkFromNativeSessionId
     const resumeId = forkFromNativeSessionId ?? session.nativeSessionId
+    const model = claudeModelOption(session.model)
     const queryStream = this.queryFn({
       prompt,
       options: {
         cwd: session.cwd,
+        ...(model ? { model } : {}),
+        // 模型不支持的档位由 CLI 自动降级。
+        ...(input.effort ? { effort: toClaudeEffort(input.effort) } : {}),
         ...(resumeId ? { resume: resumeId } : {}),
         ...(forkFromNativeSessionId ? { forkSession: true } : {}),
         includePartialMessages: true,

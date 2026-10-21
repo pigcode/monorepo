@@ -15,12 +15,14 @@ import { parseCodexModels } from "./models"
 import { normalizeCodexNotification } from "./normalize"
 import { StdioCodexTransport, type CodexTransport } from "./transport"
 
-/** 单个 session 的 app-server 状态。 */
+/** 单个 session 的 app-server 状态；权限与模型在 thread/start 或 thread/resume 时生效。 */
 interface CodexSessionState {
   client: CodexRpcClient
   nativeThreadId: string | null
   turnId: string | null
   interruptRequested: boolean
+  permissionMode: string
+  model: string | null
 }
 
 /** Codex 审批响应；Pigcode 只会产生这三种决议。 */
@@ -61,12 +63,19 @@ export class CodexDriver implements ProviderDriver {
   /** 启动 app-server 并创建或恢复原生 thread。 */
   async createSession(input: CreateSessionInput): Promise<ProviderSessionHandle> {
     // 复用仍在运行的 app-server：同一原生 thread 的后续 run 不需要重新初始化。
+    // 权限模式或模型变了就不复用，下面用 thread/resume 带上新的 sandbox 与审批策略。
+    const permissionMode = input.permissionMode ?? "workspace-write"
+    const model = input.model ?? null
     const reusable = input.forkFromNativeSessionId
       ? undefined
       : input.nativeSessionId
         ? this.sessions.get(input.nativeSessionId)
         : undefined
-    if (reusable?.nativeThreadId) {
+    if (
+      reusable?.nativeThreadId &&
+      reusable.permissionMode === permissionMode &&
+      reusable.model === model
+    ) {
       return {
         id: input.sessionId ?? `codex_${randomUUID()}`,
         threadId: input.threadId,
@@ -111,6 +120,8 @@ export class CodexDriver implements ProviderDriver {
         nativeThreadId,
         turnId: null,
         interruptRequested: false,
+        permissionMode,
+        model,
       })
       return {
         id: input.sessionId ?? `codex_${randomUUID()}`,
@@ -170,6 +181,8 @@ export class CodexDriver implements ProviderDriver {
       const started = (await client.request("turn/start", {
         threadId: state.nativeThreadId,
         input: [{ type: "text", text }],
+        // 思考深度只对本轮及之后的轮次生效；没有选择时沿用 Codex 的默认值。
+        ...(input.effort ? { effort: input.effort } : {}),
       })) as { turn?: { id?: string } }
       state.turnId = started.turn?.id ?? null
       if (runtime.signal.aborted) {

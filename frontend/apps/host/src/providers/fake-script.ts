@@ -1,0 +1,98 @@
+/**
+ * fake provider 的脚本化回复：一轮里依次出现说明、计划、读文件、搜索、改文件、跑命令和总结，
+ * 用来在没有真实 CLI 的环境里演示与测试时间线（工作分组、工具行、计划卡片）。
+ */
+import type { ProviderEvent } from "@pigcode/contracts"
+import type { ProviderRuntime } from "./driver"
+
+/** 触发脚本化回复的输入。 */
+export const FAKE_SCRIPT_TEXT = "tools"
+
+/** 脚本里的一步：事件，或者等待。 */
+type Step = ProviderEvent | { wait: number }
+
+function message(text: string): Step[] {
+  const words = text.split(/(?<=\s)/)
+  return [
+    ...words.map((word): Step => ({ type: "message.delta", text: word })),
+    { type: "message.completed", text },
+  ]
+}
+
+function tool(id: string, name: string, input: unknown, output: unknown, waitMs: number): Step[] {
+  return [
+    { type: "tool.started", toolCallId: id, name, input },
+    { wait: waitMs },
+    { type: "tool.completed", toolCallId: id, name, output, isError: false },
+  ]
+}
+
+/** 完整脚本；stepMs 控制每个工具的耗时，测试传 0。 */
+export function fakeScript(stepMs: number): Step[] {
+  return [
+    ...message("先看一下项目结构和测试入口。"),
+    {
+      type: "plan.updated",
+      explanation: "检查并修复示例项目",
+      plan: [
+        { step: "阅读 README 与入口文件", status: "in_progress" },
+        { step: "修改 answer 的实现", status: "pending" },
+        { step: "运行测试", status: "pending" },
+      ],
+    },
+    ...tool("fake-read-1", "Read", { file_path: "README.md" }, "# Demo\n", stepMs),
+    ...tool(
+      "fake-read-2",
+      "Read",
+      { file_path: "src/index.ts" },
+      "export const answer = 42\n",
+      stepMs,
+    ),
+    ...tool("fake-grep-1", "Grep", { pattern: "answer", path: "src" }, "src/index.ts:1", stepMs),
+    {
+      type: "plan.updated",
+      explanation: "检查并修复示例项目",
+      plan: [
+        { step: "阅读 README 与入口文件", status: "completed" },
+        { step: "修改 answer 的实现", status: "in_progress" },
+        { step: "运行测试", status: "pending" },
+      ],
+    },
+    ...tool(
+      "fake-edit-1",
+      "Edit",
+      { file_path: "src/index.ts", old_string: "42", new_string: "41 + 1" },
+      "The file src/index.ts has been updated.",
+      stepMs,
+    ),
+    ...tool("fake-bash-1", "Bash", { command: "pnpm test" }, "Tests  3 passed (3)\n", stepMs * 2),
+    {
+      type: "plan.updated",
+      explanation: "检查并修复示例项目",
+      plan: [
+        { step: "阅读 README 与入口文件", status: "completed" },
+        { step: "修改 answer 的实现", status: "completed" },
+        { step: "运行测试", status: "completed" },
+      ],
+    },
+    ...message(
+      "改好了：`answer` 现在由 `41 + 1` 计算，结果仍是 **42**。\n\n- 修改了 `src/index.ts`\n- `pnpm test` 全部通过",
+    ),
+  ]
+}
+
+/** 依次推送脚本；中断后立即停止。 */
+export async function runFakeScript(runtime: ProviderRuntime, stepMs: number): Promise<void> {
+  for (const step of fakeScript(stepMs)) {
+    if (runtime.signal.aborted) return
+    if ("wait" in step) {
+      if (step.wait > 0) await new Promise((resolve) => setTimeout(resolve, step.wait))
+      continue
+    }
+    runtime.emit(step)
+    // 逐字增量之间稍作停顿，界面上能看到流式输出。
+    if (step.type === "message.delta" && stepMs > 0) {
+      await new Promise((resolve) => setTimeout(resolve, Math.min(40, stepMs / 10)))
+    }
+  }
+}

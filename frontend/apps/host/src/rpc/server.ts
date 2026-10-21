@@ -7,7 +7,7 @@ import {
   rpcFailureSchema,
   rpcSuccessSchema,
 } from "@pigcode/contracts"
-import type { CommandMethod } from "@pigcode/contracts"
+import type { CommandMethod, PermissionMode, ReasoningEffort } from "@pigcode/contracts"
 
 /** 基于 Cordis 服务处理 RPC 请求的 Host 侧服务器。 */
 export class RpcServer {
@@ -161,15 +161,34 @@ export class RpcServer {
           value.modelId ?? null,
         )
       }
-      case "run.start": {
-        const value = parsed as { threadId: string; text: string }
-        const { runId } = await this.ctx.providers.startRun(value.threadId, value.text, (event) => {
-          this.transport.send({
-            jsonrpc: "2.0",
-            method: "thread.delta",
-            params: { threadId: value.threadId, event },
-          })
+      case "thread.setPermissionMode": {
+        const value = parsed as { threadId: string; permissionMode: PermissionMode }
+        const thread = this.ctx.threads.setPermissionMode(value.threadId, value.permissionMode)
+        if (!thread) throw new Error(`thread not found: ${value.threadId}`)
+        this.ctx.sessions.append({
+          threadId: thread.id,
+          runId: null,
+          type: "thread.updated",
+          payload: { permissionMode: thread.permissionMode },
+          schemaVersion: 1,
+          createdAt: new Date().toISOString(),
         })
+        return thread
+      }
+      case "run.start": {
+        const value = parsed as { threadId: string; text: string; effort?: ReasoningEffort }
+        const { runId } = await this.ctx.providers.startRun(
+          value.threadId,
+          value.text,
+          (event) => {
+            this.transport.send({
+              jsonrpc: "2.0",
+              method: "thread.delta",
+              params: { threadId: value.threadId, event },
+            })
+          },
+          value.effort ? { effort: value.effort } : {},
+        )
         return { runId }
       }
       case "run.list":

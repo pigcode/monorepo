@@ -99,6 +99,11 @@ export function buildHandoff(ctx: Context, threadId: string): string {
   ].join("\n")
 }
 
+/** 线程里是否已经有过对话消息。 */
+function hasConversation(ctx: Context, threadId: string): boolean {
+  return ctx.sessions.read(threadId, 0).some((event) => event.type === "message.completed")
+}
+
 /** 读取尚未被下一次 run 消费的 handoff；一个 handoff 只注入一次。 */
 export function pendingHandoff(ctx: Context, threadId: string): string | null {
   const events = ctx.sessions.read(threadId, 0)
@@ -148,9 +153,13 @@ export async function switchProvider(
 ): Promise<Switch> {
   if (!ctx.threads.get(threadId)) throw new Error(`thread not found: ${threadId}`)
   // 同 provider 且存在 active 原生会话时优先 fork；否则生成跨 provider 的 handoff。
+  // 还没聊过的线程没有上下文可交接，新 agent 的第一条消息保持用户原文。
   const activeSession = sessions.findActive(threadId, providerId)
   const forkFromNativeSessionId = activeSession?.nativeSessionId ?? null
-  const handoff = forkFromNativeSessionId === null ? buildHandoff(ctx, threadId) : null
+  const handoff =
+    forkFromNativeSessionId === null && hasConversation(ctx, threadId)
+      ? buildHandoff(ctx, threadId)
+      : null
   const now = new Date().toISOString()
   const active = sessions.listByThread(threadId).filter((session) => session.status === "active")
   for (const session of active) await disposeActive?.(session)

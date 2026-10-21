@@ -1,5 +1,6 @@
 /** 定义 Host 接受的命令参数；M0-A 只包含真实用到的命令。 */
 import { z } from "zod"
+import { permissionModeSchema, reasoningEffortSchema } from "./domain"
 
 /** 命令方法到参数 schema 的映射。 */
 export const commandSchemas = {
@@ -31,7 +32,17 @@ export const commandSchemas = {
     providerId: z.string().min(1),
     modelId: z.string().min(1).nullish(),
   }),
-  "run.start": z.object({ threadId: z.string().min(1), text: z.string().min(1) }),
+  /** 下一次 run 起生效；运行中的 run 保持启动时的权限。 */
+  "thread.setPermissionMode": z.object({
+    threadId: z.string().min(1),
+    permissionMode: permissionModeSchema,
+  }),
+  "run.start": z.object({
+    threadId: z.string().min(1),
+    text: z.string().min(1),
+    /** 本次 run 的思考深度；缺省时用 agent 自己的默认值。 */
+    effort: reasoningEffortSchema.optional(),
+  }),
   "run.list": z.object({}),
   "run.interrupt": z.object({ threadId: z.string().min(1), runId: z.string().min(1) }),
   "run.respondApproval": z.object({
