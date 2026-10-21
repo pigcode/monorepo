@@ -12,6 +12,7 @@ import {
   PreviewPanel,
   RightPanel,
   TerminalView,
+  WorkbenchEmpty,
   WorktreePicker,
   type CheckpointPhase,
   type FilePreviewFile,
@@ -414,7 +415,7 @@ export function WorkbenchPanel({ connection, threadId, onClose, onError }: Workb
         {diffError ? (
           <p className="workbench-error">{diffError}</p>
         ) : diffLoading ? (
-          <p className="workbench-empty">正在读取 diff…</p>
+          <WorkbenchEmpty loading title="正在读取 diff…" />
         ) : (
           <DiffView diff={diff} />
         )}
@@ -432,7 +433,7 @@ export function WorkbenchPanel({ connection, threadId, onClose, onError }: Workb
           />
         ) : (
           // terminal.open 是异步 RPC；会话就绪前不挂载 xterm，避免输入被静默丢弃。
-          <p className="workbench-empty">{t("workbench.terminalOpening")}</p>
+          <WorkbenchEmpty loading title={t("workbench.terminalOpening")} />
         )}
       </div>
     ),

@@ -176,6 +176,8 @@ export const enUS = {
   "chat.permission.plan": "Plan",
   "chat.view": "View",
   "chat.hide": "Hide",
+  "chat.copy": "Copy",
+  "chat.copied": "Copied",
   "workbench.title": "Workbench",
   "workbench.files": "Files",
   "workbench.diff": "Diff",

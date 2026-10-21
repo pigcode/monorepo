@@ -1,6 +1,7 @@
 /** 工作台右栏组件的公开入口。 */
 export * from "./checkpoint-panel"
 export * from "./diff-view"
+export * from "./empty-state"
 export * from "./file-preview"
 export * from "./file-tree"
 export * from "./pr-panel"

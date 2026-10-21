@@ -1,6 +1,8 @@
 /** Checkpoint 面板：列出 baseline/final/manual，恢复前要求二次确认。 */
 import { useState } from "react"
+import { History } from "lucide-react"
 import { Button } from "@pigcode/ui-primitives"
+import { WorkbenchEmpty } from "./empty-state"
 
 /** checkpoint 的创建阶段；与 Host 的 CheckpointPhase 保持一致。 */
 export type CheckpointPhase = "baseline" | "final" | "manual"
@@ -57,7 +59,13 @@ export function CheckpointPanel({
   }
 
   if (checkpoints.length === 0) {
-    return <p className="workbench-empty">暂无 checkpoint</p>
+    return (
+      <WorkbenchEmpty
+        icon={<History className="ic ic-lg" />}
+        title="暂无 checkpoint"
+        description="每次运行前后会自动记录基线与结束状态"
+      />
+    )
   }
 
   return (

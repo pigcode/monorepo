@@ -74,18 +74,26 @@ function toolFromEvent(event: ThreadEvent, status: ToolStatus): ToolCall | undef
       displayValue(payload.command) ??
       displayValue(payload.arguments),
     output: displayValue(payload.output) ?? displayValue(payload.result),
+    // 开始事件记录起点，结束事件记录终点；合并后两者齐全才会显示耗时。
+    ...(event.type === "tool.started"
+      ? { startedAt: event.createdAt }
+      : { completedAt: event.createdAt }),
   }
 }
 
 /** 合并同一工具的 started / completed 事件。 */
 function mergeTool(existing: ToolCall | undefined, next: ToolCall): ToolCall {
   if (!existing) return next
+  const startedAt = existing.startedAt ?? next.startedAt
+  const completedAt = next.completedAt ?? existing.completedAt
   return {
     id: existing.id,
     name: next.name === "tool" ? existing.name : next.name,
     status: next.status,
     input: next.input ?? existing.input,
     output: next.output ?? existing.output,
+    ...(startedAt ? { startedAt } : {}),
+    ...(completedAt ? { completedAt } : {}),
   }
 }
 
@@ -307,6 +315,13 @@ function collectSubagents(events: ThreadEvent[]): Map<string, SubagentCall> {
   return subagents
 }
 
+/** 把事件时间格式化成「HH:mm」；非法时间不显示。 */
+function formatClock(value: string, locale: string): string | undefined {
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return undefined
+  return new Intl.DateTimeFormat(locale, { hour: "2-digit", minute: "2-digit" }).format(date)
+}
+
 /** 判断线程是否还有未处理的审批请求。 */
 export function hasPendingApproval(events: ThreadEvent[]): boolean {
   const resolved = collectResolved(events)
@@ -328,7 +343,7 @@ export function MessageList({
   onViewTool,
   onViewDiff,
 }: MessageListProps) {
-  const { t } = useLocale()
+  const { t, locale } = useLocale()
   const tools = collectTools(events)
   const resolved = collectResolved(events)
   const subagents = collectSubagents(events)
@@ -340,6 +355,8 @@ export function MessageList({
   for (const event of sorted) {
     const key = `${event.seq}-${event.type}`
     const payload = asRecord(event.payload)
+    const time = formatClock(event.createdAt, locale)
+    const timeProp = time ? { time } : {}
     // 子 agent 的消息与工具已在卡片内部按 seq 渲染，跳过顶层重复展示。
     if (isParentScoped(event.type) && asText(payload?.parentToolUseId)) continue
     if (event.type === "subagent.started") {
@@ -364,7 +381,7 @@ export function MessageList({
         asText(payload?.role) === "user" ? (
           <UserMessage key={key} text={text} />
         ) : (
-          <AssistantMessage key={key} name={assistantName} initial={assistantInitial}>
+          <AssistantMessage key={key} name={assistantName} initial={assistantInitial} {...timeProp}>
             <MessageText text={text} />
           </AssistantMessage>
         ),
@@ -411,7 +428,7 @@ export function MessageList({
     }
     if (event.type === "run.failed") {
       nodes.push(
-        <AssistantMessage key={key} name={assistantName} initial={assistantInitial}>
+        <AssistantMessage key={key} name={assistantName} initial={assistantInitial} {...timeProp}>
           <div className="event-line t-bad">
             <AlertTriangle className="ic ic-sm" aria-hidden="true" />
             {asText(payload?.message) ?? t("chat.error")}

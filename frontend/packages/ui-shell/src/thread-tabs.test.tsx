@@ -77,4 +77,19 @@ describe("ThreadTabs", () => {
     expect(onClose).toHaveBeenCalledWith("t2")
     expect(onActivate).not.toHaveBeenCalled()
   })
+
+  it("keeps the new-tab button outside the scrolling tablist", async () => {
+    const onNew = vi.fn()
+    const { container } = renderTabs({ onNew })
+
+    const tablist = screen.getByRole("tablist")
+    const add = screen.getByRole("button", { name: "新会话" })
+    expect(tablist.contains(add)).toBe(false)
+    expect(container.querySelector(".thread-tabs")?.contains(add)).toBe(true)
+    // jsdom 没有布局，没有溢出时不应出现渐隐遮罩标记。
+    expect(container.querySelector(".thread-tabs")?.hasAttribute("data-overflow")).toBe(false)
+
+    await userEvent.click(add)
+    expect(onNew).toHaveBeenCalledTimes(1)
+  })
 })

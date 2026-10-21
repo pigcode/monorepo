@@ -1,6 +1,8 @@
 /** Diff 视图：用 diff 的 parsePatch 解析 unified diff，按行渲染增删与上下文。 */
 import { useMemo } from "react"
 import { parsePatch, type StructuredPatch } from "diff"
+import { GitCompare } from "lucide-react"
+import { WorkbenchEmpty } from "./empty-state"
 
 /** Diff 视图属性；diff 文本通常来自 git.diff。 */
 export interface DiffViewProps {
@@ -107,7 +109,9 @@ function parseDiff(diff: string): RenderedFile[] {
 export function DiffView({ diff, emptyText = "暂无变更" }: DiffViewProps) {
   const files = useMemo(() => (diff.trim().length === 0 ? [] : parseDiff(diff)), [diff])
 
-  if (files.length === 0) return <p className="workbench-empty">{emptyText}</p>
+  if (files.length === 0) {
+    return <WorkbenchEmpty icon={<GitCompare className="ic ic-lg" />} title={emptyText} />
+  }
 
   return (
     <div className="diff-view">

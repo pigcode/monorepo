@@ -5,9 +5,11 @@ import {
   GitCompare,
   GitPullRequest,
   History,
+  Inbox,
   Monitor,
   Terminal,
 } from "lucide-react"
+import { WorkbenchEmpty } from "./empty-state"
 
 /** 右栏 tab 的固定顺序。 */
 export const RIGHT_PANEL_TABS = [
@@ -98,7 +100,7 @@ export function RightPanel({ threadId, tabs, active, onTab, onClose, labels }: R
         id={`right-panel-panel-${active}`}
         aria-labelledby={`right-panel-tab-${active}`}
       >
-        {tabs[active] ?? <p className="workbench-empty">暂无内容</p>}
+        {tabs[active] ?? <WorkbenchEmpty icon={<Inbox className="ic ic-lg" />} title="暂无内容" />}
       </div>
     </aside>
   )

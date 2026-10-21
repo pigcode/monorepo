@@ -1,7 +1,7 @@
 /** 子代理卡片；用 details 折叠展示子 agent 的消息与工具调用。 */
 import type { ReactNode } from "react"
 import type { ThreadEvent } from "@pigcode/contracts"
-import { Bot, Wrench } from "lucide-react"
+import { Bot, ChevronRight, Wrench } from "lucide-react"
 import { useLocale } from "@pigcode/ui-primitives"
 import type { ToolCall, ToolStatus } from "./tool-card"
 
@@ -129,12 +129,16 @@ export function SubagentCard({ subagent }: { subagent: SubagentCall }) {
   return (
     <details className="subagent-card" data-status={subagent.status}>
       <summary className="subagent-head">
-        <Bot className="ic ic-sm" aria-hidden="true" />
+        <ChevronRight className="ic ic-sm chev subagent-chev" aria-hidden="true" />
+        <span className="subagent-avatar" aria-hidden="true">
+          <Bot className="ic ic-sm" />
+        </span>
         <span className="subagent-name">{subagent.name}</span>
         {subagent.description ? (
-          <span className="subagent-description">{subagent.description}</span>
+          <span className="subagent-description truncate">{subagent.description}</span>
         ) : null}
         <span className="grow" />
+        {subagent.model ? <span className="subagent-model">{subagent.model}</span> : null}
         <span className={`subagent-status ${subagent.status}`}>
           {t(STATUS_KEYS[subagent.status])}
         </span>

@@ -171,6 +171,8 @@ export const zhCN = {
   "chat.permission.plan": "计划模式",
   "chat.view": "查看",
   "chat.hide": "收起",
+  "chat.copy": "复制",
+  "chat.copied": "已复制",
   "workbench.title": "工作台",
   "workbench.files": "文件",
   "workbench.diff": "Diff",

@@ -274,7 +274,7 @@ export function Composer({
           {running && canInterrupt ? (
             <Button
               variant="plain"
-              className="send"
+              className="send is-stop"
               type="button"
               aria-label={t("chat.interrupt")}
               title={t("chat.interrupt")}

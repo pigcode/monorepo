@@ -1,5 +1,7 @@
 /** 文件树：把 Host 返回的扁平路径构建成目录树，点击文件时回调。 */
 import { useMemo, useState } from "react"
+import { FolderOpen } from "lucide-react"
+import { WorkbenchEmpty } from "./empty-state"
 
 /** 工作区文件条目；目录由路径前缀推导，type 保留 Host 的原始声明。 */
 export interface FileTreeEntry {
@@ -162,7 +164,9 @@ export function FileTree({
     })
   }
 
-  if (tree.length === 0) return <p className="workbench-empty">{emptyText}</p>
+  if (tree.length === 0) {
+    return <WorkbenchEmpty icon={<FolderOpen className="ic ic-lg" />} title={emptyText} />
+  }
 
   return (
     <ul role="tree" className="file-tree" aria-label="工作区文件">

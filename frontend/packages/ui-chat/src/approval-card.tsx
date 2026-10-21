@@ -1,5 +1,5 @@
 /** 审批卡片；按钮文案来自 locale，决议值沿用 allow-once / allow-for-session / deny。 */
-import { Check, Hand } from "lucide-react"
+import { Check, Hand, X } from "lucide-react"
 import { Button, useLocale } from "@pigcode/ui-primitives"
 
 /** 用户对审批请求的三种决议。 */
@@ -30,12 +30,18 @@ export function ApprovalCard({
   onApproval: (requestId: string, decision: ApprovalDecision) => void
 }) {
   const { t } = useLocale()
+  const headline = request.title ?? request.description
 
   if (resolved) {
     return (
-      <div className="perm-done">
-        <Check className="ic ic-sm" aria-hidden="true" />
-        {t(RESOLVED_KEYS[resolved])}
+      <div className="perm-done" data-decision={resolved}>
+        {resolved === "deny" ? (
+          <X className="ic ic-sm" aria-hidden="true" />
+        ) : (
+          <Check className="ic ic-sm" aria-hidden="true" />
+        )}
+        <span>{t(RESOLVED_KEYS[resolved])}</span>
+        {request.title ? <span className="perm-done-title truncate">{request.title}</span> : null}
       </div>
     )
   }
@@ -43,8 +49,13 @@ export function ApprovalCard({
   return (
     <div className="perm" role="group" aria-label={t("chat.approval.title")}>
       <div className="q">
-        <Hand className="ic" aria-hidden="true" />
-        {request.title ?? request.description ?? t("chat.approval.title")}
+        <span className="perm-badge" aria-hidden="true">
+          <Hand className="ic ic-sm" />
+        </span>
+        <span className="perm-copy">
+          {headline ? <span className="perm-eyebrow">{t("chat.approval.title")}</span> : null}
+          <span>{headline ?? t("chat.approval.title")}</span>
+        </span>
       </div>
       {request.description && request.title ? <p>{request.description}</p> : null}
       {request.command ? <pre>{request.command}</pre> : null}
