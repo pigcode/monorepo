@@ -1,6 +1,7 @@
 /** M5 真实 Codex 端到端：两个线程并行运行，分别得到 OK-1 与 OK-2。 */
 import { mkdirSync } from "node:fs"
 import { _electron as electron, expect, test } from "@playwright/test"
+import { addProject } from "./projects"
 
 test.skip(process.env.PIGCODE_REAL_CODEX !== "1", "set PIGCODE_REAL_CODEX=1")
 
@@ -24,9 +25,7 @@ test("runs two real codex threads from the sidebar", async () => {
   const app = await electron.launch({ args: ["."], env: launchEnv() })
   try {
     const page = await app.firstWindow()
-    await page.getByRole("button", { name: "添加项目" }).first().click()
-    await page.getByLabel("项目路径").fill(projectRoot)
-    await page.getByRole("button", { name: "添加", exact: true }).click()
+    await addProject(app, page, projectRoot)
     const project = page.locator(".proj-block").filter({ hasText: "pigcode-m5-real-e2e" })
     await expect(project).toBeVisible()
 

@@ -1,6 +1,7 @@
 /** M5 验收：侧栏切换多会话，后台运行状态保持。 */
 import { mkdirSync, rmSync } from "node:fs"
 import { _electron as electron, expect, test } from "@playwright/test"
+import { addProject } from "./projects"
 
 /** 过滤 undefined，满足 Playwright env 的 string 值约束。 */
 function launchEnv(): Record<string, string> {
@@ -26,9 +27,7 @@ test("keeps background runs alive across threads", async () => {
   })
   try {
     const page = await app.firstWindow()
-    await page.getByRole("button", { name: "添加项目" }).first().click()
-    await page.getByLabel("项目路径").fill(projectRoot)
-    await page.getByRole("button", { name: "添加", exact: true }).click()
+    await addProject(app, page, projectRoot)
     const project = page.locator(".proj-block").filter({ hasText: "pigcode-m5-e2e" })
     await expect(project).toBeVisible()
 

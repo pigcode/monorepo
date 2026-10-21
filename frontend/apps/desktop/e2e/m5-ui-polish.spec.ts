@@ -1,6 +1,7 @@
 /** M5 UI 交互验收：自动标题、命令面板、快捷键与右侧面板。 */
 import { mkdirSync, rmSync } from "node:fs"
 import { _electron as electron, expect, test } from "@playwright/test"
+import { addProject } from "./projects"
 
 /** 过滤 undefined，满足 Playwright env 的 string 值约束。 */
 function launchEnv(): Record<string, string> {
@@ -21,9 +22,7 @@ test("polished shell: auto title, command palette and shortcuts", async () => {
   })
   try {
     const page = await app.firstWindow()
-    await page.getByRole("button", { name: "添加项目" }).first().click()
-    await page.getByLabel("项目路径").fill(projectRoot)
-    await page.getByRole("button", { name: "添加", exact: true }).click()
+    await addProject(app, page, projectRoot)
     const project = page.locator(".proj-block").filter({ hasText: "pigcode-ui-polish" })
     await project.locator(".proj-add").click()
 
