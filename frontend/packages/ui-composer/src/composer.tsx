@@ -185,7 +185,7 @@ export function Composer({
         <div className="composer-side">
           <Button
             variant="plain"
-            className="icon-btn"
+            className="icon-btn composer-attach"
             type="button"
             aria-label={t("composer.attach")}
             title={t("composer.attach")}

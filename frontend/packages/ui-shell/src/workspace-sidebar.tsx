@@ -1,6 +1,6 @@
-/** 工作区侧栏：项目树、线程列表与设置入口。 */
+/** 工作区侧栏：主导航、项目与会话列表。 */
 import type { Project, Thread } from "@pigcode/contracts"
-import { Button, useLocale } from "@pigcode/ui-primitives"
+import { Button, formatShortcut, useLocale } from "@pigcode/ui-primitives"
 import { Icon } from "./icon"
 import { THREAD_STATUS_MESSAGE, type ThreadStatus } from "./thread-status"
 
@@ -16,8 +16,10 @@ export interface WorkspaceSidebarProps {
   onOpenThread: (threadId: string) => void
   onNewThread: (projectId?: string) => void
   onOpenSettings?: () => void
-  /** 搜索尚未接入时可以不传，侧栏不渲染搜索入口。 */
-  onSearch?: () => void
+  /** 定时任务入口；不传时不显示。 */
+  onOpenSchedules?: () => void
+  /** 插件入口；不传时不显示。 */
+  onOpenPlugins?: () => void
 }
 
 /** 把 provider id 缩成侧栏可读的短标记。 */
@@ -28,18 +30,18 @@ function providerMark(thread: Thread): string {
   return id.slice(0, 2).toUpperCase()
 }
 
-/** 把线程更新时间格式化成“刚刚 / 3 分钟前 / 昨天”的短文本。 */
-function formatThreadTime(value: string, locale: string): string {
+/** 把线程更新时间格式化成「刚刚 / 3分钟 / 2小时 / 5天」这样常驻显示的短文本。 */
+export function formatThreadTime(value: string, locale: string, now = Date.now()): string {
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return ""
-  const diff = Date.now() - date.getTime()
-  const minutes = Math.floor(diff / 60_000)
-  if (minutes < 1) return locale.startsWith("zh") ? "刚刚" : "now"
-  if (minutes < 60) return locale.startsWith("zh") ? `${minutes} 分钟前` : `${minutes}m`
+  const zh = locale.startsWith("zh")
+  const minutes = Math.floor((now - date.getTime()) / 60_000)
+  if (minutes < 1) return zh ? "刚刚" : "now"
+  if (minutes < 60) return zh ? `${minutes}分钟` : `${minutes}m`
   const hours = Math.floor(minutes / 60)
-  if (hours < 24) return locale.startsWith("zh") ? `${hours} 小时前` : `${hours}h`
+  if (hours < 24) return zh ? `${hours}小时` : `${hours}h`
   const days = Math.floor(hours / 24)
-  if (days < 7) return locale.startsWith("zh") ? `${days} 天前` : `${days}d`
+  if (days < 7) return zh ? `${days}天` : `${days}d`
   return new Intl.DateTimeFormat(locale, { month: "short", day: "numeric" }).format(date)
 }
 
@@ -54,7 +56,8 @@ export function WorkspaceSidebar({
   onToggleProject,
   onOpenThread,
   onNewThread,
-  onSearch,
+  onOpenSchedules,
+  onOpenPlugins,
 }: WorkspaceSidebarProps) {
   const { t, locale } = useLocale()
   return (
@@ -62,22 +65,25 @@ export function WorkspaceSidebar({
       <nav className="side-actions" aria-label={t("nav.projects")}>
         <Button
           variant="plain"
-          className="new-thread-btn"
+          className="nav-item new-thread-btn"
           type="button"
           aria-label={t("nav.newThread")}
           onClick={() => onNewThread()}
         >
-          <Icon name="plus" />
+          <Icon name="compose" />
           <span className="grow">{t("nav.newThread")}</span>
-          <span className="new-thread-kbd">⌘N</span>
+          <kbd className="nav-kbd">{formatShortcut("Mod+n")}</kbd>
         </Button>
-        {onSearch ? (
-          <Button variant="plain" className="side-command" type="button" onClick={onSearch}
-            aria-label={t("nav.search")}
-          >
-            <Icon name="search" />
-            <span className="grow">{t("nav.search")}</span>
-            <span className="nav-kbd">⌘K</span>
+        {onOpenSchedules ? (
+          <Button variant="plain" className="nav-item" type="button" onClick={onOpenSchedules}>
+            <Icon name="clock" />
+            <span className="grow">{t("settings.schedules")}</span>
+          </Button>
+        ) : null}
+        {onOpenPlugins ? (
+          <Button variant="plain" className="nav-item" type="button" onClick={onOpenPlugins}>
+            <Icon name="cube" />
+            <span className="grow">{t("settings.plugins")}</span>
           </Button>
         ) : null}
       </nav>
@@ -95,16 +101,15 @@ export function WorkspaceSidebar({
         </Button>
       </div>
       {projects.length === 0 ? (
-        <div className="side-empty-card">
-          <span className="side-empty-icon">
-            <Icon name="folder" />
-          </span>
-          <strong>{t("nav.addProject")}</strong>
-          <p>{t("chat.empty.hint")}</p>
-          <Button variant="primary" size="sm" type="button" onClick={onAddProject}>
-            {t("nav.addProject")}
-          </Button>
-        </div>
+        <Button
+          variant="plain"
+          className="nav-item side-add-project"
+          type="button"
+          onClick={onAddProject}
+        >
+          <Icon name="plus" />
+          <span className="grow">{t("nav.addProject")}</span>
+        </Button>
       ) : null}
       {projects.map((project) => {
         const open = expandedProjects[project.id] ?? true
@@ -121,14 +126,8 @@ export function WorkspaceSidebar({
                 aria-expanded={open}
                 onClick={() => onToggleProject(project.id, !open)}
               >
-                <span className="proj-icon">
-                  <Icon name="folder" className="proj-folder" />
-                  <Icon name={open ? "down" : "right"} small className="proj-caret" />
-                </span>
+                <Icon name={open ? "folder-open" : "folder"} className="proj-folder" />
                 <span className="truncate">{project.name}</span>
-                {projectThreads.length > 0 ? (
-                  <span className="proj-count">{projectThreads.length}</span>
-                ) : null}
               </Button>
               <Button
                 variant="plain"
@@ -162,9 +161,11 @@ export function WorkspaceSidebar({
                     >
                       <span className="sess-dot" data-status={status} />
                       {statusKey ? <span className="sr-only">{t(statusKey)}</span> : null}
-                      <span className="sess-provider">{providerMark(thread)}</span>
                       <span className="sess-title truncate">{thread.title}</span>
-                      <time>{formatThreadTime(thread.updatedAt, locale)}</time>
+                      <span className="sess-provider">{providerMark(thread)}</span>
+                      <time dateTime={thread.updatedAt}>
+                        {formatThreadTime(thread.updatedAt, locale)}
+                      </time>
                     </Button>
                   )
                 })}

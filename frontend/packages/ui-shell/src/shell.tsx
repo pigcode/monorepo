@@ -1,6 +1,10 @@
-/** 应用外壳：窗口按钮、工作区/设置侧栏与内容区。 */
+/**
+ * 应用外壳：Windows/Linux 的标题栏、侧栏顶行按钮、工作区/设置侧栏与内容区。
+ * 窗口按钮全部由系统绘制：macOS 的交通灯落在侧栏顶行，Windows/Linux 的按钮叠在标题栏上。
+ */
 import {
   useEffect,
+  useLayoutEffect,
   useState,
   type CSSProperties,
   type KeyboardEvent as ReactKeyboardEvent,
@@ -8,13 +12,14 @@ import {
   type ReactNode,
 } from "react"
 import type { Project, Thread } from "@pigcode/contracts"
-import { useLocale } from "@pigcode/ui-primitives"
-import { Button } from "@pigcode/ui-primitives"
+import { Button, formatShortcut, useLocale } from "@pigcode/ui-primitives"
 import { AddProjectDialog } from "./add-project-dialog"
 import { CommandPalette } from "./command-palette"
 import { Icon } from "./icon"
 import { SettingsSidebar, type SettingsSection } from "./settings-sidebar"
 import type { ThreadStatus } from "./thread-status"
+import { TitleBar } from "./title-bar"
+import { titleBarMenus } from "./title-bar-menus"
 import { WindowControls } from "./window-controls"
 import { WorkspaceSidebar } from "./workspace-sidebar"
 
@@ -40,6 +45,16 @@ function initialRightWidth(): number {
     // 隐私模式或测试环境可能禁用 localStorage；使用默认宽度。
   }
   return 460
+}
+
+/** 原生桥报告的平台；浏览器与测试环境里为空字符串。 */
+function nativePlatform(): string {
+  return typeof window === "undefined" ? "" : (window.pigcodeNative?.platform ?? "")
+}
+
+/** Windows 与 Linux 由页面绘制标题栏，系统窗口按钮叠在它上面。 */
+export function hasCustomTitleBar(platform: string): boolean {
+  return platform === "win32" || platform === "linux"
 }
 
 /** 外壳所需的数据与事件；项目/线程数据由 store 传入。 */
@@ -141,12 +156,27 @@ export function Shell({
   const [localExpanded, setLocalExpanded] = useState<Record<string, boolean>>({})
   const [localSidebarOpen, setLocalSidebarOpen] = useState(true)
   const inSettings = view !== "chat"
+  const platform = nativePlatform()
 
-  // 侧栏与窗口控件的间距按平台微调，CSS 依赖 html[data-platform]。
+  // 标题栏、交通灯留白和配色按平台区分，CSS 依赖 html[data-platform]；绘制前写入，避免布局跳动。
+  useLayoutEffect(() => {
+    document.documentElement.dataset.platform = platform
+  }, [platform])
+
+  // macOS 全屏时交通灯隐藏，CSS 依赖 html[data-fullscreen] 收回留白。
   useEffect(() => {
-    if (typeof document !== "undefined") {
-      document.documentElement.dataset.platform = window.pigcodeNative?.platform ?? ""
+    const bridge = window.pigcodeNative
+    if (!bridge?.onFullScreenChange) return
+    const root = document.documentElement
+    const apply = (fullScreen: boolean): void => {
+      if (fullScreen) root.dataset.fullscreen = "true"
+      else delete root.dataset.fullscreen
     }
+    void bridge
+      .isFullScreen?.()
+      .then(apply)
+      .catch(() => undefined)
+    return bridge.onFullScreenChange(apply)
   }, [])
 
   // 记住工作台宽度；窗口变窄时重新夹紧，避免右栏挤掉主内容。
@@ -261,41 +291,35 @@ export function Shell({
     setRightWidth((width) => clampRightWidth(width + (event.key === "ArrowLeft" ? 24 : -24)))
   }
 
+  const menus = hasCustomTitleBar(platform)
+    ? titleBarMenus({
+        t,
+        newThread: () => onNewThread(),
+        addProject: () => setDialogOpen(true),
+        settings: () => onView("settings"),
+        about: () => selectSection("general"),
+        palette: () => setPaletteOpen(true),
+        toggleSidebar,
+        toggleRight: onToggleRight,
+        toggleTerminal: onToggleTerminal,
+      })
+    : null
+
   return (
-    <div
-      className={appClass}
-      style={appStyle}
-      data-platform={typeof window === "undefined" ? "" : (window.pigcodeNative?.platform ?? "")}
-    >
+    <div className={appClass} style={appStyle}>
+      {menus ? <TitleBar menus={menus} label={t("menu.label")} /> : null}
       <WindowControls
         sidebarOpen={open}
         canGoBack={canGoBack}
         canGoForward={canGoForward}
         onToggleSidebar={toggleSidebar}
+        onSearch={() => setPaletteOpen(true)}
         onBack={() => onBack?.()}
         onForward={() => onForward?.()}
       />
       <aside className="sidebar" aria-label={inSettings ? t("settings.title") : t("nav.projects")}>
         <div className="side-top" />
         <div className="side-scroll">
-          <div className="side-brand">
-            <span className="brand-mark" aria-hidden="true">
-              <Icon name="snout" />
-            </span>
-            <span className="brand-copy">
-              <strong>Pigcode</strong>
-              <small>Claude · Codex</small>
-            </span>
-            <button
-              type="button"
-              className="brand-command"
-              aria-label={t("palette.placeholder")}
-              title={`${t("palette.placeholder")} ⌘K`}
-              onClick={() => setPaletteOpen(true)}
-            >
-              <Icon name="search" small />
-            </button>
-          </div>
           {inSettings ? (
             <SettingsSidebar
               activeSection={section}
@@ -313,27 +337,32 @@ export function Shell({
               onToggleProject={toggleProject}
               onOpenThread={onOpenThread}
               onNewThread={onNewThread}
-              onOpenSettings={() => onView("settings")}
-              onSearch={() => setPaletteOpen(true)}
+              onOpenSchedules={() => selectSection("schedules")}
+              onOpenPlugins={() => selectSection("plugins")}
             />
           )}
           {sidebarExtra}
-          {!inSettings ? (
-            <div className="side-foot">
-              <Button
-                variant="plain"
-                className="side-settings"
-                type="button"
-                aria-label={t("settings.title")}
-                onClick={() => onView("settings")}
-              >
-                <Icon name="gear" />
-                <span className="grow">{t("settings.title")}</span>
-                <span className="nav-kbd">⌘,</span>
-              </Button>
-            </div>
-          ) : null}
         </div>
+        {!inSettings ? (
+          <div className="side-foot">
+            <span className="side-account">
+              <span className="side-avatar" aria-hidden="true">
+                <Icon name="snout" />
+              </span>
+              <span className="truncate">Pigcode</span>
+            </span>
+            <Button
+              variant="plain"
+              className="icon-btn foot-gear"
+              type="button"
+              aria-label={t("settings.title")}
+              title={`${t("settings.title")} ${formatShortcut("Mod+,")}`}
+              onClick={() => onView("settings")}
+            >
+              <Icon name="gear" />
+            </Button>
+          </div>
+        ) : null}
       </aside>
       <div className="workspace">
         <main className="panel">
