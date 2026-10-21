@@ -1,6 +1,6 @@
 /** 面板布局按钮：最大化右侧面板、切换底部终端、切换右侧面板。 */
 import { Maximize2, Minimize2, PanelBottom, PanelRight } from "lucide-react"
-import { Button } from "@pigcode/ui-primitives"
+import { Button, formatShortcut } from "@pigcode/ui-primitives"
 
 /** 布局按钮文案。 */
 export interface PanelLayoutLabels {
@@ -70,7 +70,7 @@ export function PanelLayoutControls({
           size="icon"
           type="button"
           aria-label={labels.terminal}
-          title={`${labels.terminal} ⌃\``}
+          title={`${labels.terminal} ${formatShortcut("Ctrl+`")}`}
           aria-pressed={terminalOpen}
           disabled={disabled}
           onClick={onToggleTerminal}
@@ -83,7 +83,7 @@ export function PanelLayoutControls({
         size="icon"
         type="button"
         aria-label={labels.right}
-        title={`${labels.right} ⌘J`}
+        title={`${labels.right} ${formatShortcut("Mod+j")}`}
         aria-pressed={rightOpen}
         disabled={disabled}
         onClick={onToggleRight}

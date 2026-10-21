@@ -2,7 +2,7 @@
 import type { ReactNode } from "react"
 import type { ThreadEvent } from "@pigcode/contracts"
 import { AlertTriangle, Sparkles } from "lucide-react"
-import { useLocale } from "@pigcode/ui-primitives"
+import { formatShortcut, useLocale } from "@pigcode/ui-primitives"
 import { ApprovalCard, type ApprovalDecision, type ApprovalRequest } from "./approval-card"
 import { DiffSummary, type DiffFile, type FileChangeSummary } from "./diff-summary"
 import { AssistantMessage, MessageText, UserMessage } from "./message-item"
@@ -467,11 +467,11 @@ export function MessageList({
           <p>{t("chat.empty.hint")}</p>
           <div className="empty-hints">
             <span>
-              <kbd>⌘K</kbd>
+              <kbd>{formatShortcut("Mod+k")}</kbd>
               {t("chat.empty.command")}
             </span>
             <span>
-              <kbd>⌘N</kbd>
+              <kbd>{formatShortcut("Mod+n")}</kbd>
               {t("chat.empty.newThread")}
             </span>
           </div>
