@@ -12,7 +12,7 @@ export default function globalSetup(): void {
     stdio: "inherit",
     shell,
   })
-  execFileSync(process.execPath, ["scripts/build-host.mjs"], {
+  execFileSync(process.execPath, ["scripts/build-host.ts"], {
     cwd: repoRoot,
     stdio: "inherit",
   })

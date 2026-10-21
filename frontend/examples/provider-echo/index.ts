@@ -1,9 +1,11 @@
 /** 示例第三方 provider：把用户输入原样回显。 */
+import type { PluginHostContext, ProviderPluginDriver } from "@pigcode/plugin-sdk"
+
 export const name = "provider-echo"
 export const inject = ["providers"]
 
-export function apply(ctx) {
-  const driver = {
+export function apply(ctx: PluginHostContext): void {
+  const driver: ProviderPluginDriver = {
     id: "echo",
     displayName: "Echo",
     capabilities: {

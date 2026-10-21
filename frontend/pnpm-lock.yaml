@@ -26,9 +26,15 @@ importers:
       '@vitejs/plugin-react':
         specifier: 5.1.0
         version: 5.1.0(vite@7.1.12(@types/node@24.10.1)(jiti@2.7.0)(lightningcss@1.30.1)(yaml@2.8.1))
+      esbuild:
+        specifier: ^0.28.2
+        version: 0.28.2
       eslint:
         specifier: 9.39.5
         version: 9.39.5(jiti@2.7.0)
+      jiti:
+        specifier: 2.7.0
+        version: 2.7.0
       jsdom:
         specifier: 26.1.0
         version: 26.1.0
@@ -185,13 +191,29 @@ importers:
         specifier: 4.0.16
         version: 4.0.16(@opentelemetry/api@1.9.1)(@types/node@24.10.1)(jiti@2.7.0)(jsdom@26.1.0)(lightningcss@1.30.1)(yaml@2.8.1)
 
-  examples/capability-clock: {}
+  examples/capability-clock:
+    devDependencies:
+      '@pigcode/plugin-sdk':
+        specifier: workspace:*
+        version: link:../../packages/plugin-sdk
 
-  examples/capability-session-info: {}
+  examples/capability-session-info:
+    devDependencies:
+      '@pigcode/plugin-sdk':
+        specifier: workspace:*
+        version: link:../../packages/plugin-sdk
 
-  examples/provider-echo: {}
+  examples/provider-echo:
+    devDependencies:
+      '@pigcode/plugin-sdk':
+        specifier: workspace:*
+        version: link:../../packages/plugin-sdk
 
-  examples/ui-debug-panel: {}
+  examples/ui-debug-panel:
+    devDependencies:
+      '@pigcode/plugin-sdk':
+        specifier: workspace:*
+        version: link:../../packages/plugin-sdk
 
   packages/client-runtime:
     dependencies:

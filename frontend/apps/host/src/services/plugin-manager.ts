@@ -10,6 +10,7 @@ import {
   pluginManifestSchema,
   type PluginManifest,
 } from "@pigcode/plugin-sdk"
+import { compileTypeScriptPlugin } from "./plugin-typescript"
 
 /** npm 安装通过 pnpm 执行；单测注入 fake runner，不联网。 */
 export type PnpmRunner = (args: string[]) => Promise<void>
@@ -198,6 +199,7 @@ export async function installLocalPlugin(
   await rm(target, { recursive: true, force: true })
   await mkdir(dirname(target), { recursive: true })
   await cp(sourceDir, target, { recursive: true })
+  await compileTypeScriptPlugin(target)
   return addProfileEntry(profileDir, manifest)
 }
 
@@ -221,9 +223,11 @@ export async function installPlugin(
   await runPnpm(["add", spec, "--dir", profileDir])
   const after = await readProfilePackage(profileDir)
   const name = resolveInstalledName(spec, before.dependencies ?? {}, after.dependencies ?? {})
+  const packageDir = join(profileDir, "node_modules", name)
   const manifest = pluginManifestSchema.parse(
-    JSON.parse(await readFile(join(profileDir, "node_modules", name, "package.json"), "utf8")),
+    JSON.parse(await readFile(join(packageDir, "package.json"), "utf8")),
   )
+  await compileTypeScriptPlugin(packageDir)
   return addProfileEntry(profileDir, manifest)
 }
 
