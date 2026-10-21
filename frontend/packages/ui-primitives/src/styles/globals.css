@@ -3783,7 +3783,55 @@ body.is-resizing-rows iframe {
 
 /* ─── 输入区 ───────────────────────────────────────────── */
 .composer-wrap {
-  padding: 0 32px 16px;
+  padding: 0 32px 8px;
+}
+.composer-shell {
+  max-width: var(--chat-col);
+  margin: 0 auto;
+}
+/* 输入框下方一行：左边权限模式，右边按键提示（聚焦时出现） */
+.composer-under {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 32px;
+  padding: 2px 2px 0;
+}
+.composer-under .chip-btn {
+  color: var(--muted);
+}
+.composer-under .chip-btn:hover,
+.composer-under .chip-btn[aria-expanded="true"] {
+  color: var(--fg);
+}
+/* 模型胶囊：provider 或模型名 + 思考深度，菜单里分组切换 */
+.chip-btn.model-chip {
+  gap: 6px;
+  max-width: 300px;
+}
+.model-dot {
+  width: 6px;
+  height: 6px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--accent);
+}
+.model-name {
+  min-width: 0;
+  color: var(--fg);
+}
+.model-depth {
+  flex: none;
+  color: var(--muted);
+}
+.model-menu {
+  min-width: 220px;
+}
+.menu-item-desc {
+  display: block;
+  color: var(--muted);
+  font-size: calc(var(--ui-scale) * 12px);
 }
 /* 空会话：开场说明与输入区一起竖直居中；有了第一条消息后输入区回到底部 */
 .view:has(.chat-empty) .thread {
@@ -3846,6 +3894,11 @@ body.is-resizing-rows iframe {
   color: var(--faint);
   font-size: calc(var(--ui-scale) * 10.5px);
   white-space: nowrap;
+  opacity: 0;
+  transition: opacity var(--t-fast);
+}
+.composer-shell:focus-within .composer-hint {
+  opacity: 1;
 }
 .send,
 .btn.send {

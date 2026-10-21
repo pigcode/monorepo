@@ -166,6 +166,7 @@ export const enUS = {
   "composer.placeholder": "Ask Claude to do something, @ to reference files, / for commands",
   "composer.input": "Message to Claude",
   "composer.attach": "Add attachment",
+  "composer.modelMenu": "Model and thinking",
   "composer.permission.ask": "Ask every time",
   "composer.permission.ask.description": "Ask before editing files or running commands",
   "composer.permission.edit": "Edit files automatically",

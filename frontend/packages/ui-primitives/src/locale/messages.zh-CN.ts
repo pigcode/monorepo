@@ -162,6 +162,7 @@ export const zhCN = {
   "composer.placeholder": "让 Claude 做点什么，@ 引用文件，/ 使用命令",
   "composer.input": "给 Claude 的消息",
   "composer.attach": "添加附件",
+  "composer.modelMenu": "模型与思考",
   "composer.permission.ask": "每次询问",
   "composer.permission.ask.description": "改文件、运行命令前都先问",
   "composer.permission.edit": "自动改文件",
