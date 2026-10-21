@@ -1,12 +1,10 @@
 /** 应用外壳：把 store/connection 接到 Shell、聊天、设置与插件管理器。 */
-import { useEffect, useRef, useState, type ReactNode } from "react"
+import { useEffect, useRef, useState } from "react"
 import type { Project, Thread } from "@pigcode/contracts"
 import {
   AppRenderer,
   SlotHost,
   useAppStore,
-  type AppStore,
-  type Connection,
   type SlotRegistry,
 } from "@pigcode/client-runtime"
 import {
@@ -15,16 +13,17 @@ import {
   type AppearanceController,
   type Locale,
 } from "@pigcode/ui-primitives"
-import { ChatView, type ApprovalDecision, type ProviderOption } from "@pigcode/ui-chat"
-import { OpenInMenu, type SettingsSection, type ShellView, type ThreadStatus } from "@pigcode/ui-shell"
+export type { ChatSlotProps, CoreDeps } from "./chat-container"
+export { ChatViewContainer } from "./chat-container"
+import type { SettingsSection, ShellView, ThreadStatus } from "@pigcode/ui-shell"
 import {
   EMPTY_SURFACE_STATE,
   PanelLayoutControls,
   type PanelLayoutControlsProps,
   type PanelSurfaceState,
 } from "@pigcode/ui-workbench"
-import type { ClientPluginController } from "./client-plugins"
 import { PluginPanels } from "./client-plugins"
+import type { ChatSlotProps, CoreDeps } from "./chat-container"
 import { ConnectionBanner } from "./connection-banner"
 import {
   EMPTY_HISTORY,
@@ -38,7 +37,7 @@ import {
   type NavHistory,
   type NavLocation,
 } from "./navigation"
-import { listProviders, loadProviderContext, pickProviderId } from "./providers"
+import { loadProviderContext, pickProviderId } from "./providers"
 import { TerminalDrawer } from "./terminal-drawer"
 import { WorkbenchPanel } from "./workbench"
 import { layoutLabels } from "./workbench-labels"
@@ -49,22 +48,6 @@ import {
   renameProject,
   renameThread,
 } from "./workspace-actions"
-
-/** 核心容器共享的依赖。 */
-export interface CoreDeps {
-  connection: Connection
-  store: AppStore
-  plugins: ClientPluginController
-}
-
-/** chat.view slot 传入聊天容器的右栏控制；第三方聊天视图可以忽略。 */
-export interface ChatSlotProps {
-  rightOpen?: boolean
-  onToggleRight?: () => void
-  /** 线程头末尾的布局按钮；右栏展开时为 null，按钮在右栏标签栏里。 */
-  layoutControls?: ReactNode
-  onNewThread?: () => void
-}
 
 /** settings.section slot 传给核心设置视图的属性。 */
 export interface SettingsSlotProps {
@@ -83,137 +66,6 @@ export interface AppProps extends CoreDeps {
 /** 把 unknown 错误转成可展示文本。 */
 function messageOf(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
-}
-
-/** 聊天页容器：从 store 读取线程与事件，把操作交给 connection。 */
-export function ChatViewContainer({
-  deps,
-  rightOpen = false,
-  onToggleRight,
-  layoutControls,
-}: { deps: CoreDeps } & ChatSlotProps) {
-  const state = useAppStore(deps.store)
-  const thread = state.threads.find((item) => item.id === state.activeThreadId) ?? null
-  const project = state.projects.find((item) => item.id === thread?.projectId)
-  const [providerOptions, setProviderOptions] = useState<ProviderOption[]>([])
-  const { t } = useLocale()
-  const [providerNotice, setProviderNotice] = useState<string | null>(null)
-
-  // provider 列表只用于线程头切换入口；插件启停后按 revision 重新拉取。
-  useEffect(() => {
-    let cancelled = false
-    void listProviders(deps.connection)
-      .then((providers) => {
-        if (!cancelled) {
-          setProviderOptions(
-            providers.map((provider) => ({ id: provider.id, displayName: provider.displayName })),
-          )
-        }
-      })
-      .catch(() => undefined)
-    return () => {
-      cancelled = true
-    }
-  }, [deps.connection, state.providerRevision])
-
-  function interrupt(): void {
-    const runId = [...state.events].reverse().find((event) => event.runId !== null)?.runId
-    if (!runId || !state.activeThreadId) return
-    void deps.connection
-      .call("run.interrupt", { threadId: state.activeThreadId, runId })
-      .catch((error: unknown) => deps.store.update({ error: messageOf(error) }))
-  }
-
-  /** 把审批决议提交给 Host；runId 取最近一条带 runId 的事件。 */
-  function respondApproval(requestId: string, decision: ApprovalDecision): void {
-    const runId = [...state.events].reverse().find((event) => event.runId !== null)?.runId
-    if (!runId || !state.activeThreadId) return
-    void deps.connection
-      .call("run.respondApproval", {
-        threadId: state.activeThreadId,
-        runId,
-        requestId,
-        decision,
-      })
-      .catch((error: unknown) => deps.store.update({ error: messageOf(error) }))
-  }
-
-  /** 切换 provider；Host 端语义由 Task 6 的 thread.switchProvider 落地。 */
-  function switchProvider(providerId: string): void {
-    if (!thread) return
-    void deps.connection
-      .call("thread.switchProvider", {
-        threadId: thread.id,
-        providerId,
-        modelId: null,
-      })
-      .then(() => {
-        const threads = deps.store
-          .getSnapshot()
-          .threads.map((item) =>
-            item.id === thread.id
-              ? { ...item, lastProviderId: providerId, lastModelId: null }
-              : item,
-          )
-        deps.store.update({ threads })
-        const name = providerOptions.find((provider) => provider.id === providerId)?.displayName
-        setProviderNotice(`${t("chat.provider.next")} ${name ?? providerId}`)
-        setTimeout(() => setProviderNotice(null), 4000)
-      })
-      .catch((error: unknown) => deps.store.update({ error: messageOf(error) }))
-  }
-
-  /** 切换模型；通过同一个 thread.switchProvider 命令交给 Host。 */
-  function switchModel(modelId: string): void {
-    if (!thread) return
-    const providerId = thread.lastProviderId ?? thread.defaultProviderId
-    void deps.connection
-      .call("thread.switchProvider", {
-        threadId: thread.id,
-        providerId,
-        modelId,
-      })
-      .then(() => {
-        const threads = deps.store
-          .getSnapshot()
-          .threads.map((item) => (item.id === thread.id ? { ...item, lastModelId: modelId } : item))
-        deps.store.update({ threads })
-      })
-      .catch((error: unknown) => deps.store.update({ error: messageOf(error) }))
-  }
-
-  return (
-    <>
-      {providerNotice ? (
-        <div className="toast-stack" role="status" aria-live="polite">
-          <div className="toast">{providerNotice}</div>
-        </div>
-      ) : null}
-      <ChatView
-        thread={thread}
-        events={state.events}
-        streamingText={state.streamingText}
-        capabilities={state.providerCapabilities}
-        models={state.providerModels}
-        providers={providerOptions}
-        {...(project ? { cwd: project.rootPath } : {})}
-        onStart={(text) => {
-          if (!state.activeThreadId) return
-          void deps.connection
-            .startRun(state.activeThreadId, text)
-            .catch((error: unknown) => deps.store.update({ error: messageOf(error) }))
-        }}
-        onInterrupt={interrupt}
-        onApproval={respondApproval}
-        onSwitchProvider={switchProvider}
-        onSwitchModel={switchModel}
-        rightOpen={rightOpen}
-        {...(onToggleRight ? { onToggleRight } : {})}
-        {...(layoutControls !== undefined ? { layoutControls } : {})}
-        {...(project ? { openIn: <OpenInMenu path={project.rootPath} /> } : {})}
-      />
-    </>
-  )
 }
 
 /** 布局按钮；App 位于 LocaleProvider 之外，文案在渲染处读取。 */

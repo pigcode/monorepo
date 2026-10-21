@@ -2,6 +2,8 @@
 @import "./glass.css";
 @import "./controls.css";
 @import "./indicators.css";
+@import "./composer.css";
+@import "./open-in.css";
 
 /*
   pigclaude 设计系统 · 组件（v5：浮层工作区）

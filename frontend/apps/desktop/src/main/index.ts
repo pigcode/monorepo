@@ -4,7 +4,9 @@ import { join } from "node:path"
 import { pickFolder, readFolderPickerLabels } from "./folder-picker"
 import { startHostProcess, type HostProcess } from "./host-process"
 import { popupNativeMenu, readMenuPosition, readNativeMenu } from "./native-menu"
-import { editorUrl, installedEditors, readDirectory, settleOpenPath } from "./open-in"
+import { appIcon } from "./app-icons"
+import { appDefsFor, detectApps } from "./open-apps"
+import { launchCommand, launchDetached, readDirectory, settleOpenPath, type OpenAppInfo } from "./open-in"
 import { registerAppProtocol, registerPluginProtocol, registerPrivilegedSchemes } from "./protocol"
 import { closePreview, isAllowedPreviewUrl, openPreview } from "./preview"
 import {
@@ -77,22 +79,37 @@ function registerNativeBridge(): void {
       readFolderPickerLabels(labels),
     )
   })
-  // 项目文件夹交给系统文件管理器或编辑器打开；页面只能传已存在的目录，编辑器 URL 由主进程拼。
+  // 项目文件夹交给系统文件管理器打开；页面只能传已存在的目录。
   ipcMain.handle("pigcode:open-folder", async (_event, value: unknown) => {
     const folder = readDirectory(value)
     if (!folder) throw new Error("FOLDER_NOT_FOUND")
     const error = await settleOpenPath(shell.openPath(folder))
     if (error) throw new Error(error)
   })
-  ipcMain.handle("pigcode:list-editors", () =>
-    installedEditors((url) => app.getApplicationNameForProtocol(url)),
-  )
-  ipcMain.handle("pigcode:open-in-editor", async (_event, editorId: unknown, value: unknown) => {
+  // 本机装了的文件管理器、编辑器与终端；每次打开菜单都重新检测，图标按位置缓存。
+  ipcMain.handle("pigcode:list-open-apps", async (): Promise<OpenAppInfo[]> => {
+    const readIcon = (path: string) => app.getFileIcon(path, { size: "normal" })
+    return Promise.all(
+      detectApps(appDefsFor()).map(async (detected) => ({
+        id: detected.def.id,
+        name: detected.def.name,
+        kind: detected.def.kind,
+        icon: await appIcon(detected, readIcon),
+      })),
+    )
+  })
+  ipcMain.handle("pigcode:open-with-app", async (_event, appId: unknown, value: unknown) => {
     const folder = readDirectory(value)
     if (!folder) throw new Error("FOLDER_NOT_FOUND")
-    const url = editorUrl(editorId, folder)
-    if (!url) throw new Error("EDITOR_NOT_SUPPORTED")
-    await shell.openExternal(url)
+    const detected = detectApps(appDefsFor()).find((item) => item.def.id === appId)
+    if (!detected) throw new Error("APP_NOT_FOUND")
+    const launch = launchCommand(detected, folder)
+    if (!launch) {
+      const error = await settleOpenPath(shell.openPath(folder))
+      if (error) throw new Error(error)
+      return
+    }
+    await launchDetached(launch.command, launch.args, folder)
   })
   // 预览窗口：URL 合法性由 preview.ts 统一校验，IPC 只做类型收敛。
   ipcMain.handle("pigcode:preview-open", (_event, url: unknown) => {

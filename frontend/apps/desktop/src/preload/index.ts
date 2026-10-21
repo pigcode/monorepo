@@ -23,10 +23,11 @@ contextBridge.exposeInMainWorld("pigcodeNative", {
   pickFolder: (labels?: { title?: string; buttonLabel?: string }): Promise<string | null> =>
     ipcRenderer.invoke("pigcode:pick-folder", labels),
   openFolder: (path: string): Promise<void> => ipcRenderer.invoke("pigcode:open-folder", path),
-  listEditors: (): Promise<Array<{ id: string; name: string }>> =>
-    ipcRenderer.invoke("pigcode:list-editors"),
-  openInEditor: (editorId: string, path: string): Promise<void> =>
-    ipcRenderer.invoke("pigcode:open-in-editor", editorId, path),
+  listOpenApps: (): Promise<
+    Array<{ id: string; name: string; kind: "file-manager" | "editor" | "terminal"; icon: string | null }>
+  > => ipcRenderer.invoke("pigcode:list-open-apps"),
+  openWithApp: (appId: string, path: string): Promise<void> =>
+    ipcRenderer.invoke("pigcode:open-with-app", appId, path),
   previewOpen: (url: string): Promise<{ id: string }> =>
     ipcRenderer.invoke("pigcode:preview-open", url),
   previewClose: (id?: string): void => {

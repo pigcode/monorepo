@@ -2,7 +2,14 @@
 import { useEffect, useRef, useState, type ReactNode } from "react"
 import type { ProviderCapabilities, Thread, ThreadEvent } from "@pigcode/contracts"
 import { ArrowDown, Ellipsis, PanelRight, Square } from "lucide-react"
-import { Composer } from "@pigcode/ui-composer"
+import {
+  Composer,
+  type ComposerAgent,
+  type ComposerCommand,
+  type ComposerModelCatalog,
+  type ComposerSubmitOptions,
+  type PermissionMode,
+} from "@pigcode/ui-composer"
 import { Button, DotMatrix, formatShortcut, useLocale } from "@pigcode/ui-primitives"
 import type { ApprovalDecision } from "./approval-card"
 import type { FileChangeSummary } from "./diff-summary"
@@ -23,22 +30,27 @@ export interface ChatViewProps {
   streamingText?: string
   /** 当前工作目录；Task 12 的容器可以传入项目根目录。 */
   cwd?: string
-  /** 发送消息；交给 composer 提交。 */
-  onStart?: (text: string) => void
+  /** 发送消息；交给 composer 提交，附带本次的思考深度。 */
+  onStart?: (text: string, options: ComposerSubmitOptions) => void
   /** 兼容计划接口里的 onSubmit 命名。 */
-  onSubmit?: (text: string) => void
+  onSubmit?: (text: string, options: ComposerSubmitOptions) => void
   onInterrupt?: () => void
   onApproval?: (requestId: string, decision: ApprovalDecision) => void
   /** 当前 provider 的能力；未提供时按全部可用处理，保持旧行为。 */
   capabilities?: ProviderCapabilities | null
-  /** 当前 provider 可选的模型 id；为空时不显示模型控件。 */
-  models?: readonly string[]
-  /** provider 列表；非空时在线程头显示切换入口。 */
-  providers?: readonly ProviderOption[]
-  /** 切换 provider；容器应调用 thread.switchProvider。 */
-  onSwitchProvider?: (providerId: string) => void
-  /** 切换模型；容器应调用 thread.switchProvider。 */
-  onSwitchModel?: (modelId: string) => void
+  /** 可选的 agent；输入框的模型选择器按 agent 分组列出各自的模型。 */
+  agents?: readonly ComposerAgent[]
+  /** 各 agent 的模型目录；选择器展开到某个 agent 时通过 onLoadModels 懒加载。 */
+  catalog?: ComposerModelCatalog
+  onLoadModels?: (agentId: string) => void
+  /** 切换 agent 与模型；容器应调用 thread.switchProvider。 */
+  onSelectModel?: (agentId: string, modelId: string) => void
+  /** 修改线程权限模式；容器应调用 thread.setPermissionMode。 */
+  onPermissionMode?: (mode: PermissionMode) => void
+  /** @ 引用时可选的项目文件。 */
+  files?: () => Promise<readonly string[]>
+  /** 输入框里的 / 命令。 */
+  commands?: readonly ComposerCommand[]
   onViewTool?: (tool: ToolCall) => void
   onViewDiff?: (summary: FileChangeSummary) => void
   /** 右栏是否展开；提供 onToggleRight 且没有 layoutControls 时在线程头显示右栏按钮。 */
@@ -78,10 +90,13 @@ export function ChatView({
   onInterrupt,
   onApproval,
   capabilities = null,
-  models = [],
-  providers = [],
-  onSwitchProvider,
-  onSwitchModel,
+  agents = [],
+  catalog = {},
+  onLoadModels,
+  onSelectModel,
+  onPermissionMode,
+  files,
+  commands,
   onViewTool,
   onViewDiff,
   rightOpen = false,
@@ -98,7 +113,6 @@ export function ChatView({
   const canInterrupt = capabilities?.streaming ?? true
   const canPlan = capabilities?.plan ?? true
   const canApprove = capabilities?.approvals ?? true
-  const canSelectModel = capabilities?.modelCatalog ?? true
   const visibleEvents = canApprove
     ? events
     : events.filter(
@@ -115,7 +129,7 @@ export function ChatView({
   const providerId = thread?.lastProviderId ?? thread?.defaultProviderId ?? null
   const modelId = thread?.lastModelId ?? null
   const providerName =
-    providers.find((provider) => provider.id === providerId)?.displayName ??
+    agents.find((agent) => agent.id === providerId)?.label ??
     providerId ??
     t("chat.environment.provider")
   const environment: EnvironmentInfo = {
@@ -228,17 +242,22 @@ export function ChatView({
       ) : null}
       <div className="composer-wrap">
         <Composer
-          onSubmit={(text) => submit?.(text)}
+          onSubmit={(text, options) => submit?.(text, options)}
           onStop={onInterrupt ?? (() => undefined)}
           running={running}
           disabled={!thread}
           autoFocus={Boolean(thread) && visibleEvents.length === 0 && !running}
-          {...(providerId ? { provider: providerId } : {})}
-          providers={providers.map((item) => ({ id: item.id, label: item.displayName }))}
-          {...(thread && onSwitchProvider ? { onProvider: onSwitchProvider } : {})}
-          {...(modelId && canSelectModel ? { model: modelId } : {})}
-          models={canSelectModel ? models : []}
-          {...(onSwitchModel ? { onModel: onSwitchModel } : {})}
+          draftKey={thread?.id ?? null}
+          agents={agents}
+          agentId={providerId}
+          modelId={modelId}
+          catalog={catalog}
+          {...(onLoadModels ? { onLoadModels } : {})}
+          {...(thread && onSelectModel ? { onSelectModel } : {})}
+          permissionMode={thread?.permissionMode ?? "workspace-write"}
+          {...(thread && onPermissionMode ? { onPermissionMode } : {})}
+          {...(files ? { files } : {})}
+          {...(commands ? { commands } : {})}
           canPlan={canPlan}
           canInterrupt={canInterrupt}
         />
