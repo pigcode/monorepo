@@ -7,6 +7,7 @@ import {
   History,
   Monitor,
   Terminal,
+  X,
 } from "lucide-react"
 
 /** 右栏 tab 的固定顺序。 */
@@ -66,7 +67,7 @@ export function RightPanel({ threadId, tabs, active, onTab, onClose, labels }: R
             title="关闭右栏"
             onClick={onClose}
           >
-            ×
+            <X className="ic" aria-hidden="true" />
           </button>
         ) : null}
       </div>

@@ -1,5 +1,6 @@
 /** 文件树：把 Host 返回的扁平路径构建成目录树，点击文件时回调。 */
 import { useMemo, useState } from "react"
+import { ChevronRight, FileText, Folder, FolderOpen } from "lucide-react"
 
 /** 工作区文件条目；目录由路径前缀推导，type 保留 Host 的原始声明。 */
 export interface FileTreeEntry {
@@ -92,7 +93,7 @@ function TreeBranch({
   onToggle: (path: string) => void
   onSelect: (path: string) => void
 }) {
-  const indent = { paddingLeft: `${depth * 14 + 6}px` }
+  const indent = { paddingLeft: `${depth * 14 + 8}px` }
   if (node.isFile && node.children.length === 0) {
     const selected = node.path === selectedPath
     return (
@@ -104,7 +105,9 @@ function TreeBranch({
           title={node.path}
           onClick={() => onSelect(node.path)}
         >
-          {node.name}
+          <span className="file-tree-caret" aria-hidden="true" />
+          <FileText className="ic ic-sm file-tree-icon" aria-hidden="true" />
+          <span className="truncate">{node.name}</span>
         </button>
       </li>
     )
@@ -120,9 +123,14 @@ function TreeBranch({
         onClick={() => onToggle(node.path)}
       >
         <span className="file-tree-caret" aria-hidden="true">
-          {expanded ? "▾" : "▸"}
+          <ChevronRight className="ic ic-sm" />
         </span>
-        {node.name}
+        {expanded ? (
+          <FolderOpen className="ic ic-sm file-tree-icon" aria-hidden="true" />
+        ) : (
+          <Folder className="ic ic-sm file-tree-icon" aria-hidden="true" />
+        )}
+        <span className="truncate">{node.name}</span>
       </button>
       {expanded ? (
         <ul role="group" className="file-tree-group">

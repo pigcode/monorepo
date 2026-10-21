@@ -2,6 +2,7 @@
 import type { KeyboardEvent } from "react"
 import type { Thread } from "@pigcode/contracts"
 import { useLocale, type MessageKey } from "@pigcode/ui-primitives"
+import { Icon } from "./icon"
 
 /** tab 状态点取值；与 Renderer 的线程视图状态保持一致。 */
 export type ThreadTabStatus =
@@ -107,7 +108,7 @@ export function ThreadTabs({
                 onClose(thread.id)
               }}
             >
-              <span aria-hidden="true">×</span>
+              <Icon name="x" small />
             </button>
           </div>
         )
@@ -120,7 +121,7 @@ export function ThreadTabs({
           title={`${t("nav.newThread")} ⌘N`}
           onClick={onNew}
         >
-          +
+          <Icon name="plus" small />
         </button>
       ) : null}
     </div>
