@@ -125,6 +125,40 @@ describe("Shell", () => {
     }
   })
 
+  it("goes back and forward with Alt+arrows, the buttons and mouse side buttons", () => {
+    const onBack = vi.fn()
+    const onForward = vi.fn()
+    renderShell({ canGoBack: true, canGoForward: true, onBack, onForward })
+
+    fireEvent.keyDown(window, { key: "ArrowLeft", altKey: true })
+    fireEvent.keyDown(window, { key: "ArrowRight", altKey: true })
+    fireEvent.click(screen.getByRole("button", { name: "后退" }))
+    fireEvent.mouseUp(window, { button: 4 })
+    expect(onBack).toHaveBeenCalledTimes(2)
+    expect(onForward).toHaveBeenCalledTimes(2)
+
+    // 输入框里的 Alt+方向键留给文本编辑。
+    const input = document.createElement("input")
+    document.body.append(input)
+    fireEvent.keyDown(input, { key: "ArrowLeft", altKey: true })
+    input.remove()
+    expect(onBack).toHaveBeenCalledTimes(2)
+  })
+
+  it("uses ⌘[ and ⌘] for history on macOS", () => {
+    mockNative({ platform: "darwin" })
+    const onBack = vi.fn()
+    const onForward = vi.fn()
+    renderShell({ canGoBack: true, onBack, onForward })
+
+    fireEvent.keyDown(window, { key: "[", metaKey: true })
+    fireEvent.keyDown(window, { key: "]", metaKey: true })
+    fireEvent.keyDown(window, { key: "ArrowLeft", altKey: true })
+    expect(onBack).toHaveBeenCalledTimes(1)
+    expect(onForward).toHaveBeenCalledTimes(1)
+    expect(screen.getByRole("button", { name: "后退" }).getAttribute("title")).toBe("后退 ⌘[")
+  })
+
   it("opens the command palette from the search button in the sidebar's top row", () => {
     renderShell()
 

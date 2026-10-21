@@ -21,6 +21,7 @@ import type { ThreadStatus } from "./thread-status"
 import { TitleBar } from "./title-bar"
 import { titleBarMenus } from "./title-bar-menus"
 import { WindowControls } from "./window-controls"
+import { hasCustomTitleBar, historyStep, nativePlatform, useNarrowWindow } from "./window-state"
 import { WorkspaceSidebar } from "./workspace-sidebar"
 
 /** 顶层视图：聊天、设置与插件。 */
@@ -45,38 +46,6 @@ function initialRightWidth(): number {
     // 隐私模式或测试环境可能禁用 localStorage；使用默认宽度。
   }
   return 460
-}
-
-/** 原生桥报告的平台；浏览器与测试环境里为空字符串。 */
-function nativePlatform(): string {
-  return typeof window === "undefined" ? "" : (window.pigcodeNative?.platform ?? "")
-}
-
-/** Windows 与 Linux 由页面绘制标题栏，系统窗口按钮叠在它上面。 */
-export function hasCustomTitleBar(platform: string): boolean {
-  return platform === "win32" || platform === "linux"
-}
-
-/** 与 globals.css 的窄窗口断点一致：更窄时侧栏改成浮在内容上的抽屉。 */
-const NARROW_QUERY = "(max-width: 960px)"
-
-function matchesNarrow(): boolean {
-  return typeof window !== "undefined" && typeof window.matchMedia === "function"
-    ? window.matchMedia(NARROW_QUERY).matches
-    : false
-}
-
-/** 窗口是否窄到侧栏改成抽屉。 */
-function useNarrowWindow(): boolean {
-  const [narrow, setNarrow] = useState(matchesNarrow)
-  useEffect(() => {
-    if (typeof window.matchMedia !== "function") return
-    const list = window.matchMedia(NARROW_QUERY)
-    const onChange = (event: MediaQueryListEvent): void => setNarrow(event.matches)
-    list.addEventListener("change", onChange)
-    return () => list.removeEventListener("change", onChange)
-  }, [])
-  return narrow
 }
 
 /** 外壳所需的数据与事件；项目/线程数据由 store 传入。 */
@@ -249,11 +218,20 @@ export function Shell({
         onToggleTerminal()
         return
       }
-      if (!event.metaKey && !event.ctrlKey) return
       const target = event.target as HTMLElement | null
       const editing =
         target?.isContentEditable === true ||
         ["INPUT", "TEXTAREA", "SELECT"].includes(target?.tagName ?? "")
+      // 输入框和终端里 Alt+方向键是按词移动，不拦截。
+      const step = historyStep(event)
+      if (step) {
+        if (editing) return
+        event.preventDefault()
+        if (step === "back") onBack?.()
+        else onForward?.()
+        return
+      }
+      if (!event.metaKey && !event.ctrlKey) return
       const key = event.key.toLowerCase()
       if (key === "k") {
         event.preventDefault()
@@ -277,7 +255,17 @@ export function Shell({
     }
     window.addEventListener("keydown", onKeyDown)
     return () => window.removeEventListener("keydown", onKeyDown)
-  }, [onNewThread, onToggleRight, onToggleTerminal, onView, sidebarOpen, narrow])
+  }, [onNewThread, onToggleRight, onToggleTerminal, onView, onBack, onForward, sidebarOpen, narrow])
+
+  // 鼠标侧键的后退与前进。
+  useEffect(() => {
+    function onMouseUp(event: MouseEvent): void {
+      if (event.button === 3) onBack?.()
+      else if (event.button === 4) onForward?.()
+    }
+    window.addEventListener("mouseup", onMouseUp)
+    return () => window.removeEventListener("mouseup", onMouseUp)
+  }, [onBack, onForward])
 
   const expanded = expandedProjects ?? localExpanded
   const open = sidebarOpen ?? localSidebarOpen
