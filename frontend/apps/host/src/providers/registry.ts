@@ -154,6 +154,15 @@ export function apply(ctx: Context, config: ProviderRunConfig = {}): void {
     runs.setStatus(run.runId, status, error)
     // 未决审批必须先于终态事件写入，否则 UI 会把 approval.resolved 当成 run 仍在运行。
     settlePending(run)
+    // 中断或失败时，已经流给 UI 的半截回复只存在于实时通道；落成一条消息，重开线程后仍能看到。
+    if (status !== "completed" && run.liveText.trim()) {
+      append(run.threadId, run.runId, "message.completed", {
+        role: "assistant",
+        text: run.liveText,
+        partial: true,
+      })
+    }
+    run.liveText = ""
     append(run.threadId, run.runId, type, payload)
     activeRuns.delete(run.runId)
     activeThreads.delete(run.threadId)

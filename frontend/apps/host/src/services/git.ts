@@ -87,7 +87,7 @@ apply.inject = inject
 function projectRoot(ctx: Context, threadId: string): string {
   const thread = ctx.threads.get(threadId)
   if (!thread) throw new Error(`thread not found: ${threadId}`)
-  const project = ctx.projects.list().find((item) => item.id === thread.projectId)
+  const project = ctx.projects.get(thread.projectId)
   if (!project) throw new Error(`project not found: ${thread.projectId}`)
   return project.rootPath
 }

@@ -16,7 +16,7 @@ import {
   type Locale,
 } from "@pigcode/ui-primitives"
 import { ChatView, type ApprovalDecision, type ProviderOption } from "@pigcode/ui-chat"
-import type { SettingsSection, ShellView, ThreadStatus } from "@pigcode/ui-shell"
+import { OpenInMenu, type SettingsSection, type ShellView, type ThreadStatus } from "@pigcode/ui-shell"
 import {
   EMPTY_SURFACE_STATE,
   PanelLayoutControls,
@@ -26,10 +26,29 @@ import {
 import type { ClientPluginController } from "./client-plugins"
 import { PluginPanels } from "./client-plugins"
 import { ConnectionBanner } from "./connection-banner"
+import {
+  EMPTY_HISTORY,
+  canGoBack,
+  canGoForward,
+  currentLocation,
+  goBack,
+  goForward,
+  pruneHistory,
+  pushLocation,
+  type NavHistory,
+  type NavLocation,
+} from "./navigation"
 import { listProviders, loadProviderContext, pickProviderId } from "./providers"
 import { TerminalDrawer } from "./terminal-drawer"
 import { WorkbenchPanel } from "./workbench"
 import { layoutLabels } from "./workbench-labels"
+import {
+  addProject,
+  archiveThread,
+  removeProject,
+  renameProject,
+  renameThread,
+} from "./workspace-actions"
 
 /** 核心容器共享的依赖。 */
 export interface CoreDeps {
@@ -191,6 +210,7 @@ export function ChatViewContainer({
         rightOpen={rightOpen}
         {...(onToggleRight ? { onToggleRight } : {})}
         {...(layoutControls !== undefined ? { layoutControls } : {})}
+        {...(project ? { openIn: <OpenInMenu path={project.rootPath} /> } : {})}
       />
     </>
   )
@@ -214,7 +234,21 @@ export function App({ store, slots, connection, plugins, locale }: AppProps) {
   // 底部终端第一次打开后才挂载，之后收起只隐藏，shell 会话保留到切换线程。
   const [terminalStarted, setTerminalStarted] = useState(false)
   const [panels, setPanels] = useState<Record<string, PanelSurfaceState>>({})
+  const [history, setHistory] = useState<NavHistory>(EMPTY_HISTORY)
   const initialLoadDone = useRef(false)
+
+  // 每次落到新的位置都记一笔；从历史里跳转时当前位置已经对上，不会重复记录。
+  useEffect(() => {
+    const location: NavLocation | null =
+      view === "plugins"
+        ? { kind: "plugins" }
+        : view === "settings"
+          ? { kind: "settings", section }
+          : state.activeThreadId
+            ? { kind: "thread", threadId: state.activeThreadId }
+            : null
+    if (location) setHistory((current) => pushLocation(current, location))
+  }, [view, section, state.activeThreadId])
 
   // 首次连上 Host 后拉取项目与线程；重连时保留当前界面状态。
   useEffect(() => {
@@ -242,28 +276,15 @@ export function App({ store, slots, connection, plugins, locale }: AppProps) {
     )
   }, [state.status, state.activeThreadId, state.threads, connection, store])
 
-  async function addProject(path: string, name?: string): Promise<void> {
-    try {
-      const project = (await connection.call(
-        "project.add",
-        name ? { rootPath: path, name } : { rootPath: path },
-      )) as Project
-      const current = store.getSnapshot()
-      store.update({
-        projects: [...current.projects, project],
-        activeProjectId: project.id,
-        error: null,
-      })
-    } catch (error) {
-      store.update({ error: messageOf(error) })
-    }
-  }
-
+  /** 新建会话；没指定项目时放进当前会话所在的项目，再退回第一个项目。 */
   async function createThread(projectId?: string): Promise<void> {
     const snapshot = store.getSnapshot()
+    const activeProjectId = snapshot.threads.find(
+      (thread) => thread.id === snapshot.activeThreadId,
+    )?.projectId
     const project = projectId
       ? snapshot.projects.find((item) => item.id === projectId)
-      : snapshot.projects[0]
+      : (snapshot.projects.find((item) => item.id === activeProjectId) ?? snapshot.projects[0])
     if (!project) return
     try {
       const providerId = await pickProviderId(connection)
@@ -280,6 +301,7 @@ export function App({ store, slots, connection, plugins, locale }: AppProps) {
       // 新线程立即成为 tab 与活动会话，再向 Host 订阅事件。
       store.openThread(thread.id)
       store.setActiveThread(thread.id)
+      setView("chat")
       await connection.openThread(thread.id)
     } catch (error) {
       store.update({ error: messageOf(error) })
@@ -289,9 +311,33 @@ export function App({ store, slots, connection, plugins, locale }: AppProps) {
   function openThread(threadId: string): void {
     store.openThread(threadId)
     store.setActiveThread(threadId)
+    setView("chat")
     void connection
       .openThread(threadId)
       .catch((error: unknown) => store.update({ error: messageOf(error) }))
+  }
+
+  /** 沿历史后退或前进；先去掉已经不存在的会话。 */
+  function travel(direction: "back" | "forward"): void {
+    const live = new Set(
+      store
+        .getSnapshot()
+        .threads.filter((thread) => thread.archivedAt === null)
+        .map((thread) => thread.id),
+    )
+    const pruned = pruneHistory(
+      history,
+      (location) => location.kind !== "thread" || live.has(location.threadId),
+    )
+    const next = direction === "back" ? goBack(pruned) : goForward(pruned)
+    setHistory(next)
+    const target = currentLocation(next)
+    if (!target || next === pruned) return
+    if (target.kind === "thread") openThread(target.threadId)
+    else if (target.kind === "settings") {
+      setSection(target.section)
+      setView("settings")
+    } else setView("plugins")
   }
 
   const effectiveSection: SettingsSection = view === "plugins" ? "plugins" : section
@@ -342,12 +388,44 @@ export function App({ store, slots, connection, plugins, locale }: AppProps) {
       threadStatus={threadStatus}
       onToggleRight={toggleRight}
       onToggleTerminal={toggleTerminal}
+      canGoBack={canGoBack(history)}
+      canGoForward={canGoForward(history)}
+      onBack={() => travel("back")}
+      onForward={() => travel("forward")}
       settingsSection={effectiveSection}
       onView={setView}
       onSettingsSection={setSection}
-      onAddProject={(path, name) => void addProject(path, name)}
+      onAddProject={(path, name) => {
+        void addProject(connection, store, path, name).catch((error: unknown) =>
+          store.update({ error: messageOf(error) }),
+        )
+      }}
       onNewThread={(projectId) => void createThread(projectId)}
       onOpenThread={openThread}
+      onRenameThread={(threadId, title) => {
+        void renameThread(connection, store, threadId, title).catch((error: unknown) =>
+          store.update({ error: messageOf(error) }),
+        )
+      }}
+      onArchiveThread={(threadId) => {
+        void archiveThread(connection, store, threadId)
+          .then((next) => {
+            if (next) openThread(next)
+          })
+          .catch((error: unknown) => store.update({ error: messageOf(error) }))
+      }}
+      onRenameProject={(projectId, name) => {
+        void renameProject(connection, store, projectId, name).catch((error: unknown) =>
+          store.update({ error: messageOf(error) }),
+        )
+      }}
+      onRemoveProject={(projectId) => {
+        void removeProject(connection, store, projectId)
+          .then((next) => {
+            if (next) openThread(next)
+          })
+          .catch((error: unknown) => store.update({ error: messageOf(error) }))
+      }}
       sidebarExtra={<PluginPanels controller={plugins} />}
       rightOpen={rightOpen}
       rightMaximized={rightMaximized}

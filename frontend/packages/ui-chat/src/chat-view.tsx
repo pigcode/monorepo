@@ -1,9 +1,9 @@
 /** 聊天主视图：标题、运行状态、消息时间线、composer 占位与环境抽屉。 */
 import { useEffect, useRef, useState, type ReactNode } from "react"
 import type { ProviderCapabilities, Thread, ThreadEvent } from "@pigcode/contracts"
-import { ArrowDown, Check, ChevronDown, Ellipsis, PanelRight, Square } from "lucide-react"
+import { ArrowDown, Ellipsis, PanelRight, Square } from "lucide-react"
 import { Composer } from "@pigcode/ui-composer"
-import { Button, Menu, formatShortcut, useLocale } from "@pigcode/ui-primitives"
+import { Button, formatShortcut, useLocale } from "@pigcode/ui-primitives"
 import type { ApprovalDecision } from "./approval-card"
 import type { FileChangeSummary } from "./diff-summary"
 import { EnvironmentDrawer, type EnvironmentInfo } from "./environment-drawer"
@@ -47,44 +47,8 @@ export interface ChatViewProps {
   onToggleRight?: () => void
   /** 线程头末尾的布局按钮，替代单个右栏按钮；传 null 表示按钮已放在别处（例如右栏标签栏）。 */
   layoutControls?: ReactNode
-}
-
-/** 线程头下拉菜单；provider 与模型切换共用。 */
-function HeaderMenu({
-  label,
-  title,
-  items,
-  selected,
-  onSelect,
-}: {
-  label: string
-  title: string
-  items: ReadonlyArray<{ id: string; label: string }>
-  selected: string | null
-  onSelect: (id: string) => void
-}) {
-  return (
-    <Menu.Root>
-      <Menu.Trigger className="chip-btn" type="button" title={title}>
-        {label}
-        <ChevronDown className="ic chip-caret" aria-hidden="true" />
-      </Menu.Trigger>
-      <Menu.Portal>
-        <Menu.Positioner className="menu-positioner" side="bottom" align="end" sideOffset={6}>
-          <Menu.Popup className="menu-popup">
-            {items.map((item) => (
-              <Menu.Item key={item.id} className="menu-item" onClick={() => onSelect(item.id)}>
-                {item.label}
-                {item.id === selected ? (
-                  <Check className="ic check-mark" aria-hidden="true" />
-                ) : null}
-              </Menu.Item>
-            ))}
-          </Menu.Popup>
-        </Menu.Positioner>
-      </Menu.Portal>
-    </Menu.Root>
-  )
+  /** 线程头右侧「在编辑器中打开项目」的入口；由容器按项目目录组装。 */
+  openIn?: ReactNode
 }
 
 /** 根据事件流判断当前 run 是否仍在进行。 */
@@ -92,7 +56,13 @@ function isRunOpen(events: ThreadEvent[]): boolean {
   let running = false
   for (const event of events) {
     if (event.type === "run.started") running = true
-    else if (event.type === "run.completed" || event.type === "run.failed") running = false
+    else if (
+      event.type === "run.completed" ||
+      event.type === "run.failed" ||
+      event.type === "run.interrupted"
+    ) {
+      running = false
+    }
   }
   return running
 }
@@ -117,6 +87,7 @@ export function ChatView({
   rightOpen = false,
   onToggleRight,
   layoutControls,
+  openIn,
 }: ChatViewProps) {
   const submit = onSubmit ?? onStart
   const { t } = useLocale()
@@ -192,27 +163,7 @@ export function ChatView({
         ) : null}
         {statusClass ? <span className={`status status-pill ${statusClass}`}>{status}</span> : null}
         <span className="spacer" />
-        {!running && thread && providers.length > 0 && onSwitchProvider ? (
-          <HeaderMenu
-            label={providerName}
-            title={t("chat.environment.provider")}
-            items={providers.map((provider) => ({
-              id: provider.id,
-              label: provider.displayName,
-            }))}
-            selected={providerId}
-            onSelect={onSwitchProvider}
-          />
-        ) : null}
-        {!running && thread && canSelectModel && models.length > 0 && onSwitchModel ? (
-          <HeaderMenu
-            label={modelId ?? t("chat.environment.model")}
-            title={t("chat.environment.model")}
-            items={models.map((id) => ({ id, label: id }))}
-            selected={modelId}
-            onSelect={onSwitchModel}
-          />
-        ) : null}
+        {thread ? openIn : null}
         {running && canInterrupt ? (
           <Button
             variant="plain"
@@ -275,7 +226,10 @@ export function ChatView({
           running={running}
           disabled={!thread}
           autoFocus={Boolean(thread) && visibleEvents.length === 0 && !running}
-          {...(modelId ? { model: modelId } : {})}
+          {...(providerId ? { provider: providerId } : {})}
+          providers={providers.map((item) => ({ id: item.id, label: item.displayName }))}
+          {...(thread && onSwitchProvider ? { onProvider: onSwitchProvider } : {})}
+          {...(modelId && canSelectModel ? { model: modelId } : {})}
           models={canSelectModel ? models : []}
           {...(onSwitchModel ? { onModel: onSwitchModel } : {})}
           canPlan={canPlan}

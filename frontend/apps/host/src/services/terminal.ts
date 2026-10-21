@@ -155,7 +155,7 @@ apply.inject = inject
 async function resolveTerminalCwd(ctx: Context, threadId: string): Promise<string> {
   const thread = ctx.threads.get(threadId)
   if (!thread) throw new Error(`thread not found: ${threadId}`)
-  const project = ctx.projects.list().find((item) => item.id === thread.projectId)
+  const project = ctx.projects.get(thread.projectId)
   if (!project) throw new Error(`project not found: ${thread.projectId}`)
 
   // cwd 只来自数据库中的项目根或服务创建的 worktree，不接受用户传入的相对路径。

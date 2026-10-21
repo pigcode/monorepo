@@ -71,6 +71,24 @@ export class RpcServer {
         const value = parsed as { rootPath: string; name?: string }
         return this.ctx.projects.add(value.rootPath, value.name)
       }
+      case "project.rename": {
+        const value = parsed as { projectId: string; name: string }
+        const project = this.ctx.projects.rename(value.projectId, value.name)
+        if (!project) throw new Error(`project not found: ${value.projectId}`)
+        return project
+      }
+      case "project.remove": {
+        const value = parsed as { projectId: string }
+        const project = this.ctx.projects.remove(value.projectId)
+        if (!project) throw new Error(`project not found: ${value.projectId}`)
+        // 项目的会话随项目一起从侧栏消失，还在跑的 run 同样先停下。
+        for (const run of this.ctx.providers.listRuns()) {
+          if (this.ctx.threads.get(run.threadId)?.projectId === value.projectId) {
+            this.ctx.providers.cancelRun(run.runId)
+          }
+        }
+        return project
+      }
       case "thread.list":
         return this.ctx.threads.list((parsed as { projectId?: string }).projectId)
       case "thread.rename": {
@@ -85,6 +103,16 @@ export class RpcServer {
           schemaVersion: 1,
           createdAt: new Date().toISOString(),
         })
+        return thread
+      }
+      case "thread.archive": {
+        const value = parsed as { threadId: string }
+        // 归档的会话从界面上消失；还在跑或排队的 run 先停下，免得在看不见的地方改代码或卡在审批上。
+        for (const run of this.ctx.providers.listRuns()) {
+          if (run.threadId === value.threadId) this.ctx.providers.cancelRun(run.runId)
+        }
+        const thread = this.ctx.threads.archive(value.threadId)
+        if (!thread) throw new Error(`thread not found: ${value.threadId}`)
         return thread
       }
       case "thread.create": {

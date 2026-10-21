@@ -2,60 +2,30 @@
  * 应用外壳：Windows/Linux 的标题栏、侧栏顶行按钮、工作区/设置侧栏与内容区。
  * 窗口按钮全部由系统绘制：macOS 的交通灯落在侧栏顶行，Windows/Linux 的按钮叠在标题栏上。
  */
-import {
-  useEffect,
-  useLayoutEffect,
-  useState,
-  type CSSProperties,
-  type KeyboardEvent as ReactKeyboardEvent,
-  type PointerEvent as ReactPointerEvent,
-  type ReactNode,
-} from "react"
+import { useEffect, useLayoutEffect, useState, type CSSProperties, type ReactNode } from "react"
 import type { Project, Thread } from "@pigcode/contracts"
-import { Button, formatShortcut, useLocale } from "@pigcode/ui-primitives"
+import { Button, formatShortcut, useLocale, useSidebarGrouping } from "@pigcode/ui-primitives"
 import { AddProjectDialog } from "./add-project-dialog"
 import { CommandPalette } from "./command-palette"
 import { Icon } from "./icon"
+import { PanelResizer, useRightWidth } from "./panel-resizer"
 import { SettingsSidebar, type SettingsSection } from "./settings-sidebar"
 import type { ThreadStatus } from "./thread-status"
 import { TitleBar } from "./title-bar"
 import { titleBarMenus } from "./title-bar-menus"
 import { WindowControls } from "./window-controls"
-import { WorkspaceSidebar } from "./workspace-sidebar"
+import {
+  hasCustomTitleBar,
+  historyStep,
+  nativePlatform,
+  threadShortcutIndex,
+  useModifierHints,
+  useNarrowWindow,
+} from "./window-state"
+import { WorkspaceSidebar, visibleThreads } from "./workspace-sidebar"
 
 /** 顶层视图：聊天、设置与插件。 */
 export type ShellView = "chat" | "settings" | "plugins"
-
-const RIGHT_MIN = 320
-const RIGHT_MAX_RATIO = 0.58
-const RIGHT_STORAGE_KEY = "pigcode.rightWidth"
-
-/** 把右栏宽度限制在窗口可承受范围内。 */
-function clampRightWidth(width: number): number {
-  const max = Math.max(RIGHT_MIN, Math.round((typeof window === "undefined" ? 1200 : window.innerWidth) * RIGHT_MAX_RATIO))
-  return Math.min(max, Math.max(RIGHT_MIN, Math.round(width)))
-}
-
-/** 读取上次保存的右栏宽度；存储不可用时回到默认值。 */
-function initialRightWidth(): number {
-  try {
-    const saved = Number.parseInt(window.localStorage.getItem(RIGHT_STORAGE_KEY) ?? "", 10)
-    if (Number.isFinite(saved)) return clampRightWidth(saved)
-  } catch {
-    // 隐私模式或测试环境可能禁用 localStorage；使用默认宽度。
-  }
-  return 460
-}
-
-/** 原生桥报告的平台；浏览器与测试环境里为空字符串。 */
-function nativePlatform(): string {
-  return typeof window === "undefined" ? "" : (window.pigcodeNative?.platform ?? "")
-}
-
-/** Windows 与 Linux 由页面绘制标题栏，系统窗口按钮叠在它上面。 */
-export function hasCustomTitleBar(platform: string): boolean {
-  return platform === "win32" || platform === "linux"
-}
 
 /** 外壳所需的数据与事件；项目/线程数据由 store 传入。 */
 export interface ShellProps {
@@ -92,6 +62,12 @@ export interface ShellProps {
   onToggleProject?: (projectId: string, expanded: boolean) => void
   onNewThread: (projectId?: string) => void
   onOpenThread: (threadId: string) => void
+  /** 会话行右键菜单的重命名与归档；两个都传时才有右键菜单。 */
+  onRenameThread?: (threadId: string, title: string) => void
+  onArchiveThread?: (threadId: string) => void
+  /** 项目行右键菜单的重命名与从侧栏移除；两个都传时才有右键菜单。 */
+  onRenameProject?: (projectId: string, name: string) => void
+  onRemoveProject?: (projectId: string) => void
   /** 侧栏底部扩展区，用于宿主渲染第三方 UI 插件面板。 */
   sidebarExtra?: ReactNode
   children?: ReactNode
@@ -147,17 +123,47 @@ export function Shell({
   onToggleProject,
   onNewThread,
   onOpenThread,
+  onRenameThread,
+  onArchiveThread,
+  onRenameProject,
+  onRemoveProject,
   sidebarExtra,
   children,
 }: ShellProps) {
   const { t } = useLocale()
   const [dialogOpen, setDialogOpen] = useState(false)
   const [paletteOpen, setPaletteOpen] = useState(false)
-  const [rightWidth, setRightWidth] = useState(initialRightWidth)
+  const [rightWidth, setRightWidth] = useRightWidth()
   const [localExpanded, setLocalExpanded] = useState<Record<string, boolean>>({})
   const [localSidebarOpen, setLocalSidebarOpen] = useState(true)
   const inSettings = view !== "chat"
   const platform = nativePlatform()
+  const narrow = useNarrowWindow()
+  const [drawerOpen, setDrawerOpen] = useState(false)
+  const [grouping] = useSidebarGrouping()
+  const shortcutHints = useModifierHints() && !inSettings
+  const expanded = expandedProjects ?? localExpanded
+  const open = sidebarOpen ?? localSidebarOpen
+  const section: SettingsSection = settingsSection ?? (view === "plugins" ? "plugins" : "general")
+
+  // 抽屉只在窄窗口里有意义；变宽后复位，下次变窄时从收起开始。
+  useEffect(() => {
+    if (!narrow) setDrawerOpen(false)
+  }, [narrow])
+
+  // 切到别的会话或页面后收起抽屉，回到内容。
+  useEffect(() => {
+    setDrawerOpen(false)
+  }, [activeThreadId, view, settingsSection])
+
+  useEffect(() => {
+    if (!drawerOpen) return
+    function onKeyDown(event: KeyboardEvent): void {
+      if (event.key === "Escape") setDrawerOpen(false)
+    }
+    window.addEventListener("keydown", onKeyDown)
+    return () => window.removeEventListener("keydown", onKeyDown)
+  }, [drawerOpen])
 
   // 标题栏、交通灯留白和配色按平台区分，CSS 依赖 html[data-platform]；绘制前写入，避免布局跳动。
   useLayoutEffect(() => {
@@ -180,23 +186,6 @@ export function Shell({
     return bridge.onFullScreenChange(apply)
   }, [])
 
-  // 记住工作台宽度；窗口变窄时重新夹紧，避免右栏挤掉主内容。
-  useEffect(() => {
-    try {
-      window.localStorage.setItem(RIGHT_STORAGE_KEY, String(rightWidth))
-    } catch {
-      // 存储不可用时不阻塞界面。
-    }
-  }, [rightWidth])
-
-  useEffect(() => {
-    function handleResize(): void {
-      setRightWidth((width) => clampRightWidth(width))
-    }
-    window.addEventListener("resize", handleResize)
-    return () => window.removeEventListener("resize", handleResize)
-  }, [])
-
   // 全局快捷键：⌘K 面板、⌘N 新会话、⌘B 侧栏、⌘J 右栏、⌃` 底部终端、⌘, 设置。
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent): void {
@@ -206,11 +195,20 @@ export function Shell({
         onToggleTerminal()
         return
       }
-      if (!event.metaKey && !event.ctrlKey) return
       const target = event.target as HTMLElement | null
       const editing =
         target?.isContentEditable === true ||
         ["INPUT", "TEXTAREA", "SELECT"].includes(target?.tagName ?? "")
+      // 输入框和终端里 Alt+方向键是按词移动，不拦截。
+      const step = historyStep(event)
+      if (step) {
+        if (editing) return
+        event.preventDefault()
+        if (step === "back") onBack?.()
+        else onForward?.()
+        return
+      }
+      if (!event.metaKey && !event.ctrlKey) return
       const key = event.key.toLowerCase()
       if (key === "k") {
         event.preventDefault()
@@ -234,13 +232,40 @@ export function Shell({
     }
     window.addEventListener("keydown", onKeyDown)
     return () => window.removeEventListener("keydown", onKeyDown)
-  }, [onNewThread, onToggleRight, onToggleTerminal, onView, sidebarOpen])
+  }, [onNewThread, onToggleRight, onToggleTerminal, onView, onBack, onForward, sidebarOpen, narrow])
 
-  const expanded = expandedProjects ?? localExpanded
-  const open = sidebarOpen ?? localSidebarOpen
-  const section: SettingsSection = settingsSection ?? (view === "plugins" ? "plugins" : "general")
+  // 鼠标侧键的后退与前进。
+  useEffect(() => {
+    function onMouseUp(event: MouseEvent): void {
+      if (event.button === 3) onBack?.()
+      else if (event.button === 4) onForward?.()
+    }
+    window.addEventListener("mouseup", onMouseUp)
+    return () => window.removeEventListener("mouseup", onMouseUp)
+  }, [onBack, onForward])
 
+  // ⌘/Ctrl+1…9 打开侧栏里从上往下数的第 n 个会话，输入框里同样生效。
+  useEffect(() => {
+    if (inSettings) return
+    function onKeyDown(event: KeyboardEvent): void {
+      const index = threadShortcutIndex(event)
+      if (index === null) return
+      const target = visibleThreads(projects, threads, grouping, expanded)[index - 1]
+      if (!target) return
+      event.preventDefault()
+      setDrawerOpen(false)
+      onOpenThread(target.id)
+    }
+    window.addEventListener("keydown", onKeyDown)
+    return () => window.removeEventListener("keydown", onKeyDown)
+  }, [inSettings, projects, threads, grouping, expanded, onOpenThread])
+
+  /** 宽窗口里收起或展开侧栏；窄窗口里开关抽屉。 */
   function toggleSidebar(): void {
+    if (narrow) {
+      setDrawerOpen((current) => !current)
+      return
+    }
     if (sidebarOpen === undefined) setLocalSidebarOpen((current) => !current)
     onToggleSidebar?.()
   }
@@ -261,36 +286,13 @@ export function Shell({
   const appClass = [
     "app",
     open ? "" : "is-collapsed",
+    narrow && drawerOpen ? "is-drawer-open" : "",
     showRight ? "has-right" : "",
     showRight && rightMaximized ? "is-right-max" : "",
   ]
     .filter(Boolean)
     .join(" ")
   const appStyle = { "--right-w": `${rightWidth}px` } as CSSProperties
-
-  /** 拖动右栏分隔条；向左拖变宽，向右拖变窄。 */
-  function startResize(event: ReactPointerEvent<HTMLDivElement>): void {
-    event.preventDefault()
-    const startX = event.clientX
-    const startWidth = rightWidth
-    const move = (moveEvent: PointerEvent): void => {
-      setRightWidth(clampRightWidth(startWidth + startX - moveEvent.clientX))
-    }
-    const up = (): void => {
-      window.removeEventListener("pointermove", move)
-      window.removeEventListener("pointerup", up)
-      document.body.classList.remove("is-resizing")
-    }
-    window.addEventListener("pointermove", move)
-    window.addEventListener("pointerup", up)
-    document.body.classList.add("is-resizing")
-  }
-
-  function onResizerKey(event: ReactKeyboardEvent<HTMLDivElement>): void {
-    if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return
-    event.preventDefault()
-    setRightWidth((width) => clampRightWidth(width + (event.key === "ArrowLeft" ? 24 : -24)))
-  }
 
   const menus = hasCustomTitleBar(platform)
     ? titleBarMenus({
@@ -310,7 +312,7 @@ export function Shell({
     <div className={appClass} style={appStyle}>
       {menus ? <TitleBar menus={menus} label={t("menu.label")} /> : null}
       <WindowControls
-        sidebarOpen={open}
+        sidebarOpen={narrow ? drawerOpen : open}
         canGoBack={canGoBack}
         canGoForward={canGoForward}
         onToggleSidebar={toggleSidebar}
@@ -318,7 +320,10 @@ export function Shell({
         onBack={() => onBack?.()}
         onForward={() => onForward?.()}
       />
-      <aside className="sidebar" aria-label={inSettings ? t("settings.title") : t("nav.projects")}>
+      <aside
+        className={shortcutHints ? "sidebar show-shortcuts" : "sidebar"}
+        aria-label={inSettings ? t("settings.title") : t("nav.projects")}
+      >
         <div className="side-top" />
         <div className="side-scroll">
           {inSettings ? (
@@ -336,10 +341,21 @@ export function Shell({
               expandedProjects={expanded}
               onAddProject={() => setDialogOpen(true)}
               onToggleProject={toggleProject}
-              onOpenThread={onOpenThread}
-              onNewThread={onNewThread}
+              onOpenThread={(threadId) => {
+                setDrawerOpen(false)
+                onOpenThread(threadId)
+              }}
+              onNewThread={(projectId) => {
+                setDrawerOpen(false)
+                onNewThread(projectId)
+              }}
               onOpenSchedules={() => selectSection("schedules")}
               onOpenPlugins={() => selectSection("plugins")}
+              onRenameThread={onRenameThread}
+              onArchiveThread={onArchiveThread}
+              onRenameProject={onRenameProject}
+              onRemoveProject={onRemoveProject}
+              shortcutHints={shortcutHints}
             />
           )}
           {sidebarExtra}
@@ -365,6 +381,7 @@ export function Shell({
           </div>
         ) : null}
       </aside>
+      <div className="drawer-scrim" aria-hidden="true" onClick={() => setDrawerOpen(false)} />
       <div className="workspace">
         <main className="panel">
           {children}
@@ -373,19 +390,7 @@ export function Shell({
         {rightPanel !== undefined ? (
           <div className="right-panel-slot" hidden={!showRight}>
             {showRight && !rightMaximized ? (
-              <div
-                className="panel-resizer"
-                role="separator"
-                aria-orientation="vertical"
-                aria-label={t("panel.label")}
-                aria-valuemin={RIGHT_MIN}
-                aria-valuemax={clampRightWidth(Number.MAX_SAFE_INTEGER)}
-                aria-valuenow={rightWidth}
-                tabIndex={0}
-                onPointerDown={startResize}
-                onKeyDown={onResizerKey}
-                onDoubleClick={() => setRightWidth(clampRightWidth(460))}
-              />
+              <PanelResizer width={rightWidth} onChange={setRightWidth} />
             ) : null}
             {rightPanel}
           </div>

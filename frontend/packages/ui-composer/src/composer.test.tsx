@@ -41,6 +41,59 @@ describe("Composer", () => {
     expect(screen.getByRole("button", { name: "发送" }).getAttribute("aria-disabled")).toBe("true")
   })
 
+  it("switches provider and model from one chip that also shows the thinking depth", async () => {
+    const onProvider = vi.fn()
+    const onModel = vi.fn()
+    render(
+      <LocaleProvider locale="zh-CN">
+        <Composer
+          onSubmit={() => {}}
+          onStop={() => {}}
+          provider="claude"
+          providers={[
+            { id: "claude", label: "Claude Code" },
+            { id: "codex", label: "Codex" },
+          ]}
+          onProvider={onProvider}
+          models={["sonnet", "opus"]}
+          onModel={onModel}
+        />
+      </LocaleProvider>,
+    )
+    const chip = screen.getByRole("button", { name: /Claude Code/ })
+    expect(chip.textContent).toContain("思考 中")
+
+    await userEvent.click(chip)
+    expect(await screen.findByRole("menuitem", { name: "低" })).toBeTruthy()
+    await userEvent.click(screen.getByRole("menuitem", { name: "Codex" }))
+    expect(onProvider).toHaveBeenCalledWith("codex")
+
+    await userEvent.click(screen.getByRole("button", { name: /Claude Code/ }))
+    await userEvent.click(await screen.findByRole("menuitem", { name: "opus" }))
+    expect(onModel).toHaveBeenCalledWith("opus")
+  })
+
+  it("keeps the provider while a run is going", async () => {
+    render(
+      <LocaleProvider locale="zh-CN">
+        <Composer
+          onSubmit={() => {}}
+          onStop={() => {}}
+          running
+          provider="claude"
+          providers={[
+            { id: "claude", label: "Claude Code" },
+            { id: "codex", label: "Codex" },
+          ]}
+          onProvider={() => {}}
+        />
+      </LocaleProvider>,
+    )
+    await userEvent.click(screen.getByRole("button", { name: /Claude Code/ }))
+    expect(await screen.findByRole("menuitem", { name: "中" })).toBeTruthy()
+    expect(screen.queryByRole("menuitem", { name: "Codex" })).toBeNull()
+  })
+
   it("does not submit empty content", async () => {
     const onSubmit = vi.fn()
     render(

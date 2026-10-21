@@ -97,6 +97,68 @@ describe("Shell", () => {
     expect(document.documentElement.dataset.fullscreen).toBeUndefined()
   })
 
+  it("opens the sidebar as a drawer in narrow windows and closes it from the scrim or Esc", () => {
+    Object.defineProperty(window, "matchMedia", {
+      configurable: true,
+      value: (query: string) => ({
+        matches: query === "(max-width: 960px)",
+        addEventListener: () => undefined,
+        removeEventListener: () => undefined,
+      }),
+    })
+    try {
+      const { container } = renderShell()
+      const app = container.querySelector(".app")
+
+      fireEvent.click(screen.getByRole("button", { name: "展开侧栏" }))
+      expect(app?.classList.contains("is-drawer-open")).toBe(true)
+      expect(app?.classList.contains("is-collapsed")).toBe(false)
+      fireEvent.click(container.querySelector(".drawer-scrim") as HTMLElement)
+      expect(app?.classList.contains("is-drawer-open")).toBe(false)
+
+      fireEvent.keyDown(window, { key: "b", ctrlKey: true })
+      expect(app?.classList.contains("is-drawer-open")).toBe(true)
+      fireEvent.keyDown(window, { key: "Escape" })
+      expect(app?.classList.contains("is-drawer-open")).toBe(false)
+    } finally {
+      Reflect.deleteProperty(window, "matchMedia")
+    }
+  })
+
+  it("goes back and forward with Alt+arrows, the buttons and mouse side buttons", () => {
+    const onBack = vi.fn()
+    const onForward = vi.fn()
+    renderShell({ canGoBack: true, canGoForward: true, onBack, onForward })
+
+    fireEvent.keyDown(window, { key: "ArrowLeft", altKey: true })
+    fireEvent.keyDown(window, { key: "ArrowRight", altKey: true })
+    fireEvent.click(screen.getByRole("button", { name: "后退" }))
+    fireEvent.mouseUp(window, { button: 4 })
+    expect(onBack).toHaveBeenCalledTimes(2)
+    expect(onForward).toHaveBeenCalledTimes(2)
+
+    // 输入框里的 Alt+方向键留给文本编辑。
+    const input = document.createElement("input")
+    document.body.append(input)
+    fireEvent.keyDown(input, { key: "ArrowLeft", altKey: true })
+    input.remove()
+    expect(onBack).toHaveBeenCalledTimes(2)
+  })
+
+  it("uses ⌘[ and ⌘] for history on macOS", () => {
+    mockNative({ platform: "darwin" })
+    const onBack = vi.fn()
+    const onForward = vi.fn()
+    renderShell({ canGoBack: true, onBack, onForward })
+
+    fireEvent.keyDown(window, { key: "[", metaKey: true })
+    fireEvent.keyDown(window, { key: "]", metaKey: true })
+    fireEvent.keyDown(window, { key: "ArrowLeft", altKey: true })
+    expect(onBack).toHaveBeenCalledTimes(1)
+    expect(onForward).toHaveBeenCalledTimes(1)
+    expect(screen.getByRole("button", { name: "后退" }).getAttribute("title")).toBe("后退 ⌘[")
+  })
+
   it("opens the command palette from the search button in the sidebar's top row", () => {
     renderShell()
 
@@ -112,6 +174,20 @@ describe("Shell", () => {
     expect(workspace?.querySelector(".right-panel-slot")?.textContent).toContain("right")
     expect(screen.getByRole("separator")).toBeTruthy()
     expect(container.querySelector(".app")?.classList.contains("has-right")).toBe(true)
+  })
+
+  it("resizes the right panel from its separator and remembers the width", () => {
+    window.localStorage.removeItem("pigcode.rightWidth")
+    const { container } = renderShell()
+    const app = container.querySelector(".app") as HTMLElement
+    const separator = screen.getByRole("separator")
+
+    expect(app.style.getPropertyValue("--right-w")).toBe("460px")
+    fireEvent.keyDown(separator, { key: "ArrowLeft" })
+    expect(app.style.getPropertyValue("--right-w")).toBe("484px")
+    expect(window.localStorage.getItem("pigcode.rightWidth")).toBe("484")
+    fireEvent.doubleClick(separator)
+    expect(app.style.getPropertyValue("--right-w")).toBe("460px")
   })
 
   it("keeps the right panel mounted but hidden when closed", () => {
@@ -149,5 +225,84 @@ describe("Shell", () => {
 
     fireEvent.keyDown(window, { key: "j", metaKey: true })
     expect(onToggleRight).toHaveBeenCalledTimes(1)
+  })
+
+  describe("thread shortcuts", () => {
+    const projects = [{ id: "p1", rootPath: "/tmp/alpha", name: "alpha", createdAt: "2026-10-20T00:00:00.000Z" }]
+    const threads = ["t1", "t2", "t3"].map((id, index) => ({
+      id,
+      projectId: "p1",
+      title: `Thread ${index + 1}`,
+      defaultProviderId: "fake",
+      lastProviderId: null,
+      lastModelId: null,
+      permissionMode: "workspace-write" as const,
+      createdAt: "2026-10-20T00:00:00.000Z",
+      updatedAt: `2026-10-20T0${index}:00:00.000Z`,
+      archivedAt: null,
+      lastRunId: null,
+    }))
+    const badges = () => Array.from(document.querySelectorAll(".sess-kbd")).map((node) => node.textContent)
+
+    afterEach(() => {
+      vi.useRealTimers()
+    })
+
+    it("shows the numbers while Ctrl is held and opens the n-th thread with Ctrl+n", () => {
+      vi.useFakeTimers()
+      const onOpenThread = vi.fn()
+      const { container } = renderShell({ projects, threads, onOpenThread })
+
+      fireEvent.keyDown(window, { key: "Control", code: "ControlLeft", ctrlKey: true })
+      expect(badges()).toEqual([])
+      act(() => vi.advanceTimersByTime(500))
+      expect(badges()).toEqual(["Ctrl+1", "Ctrl+2", "Ctrl+3"])
+      expect(container.querySelector(".sidebar")?.classList.contains("show-shortcuts")).toBe(true)
+
+      fireEvent.keyDown(window, { key: "2", code: "Digit2", ctrlKey: true })
+      expect(onOpenThread).toHaveBeenCalledExactlyOnceWith("t2")
+      expect(badges()).toHaveLength(3)
+      fireEvent.keyDown(window, { key: "9", code: "Digit9", ctrlKey: true })
+      expect(onOpenThread).toHaveBeenCalledTimes(1)
+
+      fireEvent.keyUp(window, { key: "Control", code: "ControlLeft" })
+      expect(badges()).toEqual([])
+    })
+
+    it("follows the time order when the sidebar is arranged by time", () => {
+      window.localStorage.setItem("pigcode.sidebarGrouping", "time")
+      try {
+        const onOpenThread = vi.fn()
+        renderShell({ projects, threads, onOpenThread })
+        fireEvent.keyDown(window, { key: "1", code: "Digit1", ctrlKey: true })
+        expect(onOpenThread).toHaveBeenCalledExactlyOnceWith("t3")
+      } finally {
+        window.localStorage.removeItem("pigcode.sidebarGrouping")
+      }
+    })
+
+    it("uses ⌘ on macOS and does not flash the numbers for a quick ⌘K", () => {
+      vi.useFakeTimers()
+      mockNative({ platform: "darwin" })
+      const onOpenThread = vi.fn()
+      renderShell({ projects, threads, onOpenThread })
+
+      fireEvent.keyDown(window, { key: "1", code: "Digit1", ctrlKey: true })
+      expect(onOpenThread).not.toHaveBeenCalled()
+      fireEvent.keyDown(window, { key: "3", code: "Digit3", metaKey: true })
+      expect(onOpenThread).toHaveBeenCalledExactlyOnceWith("t3")
+
+      fireEvent.keyDown(window, { key: "Meta", code: "MetaLeft", metaKey: true })
+      fireEvent.keyDown(window, { key: "k", code: "KeyK", metaKey: true })
+      act(() => vi.advanceTimersByTime(500))
+      expect(badges()).toEqual([])
+    })
+
+    it("leaves Ctrl+number alone in settings", () => {
+      const onOpenThread = vi.fn()
+      renderShell({ view: "settings", projects, threads, onOpenThread })
+      fireEvent.keyDown(window, { key: "1", code: "Digit1", ctrlKey: true })
+      expect(onOpenThread).not.toHaveBeenCalled()
+    })
   })
 })

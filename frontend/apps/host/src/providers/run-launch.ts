@@ -55,6 +55,7 @@ export async function launchRun(entry: QueuedRun, deps: LaunchDeps): Promise<voi
       done: entry.done,
       resolveDone: entry.resolveDone,
       approvals: new Set(),
+      liveText: "",
     }
     // 切换 provider 后的第一条消息注入一次 handoff；事件读取要在 run.started 之前。
     const handoff = pendingHandoff(deps.ctx, run.threadId)
