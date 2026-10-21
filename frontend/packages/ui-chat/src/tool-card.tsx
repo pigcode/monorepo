@@ -67,7 +67,9 @@ function GenericToolRow({
   const output = toolOutputParts(tool.output)
   // 截图这类带图的结果默认展开，直接看到 agent 看到的画面。
   const [open, setOpen] = useToolOpen(tool.id, output.images.length > 0)
-  const hasDetails = Boolean(tool.input || tool.output)
+  // 没有参数的工具（截图、读快照）输入是 {}，不值得单独显示。
+  const input = tool.input?.trim() === "{}" ? undefined : tool.input
+  const hasDetails = Boolean(input || tool.output)
   const Icon = toolIcon(tool.name)
   const kind = toolKind(tool.name)
   const preview = browserPreview(tool) ?? toolPreview(tool.input)
@@ -128,10 +130,10 @@ function GenericToolRow({
       ) : null}
       {open && hasDetails ? (
         <div className="tool-row-body">
-          {tool.input ? (
+          {input ? (
             <>
               <div className="tool-row-label">{t("chat.tool.input")}</div>
-              <pre>{tool.input}</pre>
+              <pre>{input}</pre>
             </>
           ) : null}
           {output.images.length > 0 ? (
