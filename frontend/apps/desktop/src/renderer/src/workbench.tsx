@@ -286,7 +286,25 @@ export function WorkbenchPanel({
     }
   }
 
-  /** worktree 列表没有 list RPC；这里只保留本次会话内创建过的记录。 */
+  // worktree 记录在 Host 里；重开应用后从这里恢复列表与当前选择。
+  useEffect(() => {
+    let cancelled = false
+    void callRpc<{ worktrees: WorktreeRecord[]; activePath: string | null }>(
+      connection,
+      "worktree.list",
+      { threadId },
+    )
+      .then((result) => {
+        if (cancelled) return
+        setWorktrees(result.worktrees)
+        setActiveWorktree(result.activePath)
+      })
+      .catch(() => undefined)
+    return () => {
+      cancelled = true
+    }
+  }, [connection, threadId])
+
   async function createWorktree(): Promise<void> {
     setWorktreeBusy(true)
     try {

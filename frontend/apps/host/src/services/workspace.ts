@@ -5,6 +5,7 @@ import { open, readdir, stat } from "node:fs/promises"
 import { join, relative, resolve, sep } from "node:path"
 import { promisify } from "node:util"
 import { resolveInside, resolveRealInside } from "./path-safety"
+import { threadCwd } from "./worktrees"
 
 const exec = promisify(execFile)
 
@@ -66,16 +67,16 @@ export interface WorkspacePlugin {
 export const apply: WorkspacePlugin = (ctx) => {
   const service: WorkspaceService = {
     async tree(threadId) {
-      const root = projectRoot(ctx, threadId)
+      const root = threadCwd(ctx, threadId)
       const files = await listFiles(root)
       return files.map((path) => ({ path, type: "file" as const }))
     },
     async readFile(threadId, requestPath) {
-      const root = projectRoot(ctx, threadId)
+      const root = threadCwd(ctx, threadId)
       return readTextFile(root, requestPath)
     },
     async search(threadId, query, glob) {
-      const root = projectRoot(ctx, threadId)
+      const root = threadCwd(ctx, threadId)
       return searchFiles(root, query, glob)
     },
   }
@@ -83,15 +84,6 @@ export const apply: WorkspacePlugin = (ctx) => {
 }
 
 apply.inject = inject
-
-/** 解析线程对应的项目根目录；M3 先使用项目根，Task 5 会优先使用活动 worktree。 */
-function projectRoot(ctx: Context, threadId: string): string {
-  const thread = ctx.threads.get(threadId)
-  if (!thread) throw new Error(`thread not found: ${threadId}`)
-  const project = ctx.projects.get(thread.projectId)
-  if (!project) throw new Error(`project not found: ${thread.projectId}`)
-  return project.rootPath
-}
 
 /** 优先用 git 列出跟踪与未跟踪文件；非 git 项目回退到递归读取目录。 */
 async function listFiles(root: string): Promise<string[]> {

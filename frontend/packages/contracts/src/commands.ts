@@ -128,6 +128,7 @@ export const commandSchemas = {
   "checkpoint.list": z.object({ threadId: z.string().min(1) }),
   "checkpoint.create": z.object({ threadId: z.string().min(1), label: z.string().optional() }),
   "checkpoint.restore": z.object({ threadId: z.string().min(1), checkpointId: z.string().min(1) }),
+  "worktree.list": z.object({ threadId: z.string().min(1) }),
   "worktree.create": z.object({ threadId: z.string().min(1) }),
   "worktree.switch": z.object({ threadId: z.string().min(1), path: z.string().min(1) }),
   "worktree.remove": z.object({ threadId: z.string().min(1) }),

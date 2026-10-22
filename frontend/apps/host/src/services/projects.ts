@@ -55,12 +55,14 @@ export const apply: ProjectsPlugin = (ctx) => {
     add(rootPath, name) {
       const given = name?.trim()
       const existing = db.prepare(`SELECT * FROM projects WHERE root_path = ?`).get(rootPath) as
-        | ProjectRow
-        | undefined
+        ProjectRow | undefined
       if (existing?.archived_at === null) return mapProject(existing)
       if (existing) {
         const label = given || existing.name
-        db.prepare(`UPDATE projects SET archived_at = NULL, name = ? WHERE id = ?`).run(label, existing.id)
+        db.prepare(`UPDATE projects SET archived_at = NULL, name = ? WHERE id = ?`).run(
+          label,
+          existing.id,
+        )
         return mapProject({ ...existing, name: label })
       }
       const project: Project = {
@@ -89,7 +91,10 @@ export const apply: ProjectsPlugin = (ctx) => {
       return value ? mapProject(value) : undefined
     },
     rename(projectId, name) {
-      db.prepare(`UPDATE projects SET name = ? WHERE id = ? AND archived_at IS NULL`).run(name, projectId)
+      db.prepare(`UPDATE projects SET name = ? WHERE id = ? AND archived_at IS NULL`).run(
+        name,
+        projectId,
+      )
       const value = row(projectId)
       return value?.archived_at === null ? mapProject(value) : undefined
     },

@@ -1,7 +1,6 @@
 /** Provider 切换：同 provider 优先原生 fork，跨 provider 回退到一次性 handoff。 */
 import type { Context } from "cordis"
 import type { ProviderSession } from "@pigcode/contracts"
-import { activeWorktreePath } from "../services/worktrees"
 import type { ProviderSessionStore } from "./session-store"
 import type { ProviderDriver, ProviderModelInfo, ProviderSettingsValues } from "./driver"
 
@@ -196,17 +195,4 @@ export async function switchProvider(
     createdAt: now,
   })
   return { providerId, modelId, handoff, forkFromNativeSessionId }
-}
-
-/** 解析线程的 provider cwd：优先活动 worktree（子代理用主会话的），没有时回退到项目根目录。 */
-export function resolveThreadCwd(ctx: Context, threadId: string, projectId: string): string {
-  const worktree = activeWorktreePath(ctx.storage.db, threadId)
-  if (worktree) return worktree
-  const parentThreadId = ctx.threads.get(threadId)?.parentThreadId
-  const parentWorktree = parentThreadId ? activeWorktreePath(ctx.storage.db, parentThreadId) : null
-  if (parentWorktree) return parentWorktree
-  const row = ctx.storage.db
-    .prepare(`SELECT root_path FROM projects WHERE id = ?`)
-    .get(projectId) as { root_path: string } | undefined
-  return row?.root_path ?? process.cwd()
 }

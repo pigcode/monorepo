@@ -367,6 +367,8 @@ export class RpcServer {
         const value = parsed as { threadId: string; checkpointId: string }
         return this.ctx.checkpoints.restore(value.threadId, value.checkpointId)
       }
+      case "worktree.list":
+        return this.ctx.worktrees.list((parsed as { threadId: string }).threadId)
       case "worktree.create":
         return this.ctx.worktrees.create((parsed as { threadId: string }).threadId)
       case "worktree.switch": {

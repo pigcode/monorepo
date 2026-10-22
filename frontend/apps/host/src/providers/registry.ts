@@ -18,12 +18,8 @@ import { launchRun, type LaunchDeps } from "./run-launch"
 import { recoverAfterRestart } from "./restart"
 import { maybeAutoTitle } from "./title"
 import { mapProviderEvent, type RunEventHooks } from "./run-events"
-import {
-  disposeSession,
-  pendingForkFromNativeSessionId,
-  resolveThreadCwd,
-  switchProvider,
-} from "./switching"
+import { disposeSession, pendingForkFromNativeSessionId, switchProvider } from "./switching"
+import { threadCwd } from "../services/worktrees"
 import { ApprovalBridge } from "./approval-bridge"
 import { ProviderSessionStore } from "./session-store"
 import { PendingRequestStore } from "../storage/pending-request-store"
@@ -39,7 +35,7 @@ declare module "cordis" {
   }
 }
 /** providers 插件依赖的线程、事件与存储服务。 */
-export const inject = ["threads", "sessions", "storage"]
+export const inject = ["threads", "sessions", "storage", "projects"]
 export { RunAlreadyActiveError, TooManyActiveRunsError, RunQueueFullError }
 
 /** 注册 provider driver，并把一次 run 的规范化事件映射为线程事件。 */
@@ -362,7 +358,7 @@ export function apply(ctx: Context, config: ProviderRunConfig = {}): void {
           done,
           resolveDone,
           queuedAt: startedAt,
-          cwd: resolveThreadCwd(ctx, thread.id, thread.projectId),
+          cwd: threadCwd(ctx, thread.id),
           permissionMode: thread.permissionMode,
           model: thread.lastModelId,
           nativeSessionId: forkFrom ? null : (activeSession?.nativeSessionId ?? null),

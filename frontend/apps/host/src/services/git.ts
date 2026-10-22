@@ -6,6 +6,7 @@ import { rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join, sep } from "node:path"
 import { promisify } from "node:util"
+import { threadCwd } from "./worktrees"
 
 const exec = promisify(execFile)
 
@@ -51,7 +52,7 @@ declare module "cordis" {
 }
 
 /** git 插件依赖的服务。 */
-export const inject = ["projects", "threads"]
+export const inject = ["projects", "threads", "storage"]
 
 /** git 插件函数，携带 Cordis 需要的 inject 元数据。 */
 export interface GitPlugin {
@@ -69,28 +70,21 @@ export class NotAGitRepoError extends Error {
   }
 }
 
-/** 注册 git 服务；线程 ID 在这里解析为项目根目录，共享函数仍接收 cwd。 */
+/**
+ * 注册 git 服务；线程 ID 在这里解析为线程的工作目录（活动 worktree 优先），
+ * 共享函数仍接收 cwd。checkpoint 必须快照与恢复 agent 实际改动的那个目录。
+ */
 export const apply: GitPlugin = (ctx) => {
   const service: GitService = {
-    status: (threadId) => status(projectRoot(ctx, threadId)),
-    diff: (threadId, base, head) => diff(projectRoot(ctx, threadId), base, head),
-    capture: (threadId, runId, phase) =>
-      capture(projectRoot(ctx, threadId), threadId, runId, phase),
-    restore: (threadId, commitSha) => restore(projectRoot(ctx, threadId), commitSha),
+    status: (threadId) => status(threadCwd(ctx, threadId)),
+    diff: (threadId, base, head) => diff(threadCwd(ctx, threadId), base, head),
+    capture: (threadId, runId, phase) => capture(threadCwd(ctx, threadId), threadId, runId, phase),
+    restore: (threadId, commitSha) => restore(threadCwd(ctx, threadId), commitSha),
   }
   ctx.provide("git", service)
 }
 
 apply.inject = inject
-
-/** 解析线程对应的项目根目录；Task 5 引入 worktree 后再切换到活动 worktree。 */
-function projectRoot(ctx: Context, threadId: string): string {
-  const thread = ctx.threads.get(threadId)
-  if (!thread) throw new Error(`thread not found: ${threadId}`)
-  const project = ctx.projects.get(thread.projectId)
-  if (!project) throw new Error(`project not found: ${thread.projectId}`)
-  return project.rootPath
-}
 
 /** 读取 porcelain 状态；分支名单独查询，detached HEAD 返回 null。 */
 export async function status(cwd: string): Promise<GitStatus> {
