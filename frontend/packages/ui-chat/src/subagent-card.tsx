@@ -65,7 +65,7 @@ function SubagentMessages({ events }: { events: readonly ThreadEvent[] }) {
     .filter((message) => message.text)
   if (messages.length === 0) return null
   return (
-    <div className="agent-section">
+    <div className="agent-card-section">
       {messages.map((message) => (
         <div key={message.key} className="md agent-message">
           <MessageText text={message.text} />
@@ -113,7 +113,7 @@ export const AgentRow = memo(function AgentRow({ subagent }: { subagent: Subagen
       {() => (
         <div className="tool-card agent-card">
           {subagent.prompt ? (
-            <div className="agent-section">
+            <div className="agent-card-section">
               <span className="tool-card-label">{t("chat.toolCall.agent.prompt")}</span>
               <div className="agent-prompt md">
                 <MessageText text={subagent.prompt} />
@@ -122,7 +122,7 @@ export const AgentRow = memo(function AgentRow({ subagent }: { subagent: Subagen
           ) : null}
           <SubagentMessages events={subagent.events} />
           {subagent.output ? (
-            <div className="agent-section">
+            <div className="agent-card-section">
               <span className="tool-card-label">{t("chat.toolCall.agent.output")}</span>
               <div className="agent-output md">
                 <MessageText text={subagent.output} />

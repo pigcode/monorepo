@@ -157,9 +157,9 @@ describe("file rows", () => {
     )
     expect(screen.getByLabelText("+2 -1").textContent).toBe("+2-1")
     await userEvent.click(screen.getByRole("button", { name: /编辑/ }))
-    const lines = [...container.querySelectorAll(".diff-line")].map(
+    const lines = [...container.querySelectorAll(".idiff-line")].map(
       (line) =>
-        `${line.className.replace("diff-line ", "")}:${line.querySelector(".diff-code")?.textContent}`,
+        `${line.className.replace("idiff-line ", "")}:${line.querySelector(".idiff-code")?.textContent}`,
     )
     expect(lines).toEqual(["is-remove:a", "is-add:b", "is-add:c"])
   })

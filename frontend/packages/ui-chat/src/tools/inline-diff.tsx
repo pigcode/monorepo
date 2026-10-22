@@ -44,17 +44,18 @@ export function InlineDiff({ lines, path }: { lines: readonly DiffLine[]; path: 
       <div className="inline-diff-body">
         {shown.map((line, index) =>
           line.kind === "gap" ? (
-            <div key={index} className="diff-line is-gap" aria-hidden="true">
-              <span className="diff-gutter" />
-              <span className="diff-code">⋯</span>
+            <div key={index} className="idiff-line is-gap" aria-hidden="true">
+              {numbered ? <span className="idiff-gutter" /> : null}
+              <span className="idiff-marker" />
+              <span className="idiff-code">⋯</span>
             </div>
           ) : (
-            <div key={index} className={`diff-line is-${line.kind}`}>
-              {numbered ? <span className="diff-gutter">{line.line ?? ""}</span> : null}
-              <span className="diff-marker" aria-hidden="true">
+            <div key={index} className={`idiff-line is-${line.kind}`}>
+              {numbered ? <span className="idiff-gutter">{line.line ?? ""}</span> : null}
+              <span className="idiff-marker" aria-hidden="true">
                 {line.kind === "add" ? "+" : line.kind === "remove" ? "-" : " "}
               </span>
-              <span className="diff-code">
+              <span className="idiff-code">
                 {tokens?.[index]
                   ? tokens[index].map((token, tokenIndex) => (
                       <span key={tokenIndex} className="tok" style={token.style}>

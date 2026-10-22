@@ -131,18 +131,25 @@
   line-height: 1.5;
 }
 
-/* ─── 派生子代理的只读视图 ──────────────────────────────── */
+/* ─── 派生子代理的只读视图：和主时间线同样的工作区与工具行 ─────── */
 .subagent-view {
-  gap: 12px;
+  gap: 20px;
+  padding: 24px 16px 20px;
+  font-family: var(--font-content);
+  font-size: var(--cv-fs);
+}
+@container conversation (min-width: 448px) {
+  .subagent-view {
+    padding-right: 24px;
+    padding-left: 24px;
+  }
 }
 .subagent-view-head {
   display: flex;
   align-items: flex-start;
   gap: 10px;
-  padding: 12px 14px;
-  border-radius: var(--r-lg);
-  background: var(--surface);
-  box-shadow: var(--shadow-raised);
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--cv-hairline);
 }
 .subagent-view-head .subagent-icon {
   margin-top: 1px;
@@ -151,25 +158,25 @@
   display: flex;
   flex-direction: column;
   flex: 1 1 auto;
-  gap: 3px;
+  gap: 4px;
   min-width: 0;
 }
 .subagent-view-name {
   display: flex;
   align-items: baseline;
   gap: 8px;
-  font-size: var(--fs-md);
-  font-weight: 600;
+  font-family: var(--font-ui);
+  font-size: var(--cv-fs);
+  font-weight: 500;
 }
 .subagent-view-model {
-  color: var(--muted);
-  font-size: var(--fs-xs);
+  color: var(--cv-subtle);
+  font-size: var(--cv-fs-sm);
   font-weight: 400;
 }
 .subagent-view-task {
-  color: var(--fg-2);
-  font-size: calc(var(--ui-scale) * 12.5px);
-  line-height: 1.55;
+  color: var(--cv-subtle);
+  line-height: 1.6;
 }
 .subagent-view-task-text {
   white-space: pre-wrap;
@@ -183,8 +190,9 @@
 }
 .subagent-view-more {
   margin-top: 2px;
-  color: var(--muted);
-  font-size: var(--fs-xs);
+  color: var(--cv-subtle);
+  font-family: var(--font-ui);
+  font-size: var(--cv-fs-sm);
 }
 .subagent-view-more:hover {
   color: var(--fg);
@@ -192,17 +200,19 @@
 .subagent-view-head .subagent-status:has(.dot-matrix)::before {
   display: none;
 }
-.subagent-view-steps {
-  margin-top: 2px;
+.subagent-view-empty {
+  color: var(--cv-subtle);
+  font-family: var(--font-ui);
 }
 .subagent-view-result {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 8px;
 }
 .subagent-view-label {
-  color: var(--muted);
-  font-size: var(--fs-xs);
+  color: var(--cv-subtle);
+  font-family: var(--font-ui);
+  font-size: var(--cv-fs-sm);
 }
 .subagent-readonly {
   display: flex;
@@ -231,129 +241,4 @@
 .subagent-back:hover {
   background: var(--hover);
   color: var(--fg);
-}
-.subagent-open {
-  display: grid;
-  place-items: center;
-  width: 22px;
-  height: 22px;
-  margin-right: -6px;
-  flex: none;
-  border-radius: var(--r-sm);
-  color: var(--faint);
-}
-.subagent-open:hover {
-  background: var(--active);
-  color: var(--fg);
-}
-.turn-brief {
-  margin-top: 4px;
-}
-
-/* ─── agent 的提问 ─────────────────────────────────────── */
-.question-card {
-  gap: 12px;
-}
-.question {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  min-width: 0;
-  margin: 0;
-  padding: 0;
-  border: 0;
-}
-.question legend {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 6px;
-  margin-bottom: 4px;
-  padding: 0;
-  color: var(--fg);
-  font-size: var(--fs-md);
-}
-.question-header {
-  padding: 1px 6px;
-  border-radius: var(--r-sm);
-  background: var(--warn-soft);
-  color: var(--warn-text);
-  font-size: var(--fs-xs);
-}
-.question-hint {
-  color: var(--muted);
-  font-size: var(--fs-xs);
-}
-.question-option {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-  padding: 5px 8px;
-  border-radius: var(--r-md);
-  cursor: pointer;
-}
-.question-option:hover {
-  background: var(--hover);
-}
-.question-option input {
-  flex: none;
-  accent-color: var(--accent);
-}
-.question-option-label {
-  color: var(--fg);
-  font-size: var(--fs-md);
-}
-.question-option-desc {
-  color: var(--muted);
-  font-size: var(--fs-sm);
-}
-.question-other {
-  height: 30px;
-  margin: 2px 0 0;
-  padding: 0 10px;
-  border: 0;
-  border-radius: var(--r-md);
-  outline: 0;
-  background: var(--field);
-  color: var(--fg);
-  font: inherit;
-  font-size: var(--fs-sm);
-}
-.question-other:focus {
-  box-shadow:
-    0 0 0 1px var(--border-focus),
-    0 0 0 3px var(--accent-ring);
-}
-.question-done {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-  color: var(--muted);
-  font-size: var(--fs-sm);
-}
-.question-done-row {
-  display: flex;
-  align-items: baseline;
-  gap: 6px;
-}
-.question-done-row .ic {
-  flex: none;
-  align-self: center;
-  color: var(--ok-text);
-}
-.question-done-q {
-  color: var(--fg-2);
-}
-.question-done-a {
-  color: var(--fg);
-  font-weight: 500;
-}
-
-/* 计划模式交出的计划 */
-.plan-approval-body {
-  max-height: 360px;
-  overflow: auto;
-  padding: 2px 2px 0 26px;
-  color: var(--fg);
-  white-space: normal;
 }

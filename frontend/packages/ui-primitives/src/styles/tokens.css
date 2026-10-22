@@ -215,7 +215,7 @@
   --font-weight-content: 400;
   --font-weight-code: 400;
 
-  /* 字号：说明 11.5 / 次要 12 / 界面 13 / 对话 13.5 / 页面标题 20，随「界面字号」整体缩放 */
+  /* 字号：说明 11.5 / 次要 12 / 界面 13 / 页面标题 20，随「界面字号」整体缩放；对话 14 */
   --ui-scale: 1;
   --fs-xs: calc(var(--ui-scale) * 11.5px);
   --fs-sm: calc(var(--ui-scale) * 12px);
@@ -223,7 +223,7 @@
   --fs-lg: calc(var(--ui-scale) * 13.5px);
   --fs-title: calc(var(--ui-scale) * 20px);
   /* 对话正文与代码的字号由外观设置直接给出，不随界面字号缩放 */
-  --fs-content: 13.5px;
+  --fs-content: 14px;
   --fs-code: 11.5px;
 
   /* 圆角：控件 7 / 行与小卡片 9 / 卡片 12 / 输入区与对话框 16 */
@@ -238,7 +238,7 @@
   --sidebar-w: 260px;
   --col: 720px;
   --col-narrow: 640px;
-  --chat-col: 740px;
+  --chat-col: 848px;
   /* 浮层与窗口边缘的间距；顶行高度（侧栏顶行、线程头与右侧面板标签栏，交通灯竖直居中其中） */
   --gap: 8px;
   --topbar-h: 40px;

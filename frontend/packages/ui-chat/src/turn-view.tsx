@@ -147,7 +147,7 @@ function TurnViewImpl({
       ) : null}
       {streamingText ? (
         <div className="msg-ai md is-streaming" aria-busy="true">
-          <MessageText text={streamingText} />
+          <MessageText text={streamingText} streaming />
         </div>
       ) : null}
       {turn.status === "failed" ? (

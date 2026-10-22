@@ -100,7 +100,7 @@ export function CodeBlock({
         <code>
           {tokens
             ? tokens.map((line, index) => (
-                <span key={index} className="code-line">
+                <span key={index} className="code-block-line">
                   {line.map((token, tokenIndex) => (
                     <span key={tokenIndex} className="tok" style={token.style}>
                       {token.content}
@@ -110,7 +110,7 @@ export function CodeBlock({
                 </span>
               ))
             : lines.map((line, index) => (
-                <span key={index} className="code-line">
+                <span key={index} className="code-block-line">
                   {line}
                   {"\n"}
                 </span>
