@@ -1,6 +1,6 @@
 /** 用本机的文件管理器、编辑器或终端打开项目文件夹；只接受已存在的绝对目录。 */
 import { spawn } from "node:child_process"
-import { statSync } from "node:fs"
+import { existsSync, statSync } from "node:fs"
 import { isAbsolute } from "node:path"
 import type { DetectedApp, OpenAppKind } from "./open-apps"
 
@@ -20,6 +20,19 @@ export function readDirectory(
   if (typeof value !== "string" || !isAbsolute(value)) return null
   try {
     return isDirectory(value) ? value : null
+  } catch {
+    return null
+  }
+}
+
+/** 已存在的文件或文件夹的绝对路径；其他值返回 null。 */
+export function readExistingPath(
+  value: unknown,
+  exists: (path: string) => boolean = (path) => existsSync(path),
+): string | null {
+  if (typeof value !== "string" || !isAbsolute(value)) return null
+  try {
+    return exists(value) ? value : null
   } catch {
     return null
   }

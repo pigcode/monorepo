@@ -10,6 +10,8 @@ export interface PluginManagerViewProps {
   onInstall: (spec: string) => Promise<void>
   onEnable: (id: string) => Promise<void>
   onDisable: (id: string) => Promise<void>
+  /** 卸载用户安装的插件；缺省时不显示卸载按钮。 */
+  onUninstall?: ((id: string) => Promise<void>) | undefined
   onRefresh: () => Promise<void>
 }
 
@@ -19,6 +21,7 @@ export function PluginManagerView({
   onInstall,
   onEnable,
   onDisable,
+  onUninstall,
   onRefresh,
 }: PluginManagerViewProps) {
   const { t } = useLocale()
@@ -70,6 +73,9 @@ export function PluginManagerView({
             pendingId={pendingId}
             onEnable={(id) => void run(id, () => onEnable(id))}
             onDisable={(id) => void run(id, () => onDisable(id))}
+            {...(onUninstall
+              ? { onUninstall: (id: string) => void run(id, () => onUninstall(id)) }
+              : {})}
           />
         </div>
       </div>

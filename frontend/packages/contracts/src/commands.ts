@@ -1,5 +1,6 @@
 /** 定义 Host 接受的命令参数；M0-A 只包含真实用到的命令。 */
 import { z } from "zod"
+import { providerSettingsValuesSchema } from "./agents"
 import { permissionModeSchema, reasoningEffortSchema } from "./domain"
 
 /** 命令方法到参数 schema 的映射。 */
@@ -59,10 +60,23 @@ export const commandSchemas = {
     requestId: z.string().min(1),
     answers: z.array(z.string()),
   }),
-  "provider.detect": z.object({}),
+  /** 只读检测；refresh 跳过缓存重新运行，providerId 只检测这一个 agent。 */
+  "provider.detect": z.object({
+    providerId: z.string().min(1).optional(),
+    refresh: z.boolean().optional(),
+  }),
   "provider.list": z.object({}),
   "provider.default": z.object({}),
   "provider.models": z.object({ providerId: z.string().min(1) }),
+  /** 设置页的 agent 列表：插件、能力、设置字段与当前值。 */
+  "agent.list": z.object({}),
+  /** 整体替换一个 agent 的设置值；对之后新建的会话、检测与模型目录生效。 */
+  "agent.updateSettings": z.object({
+    providerId: z.string().min(1),
+    values: providerSettingsValuesSchema,
+  }),
+  /** 新会话默认使用的 agent；null 表示自动挑选第一个可用的。 */
+  "agent.setDefault": z.object({ providerId: z.string().min(1).nullable() }),
   "thread.subscribe": z.object({
     threadId: z.string().min(1),
     cursor: z.number().int().nonnegative().default(0),
@@ -73,9 +87,37 @@ export const commandSchemas = {
   "plugin.installLocal": z.object({ sourceDir: z.string().min(1) }),
   "plugin.enable": z.object({ id: z.string().min(1) }),
   "plugin.disable": z.object({ id: z.string().min(1) }),
+  /** 卸载用户安装的插件；内置插件只能停用。 */
+  "plugin.uninstall": z.object({ id: z.string().min(1) }),
   "plugin.bootGraph": z.object({}),
   "workspace.tree": z.object({ threadId: z.string().min(1) }),
-  "workspace.readFile": z.object({ threadId: z.string().min(1), path: z.string().min(1) }),
+  /** 线程工作目录的绝对路径；复制完整路径、在文件管理器中显示时用。 */
+  "workspace.root": z.object({ threadId: z.string().min(1) }),
+  /** 列出一个目录；path 为空表示线程的工作目录。 */
+  "workspace.list": z.object({
+    threadId: z.string().min(1),
+    path: z.string().max(4096).default(""),
+  }),
+  /** 按路径模糊搜索文件与目录。 */
+  "workspace.searchPaths": z.object({
+    threadId: z.string().min(1),
+    query: z.string().trim().min(1).max(256),
+    limit: z.number().int().min(1).max(500).optional(),
+  }),
+  /** 读取文件；encoding 为 image 时图片按 base64 返回。 */
+  "workspace.readFile": z.object({
+    threadId: z.string().min(1),
+    path: z.string().min(1),
+    encoding: z.enum(["text", "image"]).optional(),
+  }),
+  /** 保存编辑；expectedMtimeMs 防止覆盖别处的修改，eol 按原文件的换行符写回。 */
+  "workspace.writeFile": z.object({
+    threadId: z.string().min(1),
+    path: z.string().min(1),
+    text: z.string().max(5 * 1024 * 1024),
+    expectedMtimeMs: z.number().nonnegative().optional(),
+    eol: z.enum(["lf", "crlf"]).optional(),
+  }),
   "workspace.search": z.object({
     threadId: z.string().min(1),
     query: z.string().min(1),
@@ -112,6 +154,7 @@ export const commandSchemas = {
   "checkpoint.list": z.object({ threadId: z.string().min(1) }),
   "checkpoint.create": z.object({ threadId: z.string().min(1), label: z.string().optional() }),
   "checkpoint.restore": z.object({ threadId: z.string().min(1), checkpointId: z.string().min(1) }),
+  "worktree.list": z.object({ threadId: z.string().min(1) }),
   "worktree.create": z.object({ threadId: z.string().min(1) }),
   "worktree.switch": z.object({ threadId: z.string().min(1), path: z.string().min(1) }),
   "worktree.remove": z.object({ threadId: z.string().min(1) }),

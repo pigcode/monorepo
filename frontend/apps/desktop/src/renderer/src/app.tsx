@@ -15,6 +15,7 @@ import {
   EMPTY_SURFACE_STATE,
   PanelLayoutControls,
   addSurface,
+  openFileSurface,
   updateSurface,
   type PanelLayoutControlsProps,
   type PanelSurfaceState,
@@ -23,6 +24,7 @@ import { BrowserHost } from "./browser-host"
 import { PluginPanels } from "./client-plugins"
 import type { ChatSlotProps, CoreDeps } from "./chat-container"
 import { ConnectionBanner } from "./connection-banner"
+import { UnsavedGuard } from "./unsaved-guard"
 import {
   EMPTY_HISTORY,
   canGoBack,
@@ -36,6 +38,7 @@ import {
   type NavLocation,
 } from "./navigation"
 import { loadProviderContext, pickProviderId } from "./providers"
+import { workspaceRevision } from "./workspace-revision"
 
 // 工作台（xterm、diff）与底部终端在第一次打开时才加载，冷启动只加载聊天需要的代码。
 const WorkbenchPanel = lazy(() =>
@@ -177,6 +180,15 @@ export function App({ store, slots, connection, plugins, locale }: AppProps) {
     if (!project) return
     try {
       const providerId = await pickProviderId(connection)
+      if (!providerId) {
+        store.update({
+          error:
+            locale === "en-US"
+              ? "No agent available. Enable or install one in Settings → Agents."
+              : "没有可用的 agent：在「设置 → Agent」里启用或安装一个。",
+        })
+        return
+      }
       const thread = (await connection.call("thread.create", {
         projectId: project.id,
         title: locale === "en-US" ? "New thread" : "新会话",
@@ -240,6 +252,10 @@ export function App({ store, slots, connection, plugins, locale }: AppProps) {
     [state.threads, state.threadStates],
   )
   const activeThreadId = view === "chat" ? state.activeThreadId : null
+  const activeProjectName =
+    state.projects.find((project) => project.id === activeThread?.projectId)?.name ?? ""
+  const activeEvents = activeThreadId ? state.threadStates[activeThreadId]?.events : undefined
+  const activeRevision = useMemo(() => workspaceRevision(activeEvents ?? []), [activeEvents])
 
   function toggleRight(): void {
     setRightOpen((value) => !value)
@@ -298,15 +314,15 @@ export function App({ store, slots, connection, plugins, locale }: AppProps) {
     [locale],
   )
 
-  /** 从聊天里打开文件或 Diff：当前线程的右栏切到对应标签并展开。 */
-  function openSurface(kind: "files" | "diff", path?: string): void {
+  /** 从聊天里打开文件或 Diff：当前线程的右栏切到对应标签（文件在自己的标签里打开）并展开。 */
+  function openSurface(kind: "file" | "diff", path?: string): void {
     const threadId = state.activeThreadId
     if (!threadId) return
-    const title = kind === "files" ? (locale === "en-US" ? "Files" : "文件") : "Diff"
-    updatePanel(threadId, (panel) => {
-      const next = addSurface(panel, kind, `${kind}-${crypto.randomUUID()}`, () => title)
-      return path && next.activeId ? updateSurface(next, next.activeId, { path }) : next
-    })
+    updatePanel(threadId, (panel) =>
+      kind === "file" && path
+        ? openFileSurface(panel, path, `file-${crypto.randomUUID()}`)
+        : addSurface(panel, "diff", `diff-${crypto.randomUUID()}`, () => "Diff"),
+    )
     setRightOpen(true)
     setRightMaximized(false)
   }
@@ -402,6 +418,8 @@ export function App({ store, slots, connection, plugins, locale }: AppProps) {
               onPanelChange={(update) => updatePanel(activeThreadId, update)}
               controls={layoutControls(true)}
               onError={(message) => store.update({ error: message })}
+              projectName={activeProjectName}
+              workspaceRevision={activeRevision}
             />
           </Suspense>
         ) : undefined
@@ -421,6 +439,7 @@ export function App({ store, slots, connection, plugins, locale }: AppProps) {
       }
     >
       <ConnectionBanner store={store} />
+      <UnsavedGuard />
       <BrowserHost
         browsers={browsers}
         onNavigate={(browser, url) =>
@@ -438,7 +457,7 @@ export function App({ store, slots, connection, plugins, locale }: AppProps) {
             onToggleRight: toggleRight,
             layoutControls: rightOpen && activeThreadId ? null : layoutControls(false),
             onNewThread: () => void createThread(),
-            onOpenFile: (path: string) => openSurface("files", path),
+            onOpenFile: (path: string) => openSurface("file", path),
             onOpenDiff: () => openSurface("diff"),
           }}
         />

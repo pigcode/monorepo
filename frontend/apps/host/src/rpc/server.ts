@@ -9,6 +9,7 @@ import {
 } from "@pigcode/contracts"
 import type { CommandMethod, PermissionMode, ReasoningEffort } from "@pigcode/contracts"
 import { buildSubagentBrief } from "../providers/switching"
+import { listAgents, uninstallPluginAndClearDefault, validateAgentSettings } from "./agents"
 
 /** 基于 Cordis 服务处理 RPC 请求的 Host 侧服务器。 */
 export class RpcServer {
@@ -262,13 +263,29 @@ export class RpcServer {
         return { ok: true }
       }
       case "provider.detect":
-        return this.ctx.providers.detect()
+        return this.ctx.providers.detect(parsed as { providerId?: string; refresh?: boolean })
       case "provider.list":
         return this.ctx.providers.list()
       case "provider.default":
         return { id: await this.ctx.providers.defaultProvider() }
       case "provider.models":
         return this.ctx.providers.models((parsed as { providerId: string }).providerId)
+      case "agent.list":
+        return listAgents(this.ctx)
+      case "agent.updateSettings": {
+        const value = parsed as { providerId: string; values: Record<string, unknown> }
+        const agent = (await listAgents(this.ctx)).agents.find(
+          (item) => item.providerId === value.providerId,
+        )
+        if (!agent) throw new Error(`agent not found: ${value.providerId}`)
+        validateAgentSettings(agent, value.values)
+        return { values: this.ctx.providers.updateSettings(value.providerId, value.values) }
+      }
+      case "agent.setDefault": {
+        const value = parsed as { providerId: string | null }
+        this.ctx.providers.setDefaultProvider(value.providerId)
+        return { defaultProviderId: value.providerId }
+      }
       case "plugin.list":
         return this.ctx.plugins.list()
       case "plugin.install":
@@ -279,13 +296,38 @@ export class RpcServer {
         return this.ctx.plugins.enable((parsed as { id: string }).id)
       case "plugin.disable":
         return this.ctx.plugins.disable((parsed as { id: string }).id)
+      case "plugin.uninstall":
+        return uninstallPluginAndClearDefault(this.ctx, (parsed as { id: string }).id)
       case "plugin.bootGraph":
         return this.ctx.plugins.bootGraph()
       case "workspace.tree":
         return this.ctx.workspace.tree((parsed as { threadId: string }).threadId)
-      case "workspace.readFile": {
+      case "workspace.root":
+        return { root: this.ctx.workspace.root((parsed as { threadId: string }).threadId) }
+      case "workspace.list": {
         const value = parsed as { threadId: string; path: string }
-        return this.ctx.workspace.readFile(value.threadId, value.path)
+        return this.ctx.workspace.list(value.threadId, value.path)
+      }
+      case "workspace.searchPaths": {
+        const value = parsed as { threadId: string; query: string; limit?: number }
+        return this.ctx.workspace.searchPaths(value.threadId, value.query, value.limit)
+      }
+      case "workspace.readFile": {
+        const value = parsed as { threadId: string; path: string; encoding?: "text" | "image" }
+        return this.ctx.workspace.readFile(value.threadId, value.path, value.encoding)
+      }
+      case "workspace.writeFile": {
+        const value = parsed as {
+          threadId: string
+          path: string
+          text: string
+          expectedMtimeMs?: number
+          eol?: "lf" | "crlf"
+        }
+        return this.ctx.workspace.writeFile(value.threadId, value.path, value.text, {
+          expectedMtimeMs: value.expectedMtimeMs,
+          eol: value.eol,
+        })
       }
       case "workspace.search": {
         const value = parsed as { threadId: string; query: string; glob?: string }
@@ -348,6 +390,8 @@ export class RpcServer {
         const value = parsed as { threadId: string; checkpointId: string }
         return this.ctx.checkpoints.restore(value.threadId, value.checkpointId)
       }
+      case "worktree.list":
+        return this.ctx.worktrees.list((parsed as { threadId: string }).threadId)
       case "worktree.create":
         return this.ctx.worktrees.create((parsed as { threadId: string }).threadId)
       case "worktree.switch": {

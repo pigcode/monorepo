@@ -27,6 +27,7 @@ import { modelKey, useModelPreferences } from "./model-preferences"
 import { PermissionMenu } from "./permission-menu"
 import { SuggestionPanel } from "./suggestion-panel"
 import { SuggestionStore } from "./suggestion-store"
+import { COMPOSER_MENTION_EVENT, mentionPathOf } from "./composer-mention"
 
 /** 发送时附带的选项；思考深度来自当前模型与用户偏好。 */
 export interface ComposerSubmitOptions {
@@ -298,6 +299,25 @@ export function Composer({
     },
     [],
   )
+
+  // 文件树的「添加到对话」：在光标处插入 @文件 引用，与输入 @ 选中的效果相同。
+  useEffect(() => {
+    if (!editor) return undefined
+    const onMention = (event: Event): void => {
+      const path = mentionPathOf(event)
+      if (!path || disabled) return
+      editor
+        .chain()
+        .focus()
+        .insertContent([
+          { type: "mention", attrs: { id: path, label: path } },
+          { type: "text", text: " " },
+        ])
+        .run()
+    }
+    window.addEventListener(COMPOSER_MENTION_EVENT, onMention)
+    return () => window.removeEventListener(COMPOSER_MENTION_EVENT, onMention)
+  }, [editor, disabled])
 
   const empty =
     useEditorState({

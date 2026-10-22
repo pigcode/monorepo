@@ -11,27 +11,17 @@ import type {
   UserInput,
 } from "./driver"
 import { FakeProviderDriver } from "./fake"
-import { detectClaude } from "./claude/detect"
-import { ClaudeDriver } from "./claude/driver"
-import { detectCodex } from "./codex/detect"
-import { CodexDriver } from "./codex/driver"
+import { createAgentCatalog } from "./agent-catalog"
 import { RunAlreadyActiveError, RunQueueFullError, TooManyActiveRunsError } from "./errors"
 import { RunQueue, type ActiveRun, type QueuedRun } from "./run-queue"
 import { launchRun, type LaunchDeps } from "./run-launch"
 import { recoverAfterRestart } from "./restart"
 import { maybeAutoTitle } from "./title"
 import { mapProviderEvent, type RunEventHooks } from "./run-events"
-import { createModelCatalogCache, normalizeModels } from "./model-catalog"
-import {
-  defaultProvider,
-  disposeSession,
-  listProviderModels,
-  pendingForkFromNativeSessionId,
-  resolveThreadCwd,
-  switchProvider,
-} from "./switching"
-import { ApprovalBridge } from "./claude/permissions"
-import { ProviderSessionStore } from "./claude/session-store"
+import { disposeSession, pendingForkFromNativeSessionId, switchProvider } from "./switching"
+import { threadCwd } from "../services/worktrees"
+import { ApprovalBridge } from "./approval-bridge"
+import { ProviderSessionStore } from "./session-store"
 import { PendingRequestStore } from "../storage/pending-request-store"
 import { RunStore } from "../storage/run-store"
 import type { ApprovalHandle, ProvidersService } from "./service"
@@ -45,37 +35,38 @@ declare module "cordis" {
   }
 }
 /** providers 插件依赖的线程、事件与存储服务。 */
-export const inject = ["threads", "sessions", "storage"]
+export const inject = ["threads", "sessions", "storage", "projects"]
 export { RunAlreadyActiveError, TooManyActiveRunsError, RunQueueFullError }
 
 /** 注册 provider driver，并把一次 run 的规范化事件映射为线程事件。 */
 export function apply(ctx: Context, config: ProviderRunConfig = {}): void {
   const maxConcurrentRuns = config.maxConcurrentRuns ?? 4
   const maxQueuedRuns = config.maxQueuedRuns ?? 32
+  // Claude Code、Codex 与第三方 agent 都由各自的插件注册；Host 只自带开发与测试用的 fake。
   const drivers = new Map<string, ProviderDriver>()
-  const fake = new FakeProviderDriver({
-    callTool: (threadId, name, input) => {
-      const bridge = ctx.reflect.get("mcpBridge")
-      if (!bridge) return Promise.reject(new Error("MCP tools are not available"))
-      return bridge.callTool(threadId, name, input)
-    },
-  })
-  drivers.set(fake.id, fake)
-  const claude = new ClaudeDriver()
-  drivers.set(claude.id, claude)
-  drivers.set("codex", new CodexDriver())
+  if (config.fake !== false || process.env.PIGCODE_PROVIDER === "fake") {
+    const fake = new FakeProviderDriver({
+      callTool: (threadId, name, input) => {
+        const bridge = ctx.reflect.get("mcpBridge")
+        if (!bridge) return Promise.reject(new Error("MCP tools are not available"))
+        return bridge.callTool(threadId, name, input)
+      },
+    })
+    drivers.set(fake.id, fake)
+  }
+  const agents = createAgentCatalog(ctx, drivers)
   const runs = new RunStore(ctx.storage.db)
   const pendingRequests = new PendingRequestStore(ctx.storage.db)
   const providerSessions = new ProviderSessionStore(ctx.storage.db)
   const approvals = new ApprovalBridge()
-  const catalogs = createModelCatalogCache()
   const activeRuns = new Map<string, ActiveRun>()
   const activeThreads = new Set<string>()
   const queue = new RunQueue<QueuedRun>(maxQueuedRuns)
   /** 正在异步创建 provider 会话的 run 数；用于避免并发空位被重复占用。 */
   let launching = 0
   /** 追加一条线程事件并触发实时订阅者。 */
-  function append(    threadId: string,
+  function append(
+    threadId: string,
     runId: string | null,
     type: ThreadEvent["type"],
     payload: unknown,
@@ -238,6 +229,7 @@ export function apply(ctx: Context, config: ProviderRunConfig = {}): void {
     activeThreads,
     append,
     execute,
+    settingsFor: agents.settingsFor,
   }
 
   /** 取消排队中的 run；此时尚未创建 provider 会话，只需写终态并释放线程。 */
@@ -268,15 +260,31 @@ export function apply(ctx: Context, config: ProviderRunConfig = {}): void {
     for (const runId of [...activeRuns.keys()]) interruptRun(runId)
   }
 
+  /**
+   * 注销 driver（插件停用或卸载）：它的会话不能再继续，排队的取消、运行中的中断并释放会话，
+   * 免得留下插件启动的子进程。
+   */
+  function unregisterDriver(driverId: string): void {
+    const driver = drivers.get(driverId)
+    if (!driver) return
+    for (const entry of queue.values()) {
+      if (entry.driver === driver) cancelQueuedRun(entry.runId)
+    }
+    for (const run of [...activeRuns.values()]) {
+      if (run.driver !== driver) continue
+      interruptRun(run.runId)
+      void driver.dispose(run.session).catch(() => undefined)
+    }
+    drivers.delete(driverId)
+    agents.invalidate(driverId)
+  }
+
   const service: ProvidersService = {
     register(driver) {
       drivers.set(driver.id, driver)
-      catalogs.invalidate(driver.id)
+      agents.invalidate(driver.id)
     },
-    unregister(driverId) {
-      drivers.delete(driverId)
-      catalogs.invalidate(driverId)
-    },
+    unregister: unregisterDriver,
     list() {
       return [...drivers.values()].map((driver) => ({
         id: driver.id,
@@ -284,18 +292,13 @@ export function apply(ctx: Context, config: ProviderRunConfig = {}): void {
         capabilities: driver.capabilities,
       }))
     },
-    async detect() {
-      // Codex 与 Claude 都只做只读探测；fake 永远可用，保证离线也能开发。
-      const [claude, codex] = await Promise.all([detectClaude(), detectCodex()])
-      return { claude, codex, fake: { installed: true } }
-    },
-    async models(providerId) {
-      const driver = drivers.get(providerId)
-      return catalogs.get(providerId, async () => normalizeModels(await listProviderModels(driver)))
-    },
-    defaultProvider() {
-      return defaultProvider((id) => drivers.has(id)) // 只接受已注册 driver。
-    },
+    detect: (options) => agents.detect(options),
+    models: (providerId) => agents.models(providerId),
+    defaultProvider: () => agents.defaultProvider(),
+    configuredDefaultProvider: () => agents.configuredDefault(),
+    setDefaultProvider: (providerId) => agents.setDefaultProvider(providerId),
+    getSettings: (providerId) => agents.settingsFor(providerId),
+    updateSettings: (providerId, values) => agents.updateSettings(providerId, values),
     async switchProvider(threadId, providerId, modelId) {
       // 运行中或排队中的线程不能切换：否则旧会话被 dispose，正在跑的 run 会失去驱动。
       if (activeThreads.has(threadId)) throw new RunAlreadyActiveError(threadId)
@@ -344,7 +347,7 @@ export function apply(ctx: Context, config: ProviderRunConfig = {}): void {
         const done = new Promise<void>((resolve) => {
           resolveDone = resolve
         })
-        const mcp = ctx.reflect.get("mcpBridge")?.sessionMcp(threadId, driver.id)
+        const mcp = ctx.reflect.get("mcpBridge")?.sessionMcp(threadId)
         const entry: QueuedRun = {
           runId,
           threadId,
@@ -355,7 +358,7 @@ export function apply(ctx: Context, config: ProviderRunConfig = {}): void {
           done,
           resolveDone,
           queuedAt: startedAt,
-          cwd: resolveThreadCwd(ctx, thread.id, thread.projectId),
+          cwd: threadCwd(ctx, thread.id),
           permissionMode: thread.permissionMode,
           model: thread.lastModelId,
           nativeSessionId: forkFrom ? null : (activeSession?.nativeSessionId ?? null),

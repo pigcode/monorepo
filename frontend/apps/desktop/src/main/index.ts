@@ -1,7 +1,22 @@
 /** Electron main：单实例、窗口、Host utilityProcess、原生桥与端口转交。 */
-import { app, BrowserWindow, dialog, ipcMain, Menu, nativeTheme, shell } from "electron"
+import {
+  app,
+  BrowserWindow,
+  dialog,
+  ipcMain,
+  Menu,
+  nativeTheme,
+  shell,
+  type MessageBoxSyncOptions,
+} from "electron"
 import { join } from "node:path"
-import { pickFolder, readFolderPickerLabels } from "./folder-picker"
+import {
+  pickFolder,
+  pickPath,
+  readExternalUrl,
+  readFolderPickerLabels,
+  readPathKind,
+} from "./folder-picker"
 import { startHostProcess, type HostProcess } from "./host-process"
 import { popupNativeMenu, readMenuPosition, readNativeMenu } from "./native-menu"
 import { appIcon } from "./app-icons"
@@ -10,12 +25,19 @@ import {
   launchCommand,
   launchDetached,
   readDirectory,
+  readExistingPath,
   settleOpenPath,
   type OpenAppInfo,
 } from "./open-in"
 import { setupBrowser } from "./browser-host"
 import { registerAppProtocol, registerPluginProtocol, registerPrivilegedSchemes } from "./protocol"
 import { closePreview, isAllowedPreviewUrl, openPreview } from "./preview"
+import {
+  DEFAULT_UNSAVED_LABELS,
+  confirmDiscard,
+  readUnsavedGuardLabels,
+  type UnsavedGuardLabels,
+} from "./unsaved-guard"
 import {
   TITLE_BAR_HEIGHT,
   createMainWindowOptions,
@@ -29,6 +51,7 @@ registerPrivilegedSchemes()
 let host: HostProcess | undefined
 let mainWindow: BrowserWindow | undefined
 let quitting = false
+let unsavedLabels: UnsavedGuardLabels = DEFAULT_UNSAVED_LABELS
 const browser = setupBrowser(() => mainWindow)
 
 /** 把应用内相对路径解析到 app.getAppPath() 之下。 */
@@ -86,6 +109,33 @@ function registerNativeBridge(): void {
       window,
       readFolderPickerLabels(labels),
     )
+  })
+  // agent 设置里选可执行文件或配置目录；kind 之外的值直接拒绝。
+  ipcMain.handle("pigcode:pick-path", (event, kind: unknown, labels: unknown) => {
+    const window = BrowserWindow.fromWebContents(event.sender)
+    const pathKind = readPathKind(kind)
+    if (!window || !pathKind) return null
+    return pickPath(
+      (parent, options) => dialog.showOpenDialog(parent, options),
+      window,
+      pathKind,
+      readFolderPickerLabels(labels),
+    )
+  })
+  ipcMain.handle("pigcode:unsaved-labels", (_event, value: unknown) => {
+    unsavedLabels = readUnsavedGuardLabels(value) ?? unsavedLabels
+  })
+  // 外部链接（agent 官网）交给系统浏览器；只接受不带凭据的 https。
+  ipcMain.handle("pigcode:open-external", async (_event, value: unknown) => {
+    const url = readExternalUrl(value)
+    if (!url) throw new Error("URL_NOT_ALLOWED")
+    await shell.openExternal(url)
+  })
+  // 文件树的「在文件管理器中显示」：只接受已存在的绝对路径。
+  ipcMain.handle("pigcode:reveal-path", (_event, value: unknown) => {
+    const path = readExistingPath(value)
+    if (!path) throw new Error("PATH_NOT_FOUND")
+    shell.showItemInFolder(path)
   })
   // 项目文件夹交给系统文件管理器打开；页面只能传已存在的目录。
   ipcMain.handle("pigcode:open-folder", async (_event, value: unknown) => {
@@ -167,6 +217,11 @@ export async function createWindow(): Promise<BrowserWindow> {
   }
   window.webContents.on("will-frame-navigate", guardFrame)
   window.webContents.on("will-redirect", guardFrame)
+  // 页面有未保存的文件修改时会阻止卸载；preventDefault 表示用户确认放弃，继续关闭或刷新。
+  window.webContents.on("will-prevent-unload", (event) => {
+    const show = (options: MessageBoxSyncOptions) => dialog.showMessageBoxSync(window, options)
+    if (confirmDiscard(show, unsavedLabels)) event.preventDefault()
+  })
   window.webContents.on("did-finish-load", () => {
     if (host) window.webContents.postMessage("pigcode:port", null, [host.appPort])
   })
@@ -174,20 +229,35 @@ export async function createWindow(): Promise<BrowserWindow> {
   return window
 }
 
-app.whenReady().then(async () => {
-  registerAppProtocol(resolveAppPath("out/renderer"))
-  registerPluginProtocol(profileDir())
-  host = startHost()
-  mainWindow = await createWindow()
+/**
+ * 默认 profile 只允许一个实例：两个 Host 同时读写一份数据库与 settings.json 会互相覆盖。
+ * 再次启动时把已有窗口带到前台后退出。显式指定 PIGCODE_PROFILE_DIR（E2E、并排的多个 profile）不加锁。
+ */
+const singleInstance = process.env.PIGCODE_PROFILE_DIR === undefined
+if (singleInstance && !app.requestSingleInstanceLock()) {
+  app.quit()
+} else {
+  app.on("second-instance", () => {
+    if (!mainWindow || mainWindow.isDestroyed()) return
+    if (mainWindow.isMinimized()) mainWindow.restore()
+    mainWindow.focus()
+  })
+  app.whenReady().then(async () => {
+    registerAppProtocol(resolveAppPath("out/renderer"))
+    registerPluginProtocol(profileDir())
+    host = startHost()
+    mainWindow = await createWindow()
 
-  if (process.env.PIGCODE_E2E === "1") {
-    app.on("pigcode:test-kill-host" as never, () => {
-      host?.stop()
-    })
-  }
-})
+    if (process.env.PIGCODE_E2E === "1") {
+      app.on("pigcode:test-kill-host" as never, () => {
+        host?.stop()
+      })
+    }
+  })
+}
 
-app.on("before-quit", () => {
+// 窗口都关掉以后才停 Host：退出时窗口可能因为未保存的修改被用户留下，退出随之取消。
+app.on("will-quit", () => {
   quitting = true
   host?.stop()
 })

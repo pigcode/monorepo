@@ -12,6 +12,7 @@ import {
   type LucideIcon,
 } from "lucide-react"
 import { Menu } from "@pigcode/ui-primitives"
+import { FileIcon } from "./file-icons"
 
 /** 可以打开的 surface 种类；顺序即启动器与添加菜单里的顺序。 */
 export const SURFACE_KINDS = ["browser", "terminal", "files", "diff", "pr", "checkpoint"] as const
@@ -32,6 +33,9 @@ export const SURFACE_SHORTCUTS: Record<SurfaceKind, string> = {
 /** 可以同时打开多个实例的种类；其余种类再次打开时切到已有标签。 */
 export const MULTI_INSTANCE_KINDS: ReadonlySet<SurfaceKind> = new Set(["browser", "terminal"])
 
+/** 标签的种类：启动器里的 surface，加上从文件树或聊天里打开的单个文件。 */
+export type PanelSurfaceKind = SurfaceKind | "file"
+
 const SURFACE_ICONS: Record<SurfaceKind, LucideIcon> = {
   browser: Globe,
   terminal: SquareTerminal,
@@ -44,12 +48,16 @@ const SURFACE_ICONS: Record<SurfaceKind, LucideIcon> = {
 /** 右侧面板里的一个标签。 */
 export interface PanelSurface {
   id: string
-  kind: SurfaceKind
+  kind: PanelSurfaceKind
   title: string
   /** 浏览器最近一次导航的地址；面板随会话重新挂载时用它恢复页面。 */
   url?: string
-  /** 文件标签要显示的文件（项目内相对路径），从聊天里点文件时设置。 */
+  /** 文件标签显示的文件（工作目录内的相对路径）。 */
   path?: string
+  /** 打开文件时定位到的行（从 1 开始）。 */
+  line?: number
+  /** 有未保存的修改；标签上显示圆点。 */
+  dirty?: boolean
 }
 
 /** 一组标签与当前激活的标签；没有标签时 activeId 为 null，面板显示启动器。 */
@@ -96,11 +104,50 @@ export function closeSurface(state: PanelSurfaceState, id: string): PanelSurface
   return { surfaces, activeId: next?.id ?? null }
 }
 
-/** 修改某个标签的标题、地址或文件，例如浏览器加载页面后显示主机名。 */
+/**
+ * 打开一个文件标签：同一文件已经打开时切过去（并更新要定位的行）；
+ * replace 给出时用新标签替换那个标签（从文件树标签打开文件时，文件树收进文件标签的侧栏）。
+ */
+export function openFileSurface(
+  state: PanelSurfaceState,
+  path: string,
+  id: string,
+  options: { line?: number | undefined; replace?: string | undefined } = {},
+): PanelSurfaceState {
+  const title = path.split("/").at(-1) ?? path
+  const existing = state.surfaces.find(
+    (surface) => surface.kind === "file" && surface.path === path,
+  )
+  if (existing) {
+    const surfaces = state.surfaces
+      .filter((surface) => surface.id !== options.replace || surface.id === existing.id)
+      .map((surface) =>
+        surface.id === existing.id && options.line ? { ...surface, line: options.line } : surface,
+      )
+    return { surfaces, activeId: existing.id }
+  }
+  const surface: PanelSurface = {
+    id,
+    kind: "file",
+    title,
+    path,
+    ...(options.line ? { line: options.line } : {}),
+  }
+  const index = options.replace
+    ? state.surfaces.findIndex((item) => item.id === options.replace)
+    : -1
+  const surfaces =
+    index === -1
+      ? [...state.surfaces, surface]
+      : [...state.surfaces.slice(0, index), surface, ...state.surfaces.slice(index + 1)]
+  return { surfaces, activeId: id }
+}
+
+/** 修改某个标签的标题、地址、文件或未保存状态，例如浏览器加载页面后显示主机名。 */
 export function updateSurface(
   state: PanelSurfaceState,
   id: string,
-  patch: Partial<Pick<PanelSurface, "title" | "url" | "path">>,
+  patch: Partial<Pick<PanelSurface, "title" | "url" | "path" | "dirty">>,
 ): PanelSurfaceState {
   return {
     ...state,
@@ -177,7 +224,8 @@ function shortcutKind(
   return available.find((kind) => SURFACE_SHORTCUTS[kind] === key) ?? null
 }
 
-function SurfaceIcon({ kind }: { kind: SurfaceKind }) {
+function SurfaceIcon({ kind, title }: { kind: PanelSurfaceKind; title?: string }) {
+  if (kind === "file") return <FileIcon name={title ?? ""} kind="file" />
   const Icon = SURFACE_ICONS[kind]
   return <Icon className="ic ic-sm" aria-hidden="true" />
 }
@@ -381,7 +429,7 @@ export function RightPanel({
                   onClick={() => onClose(surface.id)}
                 >
                   <span className="surface-tab-icon">
-                    <SurfaceIcon kind={surface.kind} />
+                    <SurfaceIcon kind={surface.kind} title={surface.title} />
                   </span>
                   <X className="ic ic-sm surface-tab-x" aria-hidden="true" />
                 </button>
@@ -395,6 +443,7 @@ export function RightPanel({
                   onClick={() => onActivate(surface.id)}
                 >
                   <span className="truncate">{surface.title}</span>
+                  {surface.dirty ? <span className="surface-tab-dirty" aria-hidden="true" /> : null}
                 </button>
               </div>
             )

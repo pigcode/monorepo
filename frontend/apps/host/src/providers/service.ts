@@ -5,11 +5,12 @@ import type {
   ProviderEvent,
   ProviderModel,
   ProviderSession,
+  ProviderSettingsValues,
+  ProviderStatus,
   ReasoningEffort,
   RunStatus,
 } from "@pigcode/contracts"
-import type { ClaudeDetection } from "./claude/detect"
-import type { CodexDetection } from "./codex/detect"
+import type { DetectOptions } from "./agent-catalog"
 import type { ApprovalDecision, ApprovalRequest, ProviderDriver } from "./driver"
 import type { RestartRecovery } from "./restart"
 import type { RunSummary } from "./run-queue"
@@ -38,15 +39,19 @@ export interface ProvidersService {
   /** 移除插件注册的 driver；插件卸载时由其 effect 清理调用。 */
   unregister(driverId: string): void
   list(): Array<{ id: string; displayName: string; capabilities: ProviderCapabilities }>
-  detect(): Promise<{
-    claude: ClaudeDetection
-    codex: CodexDetection
-    fake: { installed: true }
-  }>
-  /** 读取 provider 的模型目录与各模型可选的思考深度；结果按 provider 缓存。 */
+  /** 只读检测已注册 agent：是否安装、版本与登录状态；结果短时缓存，refresh 时重新检测。 */
+  detect(options?: DetectOptions): Promise<Record<string, ProviderStatus>>
+  /** 读取 provider 的模型目录（含用户添加的自定义模型）；agent 自己的目录按 provider 缓存。 */
   models(providerId: string): Promise<ProviderModel[]>
-  /** 选择新线程默认 provider：显式 env 优先，否则 Claude 已安装且登录时用 Claude。 */
-  defaultProvider(): Promise<string>
+  /** 新会话的默认 agent：强制指定 > 用户选择 > 第一个可用的；没有任何 agent 时为 null。 */
+  defaultProvider(): Promise<string | null>
+  /** 用户在设置页选择的默认 agent；没选时为 null。 */
+  configuredDefaultProvider(): string | null
+  setDefaultProvider(providerId: string | null): void
+  /** agent 当前的设置值。 */
+  getSettings(providerId: string): ProviderSettingsValues
+  /** 整体替换 agent 的设置值，返回规范化后保存的值；对之后的检测、模型目录与新会话生效。 */
+  updateSettings(providerId: string, values: Record<string, unknown>): ProviderSettingsValues
   /** 切换线程 provider/model；同 provider 写 fork 源，跨 provider 写 handoff。 */
   switchProvider(threadId: string, providerId: string, modelId?: string | null): Promise<Switch>
   startRun(

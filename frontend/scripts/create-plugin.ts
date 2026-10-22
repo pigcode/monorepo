@@ -122,7 +122,7 @@ function manifestFor(
 
 /** provider 入口：一个把输入原样回显的最小 driver。 */
 function providerEntry(pkgName: string, name: string, displayName: string): string {
-  return `/** ${pkgName}：最小 provider 插件，把用户输入原样回显。 */
+  return `/** ${pkgName}：最小 agent（provider）插件，把用户输入原样回显。 */
 import type { PluginHostContext, ProviderPluginDriver } from "@pigcode/plugin-sdk"
 
 export const name = "${name}"
@@ -151,7 +151,8 @@ export function apply(ctx: PluginHostContext): void {
     },
     async createSession(input) {
       return {
-        id: "${name}_" + input.threadId,
+        // 会话 id 是 Host 数据库的主键：复用时沿用 Host 给的 id，新会话必须全局唯一。
+        id: input.sessionId ?? "${name}_" + crypto.randomUUID(),
         threadId: input.threadId,
         cwd: input.cwd,
         nativeSessionId: null,
@@ -251,7 +252,11 @@ function printResult(target: string, kind: Kind, pkgName: string, files: string[
   console.log(`  ${target}`)
   console.log("")
   console.log("安装方式:")
-  console.log("  桌面端: 设置 → 插件 → 在“插件目录或 npm 包”中填入上面的路径")
+  if (kind === "provider") {
+    console.log("  桌面端: 设置 → Agent → 安装 agent，填入上面的路径")
+  } else {
+    console.log("  桌面端: 设置 → 插件 → 在“插件目录或 npm 包”中填入上面的路径")
+  }
   console.log(`  RPC:    plugin.installLocal { "sourceDir": "${target}" }`)
 }
 

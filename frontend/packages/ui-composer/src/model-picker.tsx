@@ -257,7 +257,11 @@ export function ModelPicker({
                     const favorite = preferences.favorites.includes(key)
                     const subtitle = [
                       row.agent.label,
-                      row.model.isDefault ? t("composer.model.default") : row.model.description,
+                      row.model.isDefault
+                        ? t("composer.model.default")
+                        : row.model.custom
+                          ? t("composer.model.custom")
+                          : row.model.description,
                     ]
                       .filter(Boolean)
                       .join(" · ")

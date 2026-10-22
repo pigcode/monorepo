@@ -3,7 +3,7 @@ import { Context } from "cordis"
 import { describe, expect, it, vi } from "vitest"
 import type { ProviderDriver, UserInput } from "../providers/driver"
 import { apply as providers } from "../providers/registry"
-import { resolveThreadCwd } from "../providers/switching"
+import { threadCwd } from "../services/worktrees"
 import { apply as projects } from "../services/projects"
 import { apply as sessions } from "../services/sessions"
 import { apply as storage } from "../services/storage"
@@ -174,14 +174,14 @@ describe("sub-agent threads", () => {
     const { ctx, project } = await setup()
     const main = ctx.threads.create(project.id, "主会话", "rec")
     const child = ctx.threads.create(project.id, "子代理", "rec", main.id)
-    expect(resolveThreadCwd(ctx, child.id, project.id)).toBe(project.rootPath)
+    expect(threadCwd(ctx, child.id)).toBe(project.rootPath)
     ctx.storage.db
       .prepare(
         `INSERT INTO worktrees (id, project_id, thread_id, path, branch, status, created_at)
          VALUES ('wt_1', ?, ?, '/tmp/pigcode-subagents-wt', 'pigcode/main', 'active', ?)`,
       )
       .run(project.id, main.id, new Date().toISOString())
-    expect(resolveThreadCwd(ctx, child.id, project.id)).toBe("/tmp/pigcode-subagents-wt")
+    expect(threadCwd(ctx, child.id)).toBe("/tmp/pigcode-subagents-wt")
     await ctx.fiber.dispose()
   })
 })

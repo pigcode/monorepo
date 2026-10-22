@@ -1,5 +1,6 @@
-/** E2E 启动前构建 Electron 产物与 Host utilityProcess bundle。 */
+/** E2E 启动前构建 Electron 产物与 Host utilityProcess bundle，并清空上一次的用户 profile。 */
 import { execFileSync } from "node:child_process"
+import { rmSync } from "node:fs"
 import { fileURLToPath } from "node:url"
 
 /** 依次执行 electron-vite 构建和 Host esbuild 打包。 */
@@ -16,4 +17,6 @@ export default function globalSetup(): void {
     cwd: repoRoot,
     stdio: "inherit",
   })
+  const profileDir = process.env.PIGCODE_PROFILE_DIR
+  if (profileDir) rmSync(profileDir, { recursive: true, force: true })
 }

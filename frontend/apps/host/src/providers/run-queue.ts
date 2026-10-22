@@ -1,11 +1,6 @@
 /** 全局运行队列、排队条目与内存中的 run 句柄。 */
 import type { ProviderEvent, RunStatus } from "@pigcode/contracts"
-import type {
-  ProviderDriver,
-  ProviderSessionHandle,
-  SessionMcp,
-  UserInput,
-} from "./driver"
+import type { ProviderDriver, ProviderSessionHandle, SessionMcp, UserInput } from "./driver"
 
 /** 运行期内存状态；终态事件到达后从 activeRuns 移除。 */
 export interface ActiveRun {

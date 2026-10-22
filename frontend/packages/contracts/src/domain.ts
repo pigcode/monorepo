@@ -41,6 +41,8 @@ export const providerModelSchema = z.object({
   isDefault: z.boolean(),
   efforts: z.array(reasoningEffortSchema),
   defaultEffort: reasoningEffortSchema.nullable(),
+  /** 用户在 agent 设置里添加的模型 id，不在 agent 自己的目录里。 */
+  custom: z.boolean().optional(),
 })
 
 /** 项目实体，对应一个被 Pigcode 打开的本地根目录。 */

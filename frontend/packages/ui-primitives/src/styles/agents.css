@@ -1,0 +1,310 @@
+/* ─── Agent 设置页 ─────────────────────────────────────────
+   列表一行一个 agent：头像、名称与徽标、状态点与说明、启用开关；点开后下面展开编辑区。 */
+
+.agent-list {
+  overflow: hidden;
+}
+.agent-item + .agent-item {
+  box-shadow: inset 0 1px 0 var(--divider);
+}
+.agent-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 12px 0 0;
+}
+.agent-row-main {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  flex: 1;
+  min-width: 0;
+  min-height: 58px;
+  padding: 9px 4px 9px 12px;
+  text-align: left;
+  border-radius: var(--r-lg);
+  transition: background var(--t-fast);
+}
+.agent-row-main:hover {
+  background: var(--hover);
+}
+.agent-row-main:focus-visible {
+  outline: 2px solid var(--border-focus);
+  outline-offset: -2px;
+}
+.agent-avatar {
+  --agent-hue: 264;
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 9px;
+  font-size: 12px;
+  font-weight: 650;
+  letter-spacing: 0.02em;
+  color: oklch(42% 0.12 var(--agent-hue));
+  background: oklch(92% 0.045 var(--agent-hue));
+}
+[data-theme="dark"] .agent-avatar {
+  color: oklch(86% 0.09 var(--agent-hue));
+  background: oklch(32% 0.06 var(--agent-hue));
+}
+.agent-row-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+.agent-row-title {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  font-size: var(--fs-md);
+  font-weight: var(--font-weight-ui);
+  color: var(--fg);
+}
+.agent-version {
+  color: var(--faint);
+  font-size: var(--fs-xs);
+  font-variant-numeric: tabular-nums;
+}
+.agent-row-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  color: var(--muted);
+  font-size: var(--fs-sm);
+}
+.agent-row-detail {
+  color: var(--faint);
+}
+.agent-dot {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--faint);
+}
+.agent-row-status[data-tone="ready"] .agent-dot {
+  background: var(--ok);
+}
+.agent-row-status[data-tone="warning"] .agent-dot {
+  background: var(--warn);
+}
+.agent-row-status[data-tone="error"] .agent-dot {
+  background: var(--bad);
+}
+.agent-row-status[data-tone="checking"] .agent-dot {
+  background: var(--info);
+  animation: agent-pulse 1.2s ease-in-out infinite;
+}
+.agent-row-status[data-tone="off"] {
+  color: var(--faint);
+}
+@keyframes agent-pulse {
+  50% {
+    opacity: 0.35;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .agent-row-status[data-tone="checking"] .agent-dot {
+    animation: none;
+  }
+}
+.agent-chevron {
+  flex: none;
+  color: var(--faint);
+  transition: transform var(--t-fast);
+}
+.agent-row[data-expanded] .agent-chevron {
+  transform: rotate(180deg);
+}
+
+/* 编辑区：与列表同一张卡片，上面一条分隔线；分节标题小一号。 */
+.agent-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding: 4px 16px 14px 55px;
+}
+.agent-description {
+  color: var(--fg-2);
+  font-size: var(--fs-sm);
+  line-height: 1.6;
+}
+.agent-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin-left: 6px;
+  color: var(--link);
+}
+.agent-link:hover {
+  text-decoration: underline;
+}
+.agent-facts {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 5px 14px;
+  font-size: var(--fs-sm);
+}
+.agent-facts:empty {
+  display: none;
+}
+.agent-facts dt {
+  color: var(--muted);
+}
+.agent-facts dd {
+  color: var(--fg-2);
+  overflow-wrap: anywhere;
+}
+.agent-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.agent-section h3 {
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.agent-section .cap-list {
+  justify-content: flex-start;
+}
+.agent-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.agent-field-label {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  font-size: var(--fs-sm);
+  color: var(--fg);
+}
+.agent-muted {
+  color: var(--muted);
+  font-size: var(--fs-sm);
+  line-height: 1.5;
+}
+.agent-input-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.agent-input {
+  flex: 1;
+  min-width: 0;
+}
+.agent-input.mono {
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+}
+.agent-select {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 180px;
+  text-align: left;
+}
+.agent-env {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.agent-env-row {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 3fr) auto;
+  gap: 6px;
+  align-items: center;
+}
+.agent-add {
+  align-self: flex-start;
+}
+.agent-models {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.agent-model-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.agent-model-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 4px 3px 9px;
+  border-radius: 999px;
+  background: var(--field);
+  box-shadow: inset 0 0 0 1px var(--border);
+  font-size: var(--fs-sm);
+}
+.agent-model-chip button {
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  color: var(--muted);
+}
+.agent-model-chip button:hover {
+  background: var(--hover);
+  color: var(--fg);
+}
+.agent-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding-top: 12px;
+  box-shadow: inset 0 1px 0 var(--divider);
+}
+.agent-actions .spacer {
+  flex: 1;
+}
+.agent-notice {
+  color: var(--muted);
+  font-size: var(--fs-sm);
+}
+
+/* 安装对话框 */
+.agent-install {
+  width: min(520px, calc(100vw - 48px));
+}
+.agent-install form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.agent-install-title {
+  font-size: var(--fs-lg);
+  font-weight: 600;
+}
+.agent-trust {
+  display: flex;
+  gap: 7px;
+  align-items: flex-start;
+  padding: 9px 11px;
+  border-radius: var(--r-md);
+  background: var(--warn-soft);
+  color: var(--warn-text);
+  font-size: var(--fs-sm);
+  line-height: 1.5;
+}
+.agent-trust .ic {
+  flex: none;
+  margin-top: 2px;
+}
+.agent-install-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}

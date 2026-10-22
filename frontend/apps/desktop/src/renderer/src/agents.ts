@@ -17,6 +17,7 @@ export function toComposerModel(model: ProviderModel): ComposerModel {
     isDefault: model.isDefault,
     efforts: model.efforts,
     defaultEffort: model.defaultEffort,
+    ...(model.custom ? { custom: true } : {}),
   }
 }
 

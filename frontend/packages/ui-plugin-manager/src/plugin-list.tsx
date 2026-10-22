@@ -1,4 +1,5 @@
-// 插件列表：名称、版本、类型、API 版本、权限、冲突和启用状态，并提供启停按钮。
+// 插件列表：名称、版本、类型、API 版本、权限、冲突和启用状态，并提供启停与卸载按钮。
+import { useState } from "react"
 import { Badge, Button, useLocale, type MessageKey } from "@pigcode/ui-primitives"
 
 /** 插件类型，与 Host 的 boot graph 保持一致。 */
@@ -8,9 +9,14 @@ export type PluginKind = "provider" | "capability" | "ui" | "bundle"
 export interface PluginSummary {
   id: string
   name: string
+  /** manifest 的 displayName；旧 Host 没有这个字段时用包名。 */
+  displayName?: string
+  description?: string | null
   version: string
   kind: PluginKind
   enabled: boolean
+  /** 随应用内置：可以停用，不能卸载。 */
+  builtin?: boolean
   /** manifest 声明的 API 版本；manifest 不可用时为 0。 */
   apiVersion: number
   /** 安装时需要展示给用户的权限列表。 */
@@ -39,11 +45,20 @@ export interface PluginListProps {
   pendingId: string | null
   onEnable: (id: string) => void
   onDisable: (id: string) => void
+  /** 卸载用户安装的插件；内置插件不显示卸载按钮。 */
+  onUninstall?: ((id: string) => void) | undefined
 }
 
-/** 渲染已安装插件；列表为空时显示空状态。 */
-export function PluginList({ plugins, pendingId, onEnable, onDisable }: PluginListProps) {
+/** 渲染已安装插件；列表为空时显示空状态。卸载需要再点一次确认。 */
+export function PluginList({
+  plugins,
+  pendingId,
+  onEnable,
+  onDisable,
+  onUninstall,
+}: PluginListProps) {
   const { t } = useLocale()
+  const [confirming, setConfirming] = useState<string | null>(null)
 
   if (plugins.length === 0) {
     return <div className="empty">{t("plugins.empty")}</div>
@@ -63,7 +78,8 @@ export function PluginList({ plugins, pendingId, onEnable, onDisable }: PluginLi
             <div className="item" key={plugin.id}>
               <div className="main">
                 <div className="ttl">
-                  {plugin.name}
+                  {plugin.displayName ?? plugin.name}
+                  {plugin.builtin ? <Badge variant="primary">{t("plugins.builtin")}</Badge> : null}
                   <Badge>{plugin.version}</Badge>
                   <Badge variant="info">{t(kindKeys[plugin.kind])}</Badge>
                   <Badge variant="neutral">{`API ${plugin.apiVersion}`}</Badge>
@@ -71,6 +87,7 @@ export function PluginList({ plugins, pendingId, onEnable, onDisable }: PluginLi
                     {plugin.enabled ? t("plugins.enabled") : t("plugins.disabled")}
                   </Badge>
                 </div>
+                {plugin.description ? <div className="desc">{plugin.description}</div> : null}
                 <div className="desc mono">{plugin.id}</div>
                 {plugin.permissions.length > 0 ? (
                   <div className="desc" aria-label={t("plugins.permissions")}>
@@ -90,6 +107,32 @@ export function PluginList({ plugins, pendingId, onEnable, onDisable }: PluginLi
                 {showError ? <div className="desc error-text">{plugin.error}</div> : null}
               </div>
               <div className="trail">
+                {onUninstall && !plugin.builtin ? (
+                  confirming === plugin.id ? (
+                    <Button
+                      size="sm"
+                      variant="danger"
+                      type="button"
+                      disabled={pending}
+                      onClick={() => {
+                        setConfirming(null)
+                        onUninstall(plugin.id)
+                      }}
+                    >
+                      {t("plugins.uninstallConfirm")}
+                    </Button>
+                  ) : (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      type="button"
+                      disabled={pending}
+                      onClick={() => setConfirming(plugin.id)}
+                    >
+                      {t("plugins.uninstall")}
+                    </Button>
+                  )
+                ) : null}
                 {plugin.enabled ? (
                   <Button
                     size="sm"

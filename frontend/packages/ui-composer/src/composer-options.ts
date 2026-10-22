@@ -84,6 +84,8 @@ export interface ComposerModel {
   isDefault: boolean
   efforts: readonly ReasoningEffort[]
   defaultEffort: ReasoningEffort | null
+  /** 用户在 agent 设置里添加的模型。 */
+  custom?: boolean | undefined
 }
 
 /** 各 agent 的模型目录；undefined 表示还没读取。 */

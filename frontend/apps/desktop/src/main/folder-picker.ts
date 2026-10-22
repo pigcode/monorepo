@@ -40,3 +40,38 @@ export async function pickFolder(
   if (result.canceled) return null
   return result.filePaths[0] ?? null
 }
+
+/** agent 设置里的路径选择：可执行文件或配置目录；只接受这两种。 */
+export function readPathKind(value: unknown): "file" | "directory" | null {
+  return value === "file" || value === "directory" ? value : null
+}
+
+/**
+ * 选择一个文件或文件夹，用于 agent 的可执行文件与配置目录。
+ * 显示隐藏文件：~/.claude、~/.codex 这类配置目录默认是隐藏的。
+ */
+export async function pickPath(
+  showOpenDialog: ShowOpenDialog,
+  window: BrowserWindow,
+  kind: "file" | "directory",
+  labels: FolderPickerLabels,
+): Promise<string | null> {
+  const result = await showOpenDialog(window, {
+    properties: [kind === "file" ? "openFile" : "openDirectory", "showHiddenFiles"],
+    ...labels,
+  })
+  if (result.canceled) return null
+  return result.filePaths[0] ?? null
+}
+
+/** 只允许打开不带凭据的 https 链接，例如 agent 的官网。 */
+export function readExternalUrl(value: unknown): string | null {
+  if (typeof value !== "string") return null
+  try {
+    const url = new URL(value)
+    if (url.protocol !== "https:" || url.username || url.password) return null
+    return url.toString()
+  } catch {
+    return null
+  }
+}

@@ -32,10 +32,7 @@ export interface CommandPaletteProps {
 }
 
 /** 行动项固定顺序；会话和项目按最近使用排在后面。 */
-function actionItems(
-  t: (key: MessageKey) => string,
-  props: CommandPaletteProps,
-): PaletteItem[] {
+function actionItems(t: (key: MessageKey) => string, props: CommandPaletteProps): PaletteItem[] {
   return [
     {
       id: "new-thread",
@@ -162,7 +159,9 @@ export function CommandPalette(props: CommandPaletteProps) {
       }
       if (event.key === "ArrowUp") {
         event.preventDefault()
-        setActive((value) => (visible.length === 0 ? 0 : (value - 1 + visible.length) % visible.length))
+        setActive((value) =>
+          visible.length === 0 ? 0 : (value - 1 + visible.length) % visible.length,
+        )
         return
       }
       if (event.key === "Enter" && current) {

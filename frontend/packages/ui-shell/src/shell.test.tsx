@@ -228,7 +228,9 @@ describe("Shell", () => {
   })
 
   describe("thread shortcuts", () => {
-    const projects = [{ id: "p1", rootPath: "/tmp/alpha", name: "alpha", createdAt: "2026-10-20T00:00:00.000Z" }]
+    const projects = [
+      { id: "p1", rootPath: "/tmp/alpha", name: "alpha", createdAt: "2026-10-20T00:00:00.000Z" },
+    ]
     const threads = ["t1", "t2", "t3"].map((id, index) => ({
       id,
       projectId: "p1",
@@ -242,7 +244,8 @@ describe("Shell", () => {
       archivedAt: null,
       lastRunId: null,
     }))
-    const badges = () => Array.from(document.querySelectorAll(".sess-kbd")).map((node) => node.textContent)
+    const badges = () =>
+      Array.from(document.querySelectorAll(".sess-kbd")).map((node) => node.textContent)
 
     afterEach(() => {
       vi.useRealTimers()

@@ -124,7 +124,8 @@ export function menuTemplate(
 ): MenuItemConstructorOptions[] {
   return items.map((item): MenuItemConstructorOptions => {
     if ("type" in item) return { type: "separator" }
-    if ("role" in item) return item.label ? { role: item.role, label: item.label } : { role: item.role }
+    if ("role" in item)
+      return item.label ? { role: item.role, label: item.label } : { role: item.role }
     return {
       label: item.label,
       enabled: item.enabled ?? true,

@@ -86,14 +86,22 @@ describe("rpc server", () => {
     const { ctx, transport } = await createServer()
     const kept = ctx.projects.add("/tmp/pigcode-kept")
     const removed = ctx.projects.add("/tmp/pigcode-removed")
-    const busy = await ctx.providers.startRun(ctx.threads.create(removed.id, "Busy", "fake").id, "long")
-    const other = await ctx.providers.startRun(ctx.threads.create(kept.id, "Other", "fake").id, "long")
+    const busy = await ctx.providers.startRun(
+      ctx.threads.create(removed.id, "Busy", "fake").id,
+      "long",
+    )
+    const other = await ctx.providers.startRun(
+      ctx.threads.create(kept.id, "Other", "fake").id,
+      "long",
+    )
     const send = async (id: string, method: string, params: unknown) => {
       transport.client.send({ jsonrpc: "2.0", id, method, params })
       return transport.client.next()
     }
 
-    expect(await send("1", "project.rename", { projectId: kept.id, name: "  新名字  " })).toMatchObject({
+    expect(
+      await send("1", "project.rename", { projectId: kept.id, name: "  新名字  " }),
+    ).toMatchObject({
       result: { id: kept.id, name: "新名字" },
     })
     expect(await send("2", "project.rename", { projectId: kept.id, name: "   " })).toMatchObject({
