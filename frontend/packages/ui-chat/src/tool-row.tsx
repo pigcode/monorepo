@@ -75,7 +75,8 @@ function StatusWord({ status }: { status: ToolRowStatus }) {
     <Tooltip.Root>
       <Tooltip.Trigger
         delay={150}
-        render={<span className="tool-row-status has-tip" />}
+        // 空 title 挡住整行的原生提示，悬停时只出现失败原因这一个提示。
+        render={<span className="tool-row-status has-tip" title="" />}
         onClick={(event) => event.stopPropagation()}
       >
         {status.label}

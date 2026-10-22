@@ -11,7 +11,7 @@ import { ReasoningBlock } from "./reasoning"
 import { StatusPanel } from "./status-panel"
 import { resetToolOpen } from "./tool-open"
 import { ConversationActionsContext, type ConversationActions } from "./tools"
-import { TurnNavigator } from "./turn-navigator"
+import { TurnNavigator, plainPreview } from "./turn-navigator"
 import { buildTimeline } from "./turns"
 import { UserBubble } from "./user-bubble"
 
@@ -179,5 +179,13 @@ describe("TurnNavigator", () => {
     await userEvent.click(screen.getByRole("button", { name: "跳转到第 1 条问题" }))
     expect(section.scrollIntoView).toHaveBeenCalled()
     scroller.remove()
+  })
+
+  it("previews answers without Markdown syntax", () => {
+    expect(
+      plainPreview(
+        "## 改动\n\n| 文件 | 改动 |\n| --- | :---: |\n| `src/a.ts` | **新建** |\n\n```ts\nconst a = 1\n```\n- 跑过 [测试](https://x.dev)",
+      ),
+    ).toBe("改动 文件 改动 src/a.ts 新建 跑过 测试")
   })
 })

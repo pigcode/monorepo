@@ -14,10 +14,12 @@ interface NavItem {
   running: boolean
 }
 
-/** 去掉 Markdown 记号，留一段可读的预览。 */
-function plainPreview(text: string): string {
+/** 去掉 Markdown 记号（代码块、表格分隔行与竖线、标题、列表符号与强调），留一段可读的预览。 */
+export function plainPreview(text: string): string {
   return text
     .replace(/```[\s\S]*?(```|$)/g, " ")
+    .replace(/^\s*\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)*\|?\s*$/gm, " ")
+    .replace(/[ \t]*\|[ \t]*/g, " ")
     .replace(/`([^`]*)`/g, "$1")
     .replace(/!?\[([^\]]*)\]\([^)]*\)/g, "$1")
     .replace(/^\s{0,3}(#{1,6}|>|[-*+]|\d+[.)])\s+/gm, "")
