@@ -428,4 +428,7 @@ export const enUS = {
   "plugins.kind.ui": "UI",
   "plugins.kind.bundle": "Bundle",
   "status.reconnected": "Reconnected",
+  "status.offline": "Can't reach the Host, retrying…",
+  "status.connecting": "Connecting to the Host…",
+  "status.dismiss": "Dismiss",
 } satisfies Record<keyof typeof zhCN, string>

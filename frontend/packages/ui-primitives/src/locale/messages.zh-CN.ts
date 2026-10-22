@@ -419,4 +419,7 @@ export const zhCN = {
   "plugins.kind.ui": "界面",
   "plugins.kind.bundle": "插件包",
   "status.reconnected": "已重新连接",
+  "status.offline": "连不上 Host，正在重试…",
+  "status.connecting": "正在连接 Host…",
+  "status.dismiss": "关闭提示",
 } as const
