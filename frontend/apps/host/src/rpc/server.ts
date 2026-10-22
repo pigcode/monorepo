@@ -302,9 +302,30 @@ export class RpcServer {
         return this.ctx.plugins.bootGraph()
       case "workspace.tree":
         return this.ctx.workspace.tree((parsed as { threadId: string }).threadId)
-      case "workspace.readFile": {
+      case "workspace.list": {
         const value = parsed as { threadId: string; path: string }
-        return this.ctx.workspace.readFile(value.threadId, value.path)
+        return this.ctx.workspace.list(value.threadId, value.path)
+      }
+      case "workspace.searchPaths": {
+        const value = parsed as { threadId: string; query: string; limit?: number }
+        return this.ctx.workspace.searchPaths(value.threadId, value.query, value.limit)
+      }
+      case "workspace.readFile": {
+        const value = parsed as { threadId: string; path: string; encoding?: "text" | "image" }
+        return this.ctx.workspace.readFile(value.threadId, value.path, value.encoding)
+      }
+      case "workspace.writeFile": {
+        const value = parsed as {
+          threadId: string
+          path: string
+          text: string
+          expectedMtimeMs?: number
+          eol?: "lf" | "crlf"
+        }
+        return this.ctx.workspace.writeFile(value.threadId, value.path, value.text, {
+          expectedMtimeMs: value.expectedMtimeMs,
+          eol: value.eol,
+        })
       }
       case "workspace.search": {
         const value = parsed as { threadId: string; query: string; glob?: string }

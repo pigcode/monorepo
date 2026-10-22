@@ -91,7 +91,31 @@ export const commandSchemas = {
   "plugin.uninstall": z.object({ id: z.string().min(1) }),
   "plugin.bootGraph": z.object({}),
   "workspace.tree": z.object({ threadId: z.string().min(1) }),
-  "workspace.readFile": z.object({ threadId: z.string().min(1), path: z.string().min(1) }),
+  /** 列出一个目录；path 为空表示线程的工作目录。 */
+  "workspace.list": z.object({
+    threadId: z.string().min(1),
+    path: z.string().max(4096).default(""),
+  }),
+  /** 按路径模糊搜索文件与目录。 */
+  "workspace.searchPaths": z.object({
+    threadId: z.string().min(1),
+    query: z.string().trim().min(1).max(256),
+    limit: z.number().int().min(1).max(500).optional(),
+  }),
+  /** 读取文件；encoding 为 image 时图片按 base64 返回。 */
+  "workspace.readFile": z.object({
+    threadId: z.string().min(1),
+    path: z.string().min(1),
+    encoding: z.enum(["text", "image"]).optional(),
+  }),
+  /** 保存编辑；expectedMtimeMs 防止覆盖别处的修改，eol 按原文件的换行符写回。 */
+  "workspace.writeFile": z.object({
+    threadId: z.string().min(1),
+    path: z.string().min(1),
+    text: z.string().max(5 * 1024 * 1024),
+    expectedMtimeMs: z.number().nonnegative().optional(),
+    eol: z.enum(["lf", "crlf"]).optional(),
+  }),
   "workspace.search": z.object({
     threadId: z.string().min(1),
     query: z.string().min(1),
