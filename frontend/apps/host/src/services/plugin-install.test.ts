@@ -119,10 +119,12 @@ describe("plugin install", () => {
       throw new Error("pnpm must not run for a local directory")
     }
     // 目录在这台机器上不存在：走本地安装会因找不到 package.json 失败，而不是交给 pnpm。
-    await expect(installPlugin(profileDir, "C:\\plugins\\echo", runner)).rejects.toThrow(/ENOENT/)
-    await expect(installPlugin(profileDir, "\\\\server\\share\\echo", runner)).rejects.toThrow(
-      /ENOENT/,
-    )
+    // Windows 上访问 UNC 路径会去找网络主机，只在别的平台上验证它。
+    const specs = ["C:\\plugins\\echo"]
+    if (process.platform !== "win32") specs.push("\\\\server\\share\\echo")
+    for (const spec of specs) {
+      await expect(installPlugin(profileDir, spec, runner)).rejects.toThrow(/ENOENT/)
+    }
   })
 
   it("selects the newly added dependency instead of the last one in package.json", async () => {
