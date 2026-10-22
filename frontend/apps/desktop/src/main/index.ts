@@ -1,5 +1,14 @@
 /** Electron main：单实例、窗口、Host utilityProcess、原生桥与端口转交。 */
-import { app, BrowserWindow, dialog, ipcMain, Menu, nativeTheme, shell } from "electron"
+import {
+  app,
+  BrowserWindow,
+  dialog,
+  ipcMain,
+  Menu,
+  nativeTheme,
+  shell,
+  type MessageBoxSyncOptions,
+} from "electron"
 import { join } from "node:path"
 import {
   pickFolder,
@@ -24,6 +33,12 @@ import { setupBrowser } from "./browser-host"
 import { registerAppProtocol, registerPluginProtocol, registerPrivilegedSchemes } from "./protocol"
 import { closePreview, isAllowedPreviewUrl, openPreview } from "./preview"
 import {
+  DEFAULT_UNSAVED_LABELS,
+  confirmDiscard,
+  readUnsavedGuardLabels,
+  type UnsavedGuardLabels,
+} from "./unsaved-guard"
+import {
   TITLE_BAR_HEIGHT,
   createMainWindowOptions,
   readThemeSource,
@@ -36,6 +51,7 @@ registerPrivilegedSchemes()
 let host: HostProcess | undefined
 let mainWindow: BrowserWindow | undefined
 let quitting = false
+let unsavedLabels: UnsavedGuardLabels = DEFAULT_UNSAVED_LABELS
 const browser = setupBrowser(() => mainWindow)
 
 /** 把应用内相对路径解析到 app.getAppPath() 之下。 */
@@ -105,6 +121,9 @@ function registerNativeBridge(): void {
       pathKind,
       readFolderPickerLabels(labels),
     )
+  })
+  ipcMain.handle("pigcode:unsaved-labels", (_event, value: unknown) => {
+    unsavedLabels = readUnsavedGuardLabels(value) ?? unsavedLabels
   })
   // 外部链接（agent 官网）交给系统浏览器；只接受不带凭据的 https。
   ipcMain.handle("pigcode:open-external", async (_event, value: unknown) => {
@@ -198,6 +217,11 @@ export async function createWindow(): Promise<BrowserWindow> {
   }
   window.webContents.on("will-frame-navigate", guardFrame)
   window.webContents.on("will-redirect", guardFrame)
+  // 页面有未保存的文件修改时会阻止卸载；preventDefault 表示用户确认放弃，继续关闭或刷新。
+  window.webContents.on("will-prevent-unload", (event) => {
+    const show = (options: MessageBoxSyncOptions) => dialog.showMessageBoxSync(window, options)
+    if (confirmDiscard(show, unsavedLabels)) event.preventDefault()
+  })
   window.webContents.on("did-finish-load", () => {
     if (host) window.webContents.postMessage("pigcode:port", null, [host.appPort])
   })
@@ -218,7 +242,8 @@ app.whenReady().then(async () => {
   }
 })
 
-app.on("before-quit", () => {
+// 窗口都关掉以后才停 Host：退出时窗口可能因为未保存的修改被用户留下，退出随之取消。
+app.on("will-quit", () => {
   quitting = true
   host?.stop()
 })

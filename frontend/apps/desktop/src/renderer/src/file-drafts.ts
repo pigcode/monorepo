@@ -27,6 +27,11 @@ export function setDraft(threadId: string, path: string, text: string | null): v
   for (const listener of [...listeners]) listener()
 }
 
+/** 是否还有没保存的修改；关闭或刷新窗口前据此拦一下。 */
+export function hasDrafts(): boolean {
+  return drafts.size > 0
+}
+
 /** 草稿变化时递增的版本号，供组件重新读取。 */
 export function useDraftVersion(): number {
   return useSyncExternalStore(

@@ -62,15 +62,17 @@ the parent thread's, then the project folder.
 
 Files works like t3code's explorer:
 
-- The tree loads folders lazily, merges single-child folder chains (`src/main/java`), dims
-  git-ignored entries, and marks changed files with their git status. Typing in the filter
-  searches every path in the worktree.
+- The tree loads folders lazily, dims git-ignored entries, and marks changed files with
+  their git status. Opening a folder whose only child is a folder opens the whole chain as
+  one row (`main/java/com/example`). Typing in the filter searches every path in the
+  worktree.
 - Arrow keys move and expand, `↵` opens, and the context menu opens a file, mentions it in
   the composer, copies its absolute or relative path, or reveals it in the file manager.
   Dragging a row onto the composer mentions it as well.
 - Files open in tabs with syntax highlighting (Shiki, following the app theme). Text files
-  are editable: `⌘S` saves, a dot marks unsaved tabs, and closing one asks first. If the
-  file changed on disk since it was opened, saving stops and offers to reload or overwrite.
+  are editable: `⌘S` saves, a dot marks unsaved tabs, and closing one asks first; so does
+  closing, quitting or reloading the window while any file is unsaved. If the file changed
+  on disk since it was opened, saving stops and offers to reload or overwrite.
   Files over 1 MB open read-only with the first 1 MB shown; images show a preview.
 - When the panel is narrow the tree becomes a drawer over the file instead of a column.
   The tree refreshes after agent runs, saves, checkpoint restores and worktree changes.

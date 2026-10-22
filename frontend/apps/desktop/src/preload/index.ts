@@ -26,6 +26,12 @@ contextBridge.exposeInMainWorld("pigcodeNative", {
     kind: "file" | "directory",
     labels?: { title?: string; buttonLabel?: string },
   ): Promise<string | null> => ipcRenderer.invoke("pigcode:pick-path", kind, labels),
+  setUnsavedLabels: (labels: {
+    message: string
+    detail: string
+    discard: string
+    cancel: string
+  }): Promise<void> => ipcRenderer.invoke("pigcode:unsaved-labels", labels),
   openExternal: (url: string): Promise<void> => ipcRenderer.invoke("pigcode:open-external", url),
   openFolder: (path: string): Promise<void> => ipcRenderer.invoke("pigcode:open-folder", path),
   revealPath: (path: string): Promise<void> => ipcRenderer.invoke("pigcode:reveal-path", path),

@@ -24,6 +24,7 @@ import { BrowserHost } from "./browser-host"
 import { PluginPanels } from "./client-plugins"
 import type { ChatSlotProps, CoreDeps } from "./chat-container"
 import { ConnectionBanner } from "./connection-banner"
+import { UnsavedGuard } from "./unsaved-guard"
 import {
   EMPTY_HISTORY,
   canGoBack,
@@ -438,6 +439,7 @@ export function App({ store, slots, connection, plugins, locale }: AppProps) {
       }
     >
       <ConnectionBanner store={store} />
+      <UnsavedGuard />
       <BrowserHost
         browsers={browsers}
         onNavigate={(browser, url) =>

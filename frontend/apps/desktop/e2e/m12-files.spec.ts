@@ -2,7 +2,13 @@
 import { execFileSync } from "node:child_process"
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
-import { _electron as electron, expect, test, type Page } from "@playwright/test"
+import {
+  _electron as electron,
+  expect,
+  test,
+  type ElectronApplication,
+  type Page,
+} from "@playwright/test"
 import { addProject, launchEnv } from "./projects"
 
 /** 一个带 git 历史、忽略目录、嵌套目录与图片的项目。 */
@@ -36,22 +42,27 @@ function row(page: Page, scope: string, name: string) {
   return page.locator(`${scope} [role="treeitem"]`).filter({ hasText: new RegExp(`^${name}`) })
 }
 
+/** 添加项目、开一个会话并打开右侧的文件面板。 */
+async function openFilesPanel(app: ElectronApplication, root: string): Promise<Page> {
+  const page = await app.firstWindow()
+  await addProject(app, page, root)
+  await page
+    .locator(".proj-block")
+    .filter({ hasText: "pigcode-e2e-files" })
+    .locator(".proj-add")
+    .click()
+  await expect(page.locator(".tiptap")).toHaveAttribute("contenteditable", "true")
+  await page.locator(".panel-top").getByRole("button", { name: "切换右侧面板" }).click()
+  await page.getByLabel("打开一个面板").getByRole("button", { name: /文件/ }).click()
+  return page
+}
+
 test("file explorer: browse, open, edit, save, search and refresh", async () => {
   const root = createProject()
   const app = await electron.launch({ args: ["."], env: launchEnv({ PIGCODE_FAKE_STEP_MS: "50" }) })
   try {
-    const page = await app.firstWindow()
-    await addProject(app, page, root)
-    await page
-      .locator(".proj-block")
-      .filter({ hasText: "pigcode-e2e-files" })
-      .locator(".proj-add")
-      .click()
-    await expect(page.locator(".tiptap")).toHaveAttribute("contenteditable", "true")
-
     // 打开文件树：目录在前，被 .gitignore 忽略的 node_modules 淡化显示。
-    await page.locator(".panel-top").getByRole("button", { name: "切换右侧面板" }).click()
-    await page.getByLabel("打开一个面板").getByRole("button", { name: /文件/ }).click()
+    const page = await openFilesPanel(app, root)
     const tree = ".files-surface"
     await expect(page.locator(`${tree} [role="treeitem"]`)).toHaveText([
       "node_modules",
@@ -174,5 +185,52 @@ test("file explorer: browse, open, edit, save, search and refresh", async () => 
     await expect(page.getByRole("tab", { name: "file-tree.tsx" })).toHaveCount(0)
   } finally {
     await app.close()
+  }
+})
+
+test("closing the window with unsaved file changes asks first", async () => {
+  const root = createProject()
+  const app = await electron.launch({ args: ["."], env: launchEnv({}) })
+  let exited = false
+  try {
+    const page = await openFilesPanel(app, root)
+    await row(page, ".files-surface", "README.md").click()
+    await page.getByRole("textbox", { name: "文件内容 README.md" }).click()
+    await page.keyboard.type("draft")
+    await expect(page.locator(".surface-tab-dirty")).toBeVisible()
+
+    // 系统确认框换成桩：第一次选「继续编辑」，第二次选「放弃修改」。
+    await app.evaluate(({ dialog }) => {
+      const answers = [1, 0]
+      const prompts: string[] = []
+      Object.assign(globalThis, { unsavedPrompts: prompts })
+      dialog.showMessageBoxSync = ((_window: unknown, options: { message: string }) => {
+        prompts.push(options.message)
+        return answers.shift() ?? 1
+      }) as typeof dialog.showMessageBoxSync
+    })
+    const prompts = () =>
+      app.evaluate(() => (globalThis as unknown as { unsavedPrompts: string[] }).unsavedPrompts)
+
+    // 退出被「继续编辑」取消：窗口、草稿都在，Host 也没有被停掉，会话照常回复。
+    await app.evaluate(({ app: electronApp }) => electronApp.quit())
+    await expect.poll(prompts).toEqual(["放弃未保存的修改？"])
+    expect(await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().length)).toBe(1)
+    await expect(page.locator(".surface-tab-dirty")).toBeVisible()
+    await page.locator(".tiptap").click()
+    await page.keyboard.type("still there?")
+    await page.keyboard.press("Enter")
+    await expect(
+      page.locator(".msg-ai").filter({ hasText: "Hello from fake provider" }),
+    ).toBeVisible()
+
+    // 关窗口时选「放弃修改」：应用退出，磁盘上的文件没被改动。
+    const exit = new Promise((resolve) => app.process().once("exit", resolve))
+    await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]?.close())
+    await exit
+    exited = true
+    expect(readFileSync(join(root, "README.md"), "utf8")).toBe("# Files demo\n")
+  } finally {
+    if (!exited) await app.close()
   }
 })

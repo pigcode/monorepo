@@ -33,6 +33,7 @@ export const filesZhCN = {
   "files.copied": "已复制",
   "files.discard.title": "放弃未保存的修改？",
   "files.discard.description": "{file} 有未保存的修改，关闭后这些修改会丢失。",
+  "files.discard.window": "有文件还没保存，关闭或刷新窗口后这些修改会丢失。",
   "files.discard.confirm": "放弃修改",
   "files.discard.cancel": "继续编辑",
 } as const
@@ -71,6 +72,8 @@ export const filesEnUS: Record<keyof typeof filesZhCN, string> = {
   "files.copied": "Copied",
   "files.discard.title": "Discard unsaved changes?",
   "files.discard.description": "{file} has unsaved changes. They will be lost if you close it.",
+  "files.discard.window":
+    "Some files have unsaved changes. They will be lost if you close or reload the window.",
   "files.discard.confirm": "Discard",
   "files.discard.cancel": "Keep editing",
 }
