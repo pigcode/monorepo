@@ -7,7 +7,7 @@
  */
 import { createHash } from "node:crypto"
 import { cp, mkdir, readFile, rm, writeFile } from "node:fs/promises"
-import { dirname, join } from "node:path"
+import { dirname, join, win32 } from "node:path"
 import { pathToFileURL } from "node:url"
 import { parse, stringify } from "yaml"
 import {
@@ -268,7 +268,8 @@ export async function installPlugin(
 ): Promise<InstalledPluginEntry> {
   const env = toEnv(input)
   const localPath = spec.startsWith("file:") ? spec.slice("file:".length) : spec
-  const isLocal = spec.startsWith(".") || spec.startsWith("/") || spec.startsWith("file:")
+  // win32.isAbsolute 同时认 `/x`、`C:\x` 与 UNC 路径；Windows 的文件夹选择框返回的是盘符路径。
+  const isLocal = spec.startsWith(".") || spec.startsWith("file:") || win32.isAbsolute(spec)
   if (isLocal && !isTarballPath(localPath)) {
     return installLocalPlugin(env, localPath)
   }
