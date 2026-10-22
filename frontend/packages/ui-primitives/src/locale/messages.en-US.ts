@@ -1,7 +1,9 @@
 /** 英文消息目录；key 必须与 zh-CN 完全一致。 */
+import { agentsEnUS } from "./agents.messages"
 import type { zhCN } from "./messages.zh-CN"
 
 export const enUS = {
+  ...agentsEnUS,
   "nav.newThread": "New chat",
   "nav.search": "Search",
   "nav.projects": "Projects",
@@ -75,7 +77,7 @@ export const enUS = {
   "settings.title": "Settings",
   "settings.general": "General",
   "settings.appearance": "Appearance",
-  "settings.providers": "Providers",
+  "settings.providers": "Agents",
   "settings.plugins": "Plugins",
   "settings.back": "Back to app",
   "settings.search": "Search settings",
@@ -193,6 +195,7 @@ export const enUS = {
   "composer.model.loading": "Loading models…",
   "composer.model.none": "No matching models",
   "composer.model.noFavorites": "Star a model to keep it here",
+  "composer.model.custom": "Custom",
   "composer.model.default": "Default",
   "composer.model.favorite": "Add to favorites",
   "composer.model.unfavorite": "Remove from favorites",
@@ -423,7 +426,7 @@ export const enUS = {
   "plugins.installFailed": "Install failed. Check the plugin directory or npm package name.",
   "plugins.actionFailed": "Action failed. Try again.",
   "plugins.open": "Open plugin manager",
-  "plugins.kind.provider": "Provider",
+  "plugins.kind.provider": "Agent",
   "plugins.kind.capability": "Capability",
   "plugins.kind.ui": "UI",
   "plugins.kind.bundle": "Bundle",

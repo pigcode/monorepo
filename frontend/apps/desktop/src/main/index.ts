@@ -1,7 +1,13 @@
 /** Electron main：单实例、窗口、Host utilityProcess、原生桥与端口转交。 */
 import { app, BrowserWindow, dialog, ipcMain, Menu, nativeTheme, shell } from "electron"
 import { join } from "node:path"
-import { pickFolder, readFolderPickerLabels } from "./folder-picker"
+import {
+  pickFolder,
+  pickPath,
+  readExternalUrl,
+  readFolderPickerLabels,
+  readPathKind,
+} from "./folder-picker"
 import { startHostProcess, type HostProcess } from "./host-process"
 import { popupNativeMenu, readMenuPosition, readNativeMenu } from "./native-menu"
 import { appIcon } from "./app-icons"
@@ -86,6 +92,24 @@ function registerNativeBridge(): void {
       window,
       readFolderPickerLabels(labels),
     )
+  })
+  // agent 设置里选可执行文件或配置目录；kind 之外的值直接拒绝。
+  ipcMain.handle("pigcode:pick-path", (event, kind: unknown, labels: unknown) => {
+    const window = BrowserWindow.fromWebContents(event.sender)
+    const pathKind = readPathKind(kind)
+    if (!window || !pathKind) return null
+    return pickPath(
+      (parent, options) => dialog.showOpenDialog(parent, options),
+      window,
+      pathKind,
+      readFolderPickerLabels(labels),
+    )
+  })
+  // 外部链接（agent 官网）交给系统浏览器；只接受不带凭据的 https。
+  ipcMain.handle("pigcode:open-external", async (_event, value: unknown) => {
+    const url = readExternalUrl(value)
+    if (!url) throw new Error("URL_NOT_ALLOWED")
+    await shell.openExternal(url)
   })
   // 项目文件夹交给系统文件管理器打开；页面只能传已存在的目录。
   ipcMain.handle("pigcode:open-folder", async (_event, value: unknown) => {

@@ -177,6 +177,15 @@ export function App({ store, slots, connection, plugins, locale }: AppProps) {
     if (!project) return
     try {
       const providerId = await pickProviderId(connection)
+      if (!providerId) {
+        store.update({
+          error:
+            locale === "en-US"
+              ? "No agent available. Enable or install one in Settings → Agents."
+              : "没有可用的 agent：在「设置 → Agent」里启用或安装一个。",
+        })
+        return
+      }
       const thread = (await connection.call("thread.create", {
         projectId: project.id,
         title: locale === "en-US" ? "New thread" : "新会话",

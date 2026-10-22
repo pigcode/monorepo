@@ -1,5 +1,8 @@
-/** 简体中文消息目录；新增 key 时先加在这里。 */
+/** 简体中文消息目录；新增 key 时先加在这里，成组的文案放在单独的模块里合并进来。 */
+import { agentsZhCN } from "./agents.messages"
+
 export const zhCN = {
+  ...agentsZhCN,
   "nav.newThread": "新会话",
   "nav.search": "搜索",
   "nav.projects": "项目",
@@ -73,7 +76,7 @@ export const zhCN = {
   "settings.title": "设置",
   "settings.general": "通用",
   "settings.appearance": "外观",
-  "settings.providers": "服务提供方",
+  "settings.providers": "Agent",
   "settings.plugins": "插件",
   "settings.back": "返回应用",
   "settings.search": "搜索设置",
@@ -189,6 +192,7 @@ export const zhCN = {
   "composer.model.loading": "正在读取模型…",
   "composer.model.none": "没有匹配的模型",
   "composer.model.noFavorites": "点模型右侧的星标，把常用模型收藏到这里",
+  "composer.model.custom": "自定义",
   "composer.model.default": "默认",
   "composer.model.favorite": "收藏",
   "composer.model.unfavorite": "取消收藏",
@@ -414,7 +418,7 @@ export const zhCN = {
   "plugins.installFailed": "安装失败，请检查插件目录或 npm 包名",
   "plugins.actionFailed": "操作失败，请重试",
   "plugins.open": "打开插件管理",
-  "plugins.kind.provider": "服务提供方",
+  "plugins.kind.provider": "Agent",
   "plugins.kind.capability": "能力",
   "plugins.kind.ui": "界面",
   "plugins.kind.bundle": "插件包",
