@@ -39,7 +39,7 @@ test("composer: agent rail, models, thinking depth, permissions, @files and /com
     await page.getByRole("button", { name: "开启完全访问" }).click()
     await expect(page.getByRole("button", { name: "权限: 完全访问" })).toBeVisible()
 
-    // @ 引用文件，发送后用户消息里是 @路径。
+    // @ 引用文件，发送后用户气泡里是带图标的文件名，悬停看到完整路径。
     await page.locator(".tiptap").click()
     await page.keyboard.type("look at @ind")
     await expect(page.getByRole("listbox", { name: "文件" })).toContainText("index.ts")
@@ -47,9 +47,9 @@ test("composer: agent rail, models, thinking depth, permissions, @files and /com
     await expect(page.locator(".tiptap .mention-chip")).toHaveText("@src/index.ts")
     await page.keyboard.type("please")
     await page.keyboard.press("Enter")
-    await expect(
-      page.locator(".msg-user").filter({ hasText: "look at @src/index.ts please" }),
-    ).toBeVisible()
+    const sent = page.locator(".msg-user").filter({ hasText: "look at" })
+    await expect(sent).toHaveText("look at index.ts please")
+    await expect(sent.locator(".mention-file")).toHaveAttribute("title", "src/index.ts")
     await expect(
       page.locator(".msg-ai").filter({ hasText: "Hello from fake provider" }),
     ).toBeVisible()
@@ -70,45 +70,51 @@ test("composer: agent rail, models, thinking depth, permissions, @files and /com
 })
 
 test("timeline folds a finished turn's work and the sidebar animates running threads", async () => {
-  const { app, page } = await openThread("timeline", { PIGCODE_FAKE_STEP_MS: "500" })
+  const { app, page } = await openThread("timeline", { PIGCODE_FAKE_STEP_MS: "1200" })
   try {
     await page.locator(".tiptap").click()
     await page.keyboard.type("tools")
     await page.keyboard.press("Enter")
 
-    // 运行中：侧栏显示点阵，线程头只有标签、没有状态胶囊；工作区展开并实时计时。
+    // 运行中：侧栏显示点阵，线程头只有标签、没有状态胶囊；工作区展开、没有箭头并实时计时。
     await expect(page.locator(".sess.is-active .sess-indicator .dot-matrix")).toBeVisible()
     await expect(page.locator(".panel-top .status-pill")).toHaveCount(0)
     await expect(page.locator(".thread-tab[data-kind='main']")).toHaveAttribute(
       "data-active",
       "true",
     )
-    await expect(page.getByRole("button", { name: /工作中/ })).toBeVisible()
+    await expect(page.getByRole("button", { name: /工作中/ })).toBeDisabled()
     await expect(page.locator(".turn-work .tool-row").first()).toBeVisible()
-    // 命令运行中自动展开，输出一段段流进来。
+    // 右上角的状态胶囊显示当前待办。
+    await expect(page.getByRole("button", { name: "展开状态" })).toContainText("阅读 README")
+    // 运行中的命令「正在执行」扫光、默认收起；点开后输出一段段流进来。
     const live = page.locator(".cmd-row[data-status='running']")
     await expect(live.locator(".tool-shimmer")).toHaveText("正在执行")
-    await expect(live.locator(".cmd-output")).toContainText("eslint src")
+    await expect(live.locator(".tool-row-head")).toHaveAttribute("aria-expanded", "false")
+    await live.locator(".tool-row-head").click()
+    const lint = page.locator(".cmd-row").filter({ hasText: "pnpm lint" }).first()
+    await expect(lint.locator(".cmd-output")).toContainText("eslint src")
 
-    // 结束后折叠成「已工作」，只留最终回答；展开后看到查阅分组与命令。
+    // 结束后折叠成「已工作」，只留最终回答与改动汇总；展开后看到查阅分组与命令。
     const header = page.getByRole("button", { name: /已工作/ })
-    await expect(header).toBeVisible({ timeout: 20_000 })
+    await expect(header).toBeVisible({ timeout: 30_000 })
     await expect(page.locator(".sess.is-active .sess-indicator")).toHaveCount(0)
     await expect(page.locator(".msg-ai").filter({ hasText: "改好了" })).toBeVisible()
     await expect(page.locator(".turn-work")).toHaveCount(0)
     await header.click()
-    await expect(page.getByRole("button", { name: /查阅/ })).toContainText("2 个文件 · 1 次搜索")
-    // 第一次 lint 失败显示退出码；修好后的命令展开能看到 `$ 命令` 与完整输出。
-    await expect(page.locator(".cmd-row[data-status='failed']")).toContainText("退出码 1")
+    await expect(page.getByRole("button", { name: /查阅/ })).toContainText("2 文件, 1 搜索")
+    // 第一次 lint 失败显示「执行失败」，悬停看到退出码；修好后的命令展开能看到 `$ 命令` 与完整输出。
+    const failed = page.locator(".cmd-row[data-status='failed']")
+    await failed.locator(".tool-row-status").hover()
+    await expect(page.locator(".tool-tip")).toContainText("退出码 1")
     const command = page.locator(".cmd-row").filter({ hasText: "pnpm lint && pnpm test" })
-    await command.locator(".tool-row-head").click()
+    await command.locator(".tool-row-kind").click()
     await expect(command.locator(".cmd-text pre")).toHaveText("pnpm lint && pnpm test")
     await expect(command.locator(".cmd-output")).toContainText("Tests  3 passed")
 
-    // 从时间线打开右栏：编辑行末尾的按钮在这个文件自己的标签里打开它，改动入口打开 Diff。
+    // 从时间线打开右栏：编辑行里的文件名在这个文件自己的标签里打开它，改动汇总的「审查」打开 Diff。
     const edit = page.locator(".tool-row").filter({ hasText: "编辑" }).first()
-    await edit.hover()
-    await edit.getByRole("button", { name: "在文件面板中打开 src/index.ts" }).click()
+    await edit.getByRole("button", { name: "index.ts", exact: true }).click()
     const panelTabs = page.locator(".right-panel").getByRole("tab")
     await expect(
       page.locator(".right-panel").getByRole("tab", { name: "index.ts" }),
@@ -116,7 +122,8 @@ test("timeline folds a finished turn's work and the sidebar animates running thr
     await expect(page.getByRole("textbox", { name: "文件内容 src/index.ts" })).toHaveValue(
       "export const answer = 42\n",
     )
-    await page.getByRole("button", { name: /改了 1 个文件/ }).click()
+    await page.getByRole("button", { name: "展开已更改文件" }).click()
+    await page.getByRole("button", { name: "审查" }).click()
     await expect(panelTabs).toHaveText(["index.ts", "Diff"])
     await expect(page.locator(".right-panel").getByRole("tab", { name: "Diff" })).toHaveAttribute(
       "aria-selected",
