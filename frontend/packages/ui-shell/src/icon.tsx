@@ -37,7 +37,8 @@ const marks: Record<string, string> = {
   compose:
     '<path d="M11 4.5H6.5a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2V13"/><path d="M17.7 3.8a1.9 1.9 0 0 1 2.6 2.7l-7.8 7.8-3.5.8.8-3.5z"/>',
   "arrow-left": '<path d="M19 12H5M11 6l-6 6 6 6"/>',
-  monitor: '<rect x="3.5" y="4.5" width="17" height="11.5" rx="2"/><path d="M8.5 19.5h7M12 16v3.5"/>',
+  monitor:
+    '<rect x="3.5" y="4.5" width="17" height="11.5" rx="2"/><path d="M8.5 19.5h7M12 16v3.5"/>',
   "folder-plus":
     '<path d="M20.5 12V10a2 2 0 0 0-2-2h-7l-2-2.5h-4a2 2 0 0 0-2 2V17a2 2 0 0 0 2 2H12"/><path d="M18 15v6M15 18h6"/>',
   file: '<path d="M7 3.5h6.5L18 8v12.5H7z"/><path d="M13 3.5V8h5"/>',

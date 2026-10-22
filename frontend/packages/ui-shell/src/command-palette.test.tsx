@@ -78,8 +78,14 @@ describe("CommandPalette", () => {
       lastRunId: null,
     })
     renderPalette({
-      projects: [{ id: "p1", rootPath: "/tmp/p1", name: "p1", createdAt: "2026-10-20T00:00:00.000Z" }],
-      threads: [thread("t1", "p1"), thread("t2", "p1", "2026-10-21T00:00:00.000Z"), thread("t3", "removed")],
+      projects: [
+        { id: "p1", rootPath: "/tmp/p1", name: "p1", createdAt: "2026-10-20T00:00:00.000Z" },
+      ],
+      threads: [
+        thread("t1", "p1"),
+        thread("t2", "p1", "2026-10-21T00:00:00.000Z"),
+        thread("t3", "removed"),
+      ],
     })
 
     expect(screen.getByRole("option", { name: /Thread t1/ })).toBeTruthy()

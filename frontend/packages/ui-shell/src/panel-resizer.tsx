@@ -14,7 +14,10 @@ const RIGHT_STORAGE_KEY = "pigcode.rightWidth"
 
 /** 把右栏宽度限制在窗口可承受范围内。 */
 function clampRightWidth(width: number): number {
-  const max = Math.max(RIGHT_MIN, Math.round((typeof window === "undefined" ? 1200 : window.innerWidth) * RIGHT_MAX_RATIO))
+  const max = Math.max(
+    RIGHT_MIN,
+    Math.round((typeof window === "undefined" ? 1200 : window.innerWidth) * RIGHT_MAX_RATIO),
+  )
   return Math.min(max, Math.max(RIGHT_MIN, Math.round(width)))
 }
 
@@ -53,7 +56,13 @@ export function useRightWidth(): [number, (width: number) => void] {
 }
 
 /** 右栏左边的分隔条；向左拖变宽，向右拖变窄。 */
-export function PanelResizer({ width, onChange }: { width: number; onChange: (width: number) => void }) {
+export function PanelResizer({
+  width,
+  onChange,
+}: {
+  width: number
+  onChange: (width: number) => void
+}) {
   const { t } = useLocale()
 
   function startResize(event: ReactPointerEvent<HTMLDivElement>): void {

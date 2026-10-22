@@ -153,7 +153,9 @@ export function AddProjectDialog({ open, onOpenChange, onAdd }: AddProjectDialog
                 type="button"
                 className="project-folder"
                 data-selected={folder ? "" : undefined}
-                aria-label={folder ? `${t("project.add.change")} ${folder}` : t("project.add.choose")}
+                aria-label={
+                  folder ? `${t("project.add.change")} ${folder}` : t("project.add.choose")
+                }
                 aria-busy={picking || undefined}
                 disabled={!canPick}
                 onClick={() => void chooseFolder()}

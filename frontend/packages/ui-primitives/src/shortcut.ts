@@ -23,5 +23,7 @@ const MAC_KEYS: Record<string, string> = {
 export function formatShortcut(keys: string, mac: boolean = isMacPlatform()): string {
   const parts = keys.split("+")
   if (mac) return parts.map((part) => MAC_KEYS[part] ?? part.toUpperCase()).join("")
-  return parts.map((part) => (part === "Mod" ? "Ctrl" : part.length === 1 ? part.toUpperCase() : part)).join("+")
+  return parts
+    .map((part) => (part === "Mod" ? "Ctrl" : part.length === 1 ? part.toUpperCase() : part))
+    .join("+")
 }
