@@ -2,11 +2,14 @@
 
 Pigcode 插件就是普通的 npm 包：没有 `bundle-` 前缀，也没有第二套 manifest。
 插件可以只提供 Host 代码、只提供 UI 代码，或两者都提供。本文覆盖最小可运行结构、
-`package.json` 声明、provider / capability / UI 三类示例，以及安装、启停和冲突规则。
+`package.json` 声明、agent（provider）/ capability / UI 三类示例，以及安装、启停和冲突规则。
+
+驱动会话的 agent 本身也是插件：Claude Code 与 Codex 是随应用内置的 provider 插件，
+其他 agent 由用户按需安装，写法见 [agent（provider）插件](#agentprovider插件)。
 
 ## 目录结构
 
-一个最小的 Host 插件（provider 或 capability）：
+一个最小的 Host 插件（agent 或 capability）：
 
 ```text
 my-plugin/
@@ -70,13 +73,13 @@ my-ui-plugin/
 | 字段              | 必填 | 说明                                                                   |
 | ----------------- | ---- | ---------------------------------------------------------------------- |
 | `apiVersion`      | 是   | 当前只支持 `1`；其他值会让插件被拒绝加载。                             |
-| `kind`            | 是   | `provider`、`capability`、`ui` 或 `bundle`。                           |
+| `kind`            | 是   | `provider`（agent）、`capability`、`ui` 或 `bundle`。                  |
 | `displayName`     | 否   | 插件管理界面展示的名称，缺省使用包名。                                 |
 | `host`            | 否   | Host 入口的相对路径。`host` 与 `client` 至少要有一个。                 |
 | `client`          | 否   | UI 入口的相对路径。                                                    |
 | `inject`          | 否   | 依赖声明，默认 `[]`。Host 侧服务名如 `providers`、`sessions`。         |
 | `provides`        | 否   | 提供的能力标识，默认 `[]`；用于启用时的冲突检测。                      |
-| `contributes`     | 否   | 任意贡献点元数据，默认 `{}`；Host 原样透传给插件管理界面。             |
+| `contributes`     | 否   | 贡献点元数据，默认 `{}`；agent 的 `provider` 贡献会被校验，见下文。    |
 | `permissions`     | 否   | 权限声明，默认 `[]`；安装和列表界面会展示给用户。                      |
 | `engines.pigcode` | 否   | semver 范围，按 Host 当前版本（`0.1.0`）校验；不满足时插件被标记错误。 |
 
@@ -88,10 +91,24 @@ my-ui-plugin/
   所以安装时务必只选择可信来源。
 - 兼容性不通过时，插件仍会显示在列表中并附带错误原因，但 Host 入口不会被加载。
 
-## provider 插件
+## agent（provider）插件
 
-完整可运行示例见 [`examples/provider-echo`](../examples/provider-echo)；它把用户输入原样回显。
-`package.json` 的 `pigcode` 部分：
+agent 是 `kind` 为 `provider` 的插件：它在 Host 里注册一个 driver，把某个 coding agent
+（CLI、SDK 或远程服务）接到 Pigcode 的会话、审批和时间线上。
+
+- **内置**：Claude Code（[`packages/provider-claude`](../packages/provider-claude)）和 Codex
+  （[`packages/provider-codex`](../packages/provider-codex)）随应用发布，列在核心 profile 的
+  `builtinPlugins` 里。它们可以在 **设置 → Agent** 里停用，但不能卸载。
+- **按需安装**：其他 agent 在 **设置 → Agent → 安装 agent** 里安装（npm 包、tarball 或本地目录）。
+  装好后和内置 agent 一样出现在设置页和输入框的模型选择器里，也可以随时卸载。
+
+完整可运行示例见 [`examples/provider-echo`](../examples/provider-echo)：它把用户输入回显出来，
+并演示设置字段怎样传到 driver。
+
+### 介绍与设置字段
+
+agent 的介绍和设置字段写在 `package.json` 的 `contributes.provider` 里。设置页据此生成表单，
+插件不需要写 UI 代码：
 
 ```json
 {
@@ -100,27 +117,111 @@ my-ui-plugin/
     "kind": "provider",
     "displayName": "Echo",
     "host": "./index.ts",
+    "inject": ["providers"],
     "provides": ["provider:echo"],
     "permissions": [],
     "contributes": {
       "provider": {
-        "id": "echo"
+        "id": "echo",
+        "description": {
+          "zh-CN": "示例 agent：把你的消息原样回显，用来试插件与设置。",
+          "en-US": "Example agent that echoes your message back, for trying plugins and settings."
+        },
+        "settings": [
+          {
+            "key": "prefix",
+            "type": "text",
+            "label": { "zh-CN": "回复前缀", "en-US": "Reply prefix" },
+            "placeholder": "echo:"
+          },
+          {
+            "key": "uppercase",
+            "type": "boolean",
+            "label": { "zh-CN": "转成大写", "en-US": "Uppercase" }
+          }
+        ]
       }
     }
   }
 }
 ```
 
-`index.ts` 导出 `apply(ctx)`，在 `ctx.providers` 上注册 driver：
+| 字段           | 必填 | 说明                                                                          |
+| -------------- | ---- | ----------------------------------------------------------------------------- |
+| `id`           | 是   | agent id，小写字母开头，可含数字、`.`、`_`、`-`；必须和 driver 的 `id` 一致。 |
+| `description`  | 否   | 设置页里的介绍。                                                              |
+| `homepage`     | 否   | 官网，设置页显示为“官网”链接；只接受 https 地址。                             |
+| `installHint`  | 否   | 检测到 agent 没安装时给用户的提示，例如安装命令。                             |
+| `settings`     | 否   | 设置字段，默认 `[]`；`key` 不能重复。                                         |
+| `customModels` | 否   | 是否允许用户添加自定义模型 id，默认 `true`。                                  |
+
+没写 `contributes.provider` 时，Host 从 `provides` 里的 `provider:<id>` 推断 agent id，
+设置页只显示自定义模型。`description`、`label`、`placeholder` 等文案可以是一段文字，
+也可以按 locale 写成 `{ "zh-CN": "…", "en-US": "…" }`。
+
+每个设置字段有 `key`、`label`、可选的 `description`，以及下面某一种 `type`：
+
+| `type`    | 值                     | 界面                | 额外属性                                                  |
+| --------- | ---------------------- | ------------------- | --------------------------------------------------------- |
+| `text`    | 字符串                 | 输入框              | `placeholder`；`monospace: true` 用等宽字体，适合启动参数 |
+| `path`    | 字符串                 | 输入框加“选择…”按钮 | `placeholder`；`pathKind` 为 `file`（默认）或 `directory` |
+| `boolean` | 布尔                   | 开关                | `default`                                                 |
+| `select`  | 字符串                 | 下拉框              | `options: [{ value, label }]`（至少一项）、`default`      |
+| `env`     | `{ name, value }` 数组 | 环境变量表格        | 变量名须符合 `[A-Za-z_][A-Za-z0-9_]*`                     |
+
+字段都可以留空，留空表示用 agent 自己的默认值；保存时 Host 丢掉空字符串和空列表，
+值存在用户 profile 的 `settings.json` 里。`customModels` 是保留键：用户添加的模型 id
+由 Host 追加到这个 agent 的模型目录（选择器里标为“自定义”），插件不需要处理。
+
+内置 agent 的字段可以当作参考：Claude Code 有可执行文件、`CLAUDE_CONFIG_DIR`、
+启动参数和环境变量；Codex 有可执行文件、`CODEX_HOME`、启动参数和环境变量。
+
+### driver 契约
+
+`index.ts` 导出 `apply(ctx)`，在 `ctx.providers` 上注册一个
+[`ProviderPluginDriver`](../packages/plugin-sdk/src/provider.ts)：
+
+| 方法                            | 必须 | 说明                                                                                     |
+| ------------------------------- | ---- | ---------------------------------------------------------------------------------------- |
+| `detect(settings)`              | 否   | 只读检测：是否安装、版本、登录状态；不能触发登录。没实现时视为可用。                     |
+| `listModels(settings)`          | 否   | 模型目录；没实现时只列出用户的自定义模型。                                               |
+| `createSession(input)`          | 是   | 每个 run 开始前调用。`input.settings` 是最新保存的设置；复用会话时带 `input.sessionId`。 |
+| `send(session, input, runtime)` | 是   | 执行一条用户输入，通过 `runtime.emit` 推送事件。                                         |
+| `interrupt(session)`            | 是   | 中断当前 run；Host 同时会中止 `runtime.signal`。                                         |
+| `dispose(session)`              | 是   | 释放会话资源：线程切换 agent 时调用；插件停用时 Host 只对运行中的会话调用。              |
+
+几条约定：
+
+- 设置改了不需要重新注册 driver。检测、列模型、建会话时 Host 都传入最新的设置；
+  已经在跑的 run 不受影响，改动从下一个 run 开始生效。driver 如果复用常驻进程，要按设置判断
+  能不能复用（Codex 插件比较 app-server 的启动命令，变了就启动新进程）。
+- 会话 id 是 Host 数据库的主键：`input.sessionId` 存在时原样使用，否则生成一个全局唯一的 id。
+  同一个线程切到别的 agent 再切回来时，Host 会要求创建新会话。
+- 检测结果缓存 30 秒，模型目录缓存 10 分钟。保存设置会清掉这两份缓存，
+  设置页的“重新检测”跳过检测缓存。
+
+示例 `index.ts`：
 
 ```ts
-/** 示例 provider：把输入原样回显。 */
-import type { PluginHostContext, ProviderPluginDriver } from "@pigcode/plugin-sdk"
+/** 示例 agent（provider）插件：把用户输入原样回显，演示设置字段怎样传到 driver。 */
+import type {
+  PluginHostContext,
+  ProviderPluginDriver,
+  ProviderSettingsValues,
+} from "@pigcode/plugin-sdk"
 
 export const name = "provider-echo"
 export const inject = ["providers"]
 
+/** 设置值来自用户输入，读取时校验类型；第三方插件只能 import type，运行时不依赖 SDK。 */
+function text(settings: ProviderSettingsValues | undefined, key: string): string {
+  const value = settings?.[key]
+  return typeof value === "string" ? value.trim() : ""
+}
+
 export function apply(ctx: PluginHostContext): void {
+  // 每个 run 开始前 Host 都会用最新的设置调用 createSession；按会话记下这一份。
+  const settingsBySession = new Map<string, ProviderSettingsValues>()
   const driver: ProviderPluginDriver = {
     id: "echo",
     displayName: "Echo",
@@ -141,8 +242,11 @@ export function apply(ctx: PluginHostContext): void {
       nativeSessionId: false,
     },
     async createSession(input) {
+      // 会话 id 是 Host 数据库的主键：复用时沿用 Host 给的 id，新会话必须全局唯一。
+      const id = input.sessionId ?? `echo_${crypto.randomUUID()}`
+      settingsBySession.set(id, input.settings ?? {})
       return {
-        id: `echo_${input.threadId}`,
+        id,
         threadId: input.threadId,
         cwd: input.cwd,
         nativeSessionId: null,
@@ -150,28 +254,61 @@ export function apply(ctx: PluginHostContext): void {
         model: null,
       }
     },
-    async send(_session, input, runtime) {
+    async send(session, input, runtime) {
+      const settings = settingsBySession.get(session.id)
+      const prefix = text(settings, "prefix")
+      const body = settings?.uppercase === true ? input.text.toUpperCase() : input.text
+      const reply = prefix ? `${prefix} ${body}` : body
       runtime.emit({ type: "run.started" })
-      runtime.emit({ type: "message.delta", text: input.text })
-      runtime.emit({ type: "message.completed", text: input.text })
+      runtime.emit({ type: "message.delta", text: reply })
+      runtime.emit({ type: "message.completed", text: reply })
       runtime.emit({ type: "run.completed" })
     },
     async interrupt() {},
-    async dispose() {},
+    async dispose(session) {
+      settingsBySession.delete(session.id)
+    },
   }
-
   ctx.providers.register(driver)
-  // 热停用时必须注销，否则 provider 仍会出现在切换列表里。
+  // 热停用时必须注销，否则 agent 仍会出现在输入框的选择器里。
   ctx.effect(() => () => ctx.providers.unregister("echo"))
 }
 ```
 
 `send` 通过 `runtime.emit` 推送规范化事件，可用事件类型见
 [`packages/contracts/src/events.ts`](../packages/contracts/src/events.ts) 中的 `ProviderEvent`。
-需要审批时调用 `runtime.requestApproval`；取消通过 `runtime.signal` 观察。
+需要审批时调用 `runtime.requestApproval`；`capabilities.questions` 为 `true` 时可以用
+`runtime.askQuestions` 向用户提问；取消通过 `runtime.signal` 观察。
 
-第三方 provider 不要 `import` `@pigcode/host` 的内部路径。类型可以依赖
-`@pigcode/plugin-sdk`（`ProviderPluginDriver` 等），运行时保持零依赖或只依赖自己的 npm 依赖。
+### MCP 工具
+
+capability 插件注册的 MCP 工具通过 `input.mcp` 交给声明了 `capabilities.mcp: true` 的 agent；
+没有工具时 Host 不传。`input.mcp` 不依赖任何 agent 的 SDK，按 agent 接入 MCP 的方式二选一：
+
+- `tools` 与 `callTool(name, input)`：能在进程内挂 MCP server 的 agent 用它们自己建 server
+  （Claude Code 插件用 Claude Agent SDK 的 `createSdkMcpServer`），`toolResultContent`
+  把工具结果转成 MCP 内容。
+- `stdioServer()`：返回 `{ command, args, env }`，以子进程连接 MCP 的 agent 把它写进自己的配置
+  （Codex 插件写成 `mcp_servers.pigcode`）。
+
+### 停用、卸载与清理
+
+插件停用或卸载时，Host 取消这个 agent 排队中的 run、中断运行中的 run，并对它们的会话调用
+`dispose`。插件自己还要：
+
+- 用 `ctx.effect(() => () => ctx.providers.unregister(id))` 注销 driver，否则它仍会出现在选择器里；
+- 关掉自己启动的常驻进程、socket 和定时器。内置的 Claude Code 与 Codex 插件在同一个 effect 里
+  注销 driver 并调用 `driver.close()`。
+
+### 依赖与 SDK 辅助函数
+
+第三方插件只能 `import type` SDK：安装时类型导入被擦除，运行时没有 `@pigcode/plugin-sdk`，
+也不要 `import` `@pigcode/host` 的内部路径。运行时保持零依赖，或只依赖自己的 npm 依赖。
+设置值来自用户输入，读取时自己校验类型（例如示例里的 `text()`）。
+
+`@pigcode/plugin-sdk` 与 `@pigcode/plugin-sdk/node` 的运行时辅助函数（`settingString`、
+`settingEnvironment`、`tokenizeCliArgs`、`resolveExecutable`、`providerEnvironment` 等）
+供随应用打包的内置 agent 使用。第三方插件需要同样的逻辑时，把代码复制过去或者自己打包进入口。
 
 ## capability 插件
 
@@ -199,13 +336,13 @@ export function apply(ctx: PluginHostContext): void {
 - `ctx.sessions.read(threadId, cursor)`：只读读取线程事件；需要 `inject: ["sessions"]`。
 - `ctx.provide(name, value)`：注册一个供其他插件或 Host 使用的能力。
 - `ctx.effect(setup)`：注册随插件卸载执行的清理逻辑。
-- `ctx.providers.register` / `ctx.providers.unregister`：注册或移除 provider driver。
-- `ctx.mcp.registerTool`：把工具暴露给 Claude / Codex 模型；需要 `inject: ["mcp"]`。
+- `ctx.providers.register` / `ctx.providers.unregister`：注册或移除 agent driver。
+- `ctx.mcp.registerTool`：把工具暴露给支持 MCP 的 agent（Claude Code、Codex 等）；需要 `inject: ["mcp"]`。
 
 ## 通过 MCP 暴露工具
 
 capability 插件可以用 `ctx.mcp.registerTool` 注册工具；Host 会把它注入当前线程的
-Claude 或 Codex 会话。完整示例见
+agent 会话（Claude Code、Codex，或声明了 `capabilities.mcp` 的第三方 agent）。完整示例见
 [`examples/capability-clock`](../examples/capability-clock)：
 
 ```ts
@@ -237,13 +374,14 @@ export function apply(ctx: PluginHostContext): void {
 
 - `registerTool(pluginId, tool, handler)` 返回注销函数；用 `ctx.effect` 包住它，
   插件停用时工具会从后续会话中消失。
-- `tool.name` 是模型看到的工具名；`inputSchema` 使用 JSON Schema，Host 会转换成
-  对应 provider 需要的形状。返回值必须可 JSON 序列化。
+- `tool.name` 是模型看到的工具名；`inputSchema` 使用 JSON Schema，agent 插件会转换成
+  各自需要的形状。返回值必须可 JSON 序列化。
 - handler 的第二个参数是 `{ threadId }`，表示发起本次 run 的线程。工具注册表是
   Host 全局的，但每次调用都带线程作用域，因此并行会话不会共享可变调用状态。
-- Claude 使用进程内 MCP server（`mcpServers.pigcode`）；Codex 使用 stdio bridge
-  加 Unix domain socket / 命名管道，并在 hello 时用一次性 token 绑定线程。
-  Host 不监听 TCP 端口。
+- Host 把工具表交给 agent 插件（见 [MCP 工具](#mcp-工具)），由插件接到自己的 agent 上：
+  Claude Code 插件用工具表建进程内 MCP server（`mcpServers.pigcode`）；Codex 插件把
+  `stdioServer()` 写进 `mcp_servers.pigcode`，由 stdio bridge 经 Unix domain socket / 命名管道
+  连回 Host，并在 hello 时用一次性 token 绑定线程。Host 不监听 TCP 端口。
 - 没有任何已注册工具时，Host 不会注入空 MCP 配置。
 
 ## UI 插件
@@ -302,26 +440,40 @@ UI 插件运行在渲染进程，不应访问 Node 或 Electron API。
 
 1. 启用时先计算“当前已启用插件 + 目标插件”的 `provides`。只要有一个能力标识被多个插件声明
    （包括同一插件重复声明），就抛出 `PROVIDES_CONFLICT`，附带冲突能力和插件 id，并拒绝启用。
-2. 检查通过后，Host 入口被动态挂载，provider / capability 立即可用。
+2. 检查通过后，Host 入口被动态挂载，agent / capability 立即可用。
 3. boot graph 立即重写；渲染进程重新加载 UI client bundle，新插槽和面板出现。
-4. 停用时会卸载 Host 入口并等待 `ctx.effect` 清理，provider / capability 立即消失；
-   boot graph 重写后，对应的 UI 面板和 slot 条目也会移除。
+4. 停用时会卸载 Host 入口并等待 `ctx.effect` 清理，agent / capability 立即消失；
+   boot graph 重写后，对应的 UI 面板和 slot 条目也会移除。停用 agent 还会取消它排队中的 run、
+   中断运行中的 run 并释放会话。
 
-因此插件必须正确清理自己注册的东西：provider 用
+因此插件必须正确清理自己注册的东西：agent 用
 `ctx.effect(() => () => ctx.providers.unregister(id))`，UI 插件返回 `apply` 的清理函数。
 `apiVersion` 或 `engines.pigcode` 不兼容的插件不会被 Host 加载，列表里会显示错误原因。
 
-## 本地安装
+## 安装与卸载
 
-桌面端路径：**设置 → 插件 → 插件目录或 npm 包**，然后点击“安装插件”。
+桌面端有两个入口，背后是同一套安装流程：
 
-- 本地目录：填入绝对路径（例如 `/tmp/pigcode-plugin-demo`），Host 会复制到 profile 的
-  `node_modules/<包名>` 并立即启用。
-- npm：填入包名、版本或 tarball，例如 `my-pigcode-plugin@1.0.0` 或 `/tmp/pkg.tgz`；
-  Host 通过 `pnpm add` 安装到 profile。
-- 对应的 Host RPC：本地目录用 `plugin.installLocal`，参数
-  `{ "sourceDir": "/abs/path/to/plugin" }`；npm / tarball 用 `plugin.install`，参数
-  `{ "spec": "my-pigcode-plugin@1.0.0" }`。
+- **设置 → Agent → 安装 agent**：安装 agent 插件，可以用“选择文件夹…”挑本地目录。
+- **设置 → 插件 → 插件目录或 npm 包**：安装任意种类的插件，然后点击“安装插件”。
+
+可以填的内容：
+
+- 本地目录：绝对路径（例如 `/tmp/pigcode-plugin-demo` 或 `C:\plugins\demo`）、`./` 开头的相对路径
+  或 `file:` 前缀。Host 把目录复制到用户 profile 的 `node_modules/<包名>`，插件源目录保持不变。
+- npm：包名、版本或 tarball，例如 `my-pigcode-plugin@1.0.0` 或 `/tmp/pkg.tgz`；
+  Host 通过 `pnpm add` 安装到用户 profile。
+- 对应的 Host RPC：`plugin.install`，参数 `{ "spec": "my-pigcode-plugin@1.0.0" }`，本地目录也可以；
+  只装本地目录时也可以用 `plugin.installLocal`，参数 `{ "sourceDir": "/abs/path/to/plugin" }`。
+
+装好的插件立即启用。两个页面都可以卸载用户安装的插件（RPC `plugin.uninstall`，参数 `{ "id": … }`）：
+Host 先卸下插件的 Host 入口并等待 `ctx.effect` 清理，再删除 `node_modules` 里的包和列表里的记录。
+agent 的设置值保留在 `settings.json` 里，重新安装后还在。内置插件不能卸载，
+对它们调用 `plugin.uninstall` 会得到 `PLUGIN_BUILTIN` 错误。
+
+安装的插件和启停状态记在用户 profile 目录的 `plugins.yml` 里；内置插件只记录是否停用。
+用户 profile 默认在 Electron `userData` 下的 `profiles/desktop`，可以用环境变量 `PIGCODE_PROFILE_DIR`
+指定。
 
 安装前请确认插件来源可信：安装界面会展示 `permissions` 声明和“插件以 Host 权限运行”的风险提示。
 权限声明目前只用于展示，不会限制插件能力。
@@ -336,7 +488,7 @@ pnpm create-plugin <dir> <kind> <name>
 node scripts/create-plugin.ts <dir> <kind> <name>
 ```
 
-- `kind`：`provider`、`capability` 或 `ui`。
+- `kind`：`provider`（agent）、`capability` 或 `ui`。
 - `name`：小写字母开头的插件标识，可含数字、点、下划线、连字符。
 - `dir`：目标目录，不存在时创建；若已有同名文件且内容不同，脚本会拒绝覆盖。
 
@@ -354,5 +506,5 @@ pnpm create-plugin /tmp/pigcode-plugin-demo ui demo
 └── client.ts      # 侧栏面板
 ```
 
-provider / capability 会生成 `package.json` 和 `index.ts`。脚本结束时打印本地安装路径，
-把它填进桌面端的“插件目录或 npm 包”即可安装。
+agent（provider）/ capability 会生成 `package.json` 和 `index.ts`。脚本结束时打印本地安装路径：
+agent 填进 **设置 → Agent → 安装 agent**，其他插件填进 **设置 → 插件** 的“插件目录或 npm 包”。
