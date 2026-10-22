@@ -101,7 +101,6 @@ describe("path helpers", () => {
     expect(files.get("new")).toBe("untracked")
     expect([...directories].sort()).toEqual(["src", "src/lib"])
   })
-
 })
 
 describe("file tabs", () => {

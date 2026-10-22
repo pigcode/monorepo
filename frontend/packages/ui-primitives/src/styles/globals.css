@@ -9,6 +9,7 @@
 @import "./browser.css";
 @import "./agents.css";
 @import "./files.css";
+@import "./plugins.css";
 
 /*
   pigclaude 设计系统 · 组件（v5：浮层工作区）
@@ -3723,6 +3724,14 @@ body.is-resizing-rows iframe {
   display: flex;
   flex-direction: column;
   gap: 0;
+}
+.surface-launcher-group {
+  margin: 12px 0 2px;
+  padding: 0 8px;
+  color: var(--faint);
+  font-size: var(--fs-sm);
+  font-weight: 400;
+  line-height: 24px;
 }
 .surface-launcher-item {
   display: flex;

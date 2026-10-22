@@ -386,24 +386,91 @@ export function apply(ctx: PluginHostContext): void {
 
 ## UI 插件
 
-完整示例见 [`examples/ui-debug-panel`](../examples/ui-debug-panel)。UI 插件只拿到受限 facade：
+完整示例见 [`examples/ui-debug-panel`](../examples/ui-debug-panel)。UI 插件只拿到受限 facade，
+不依赖 React；界面和宿主保持一致的做法是：**宿主画外框，插件只画内容，内容用 `ctx.ui` 拼**。
+
+### 侧栏面板与右栏标签
 
 ```ts
-/** 侧栏 DOM 面板；不依赖 React。 */
 import type { ClientPluginContext } from "@pigcode/plugin-sdk"
 
 export function apply(ctx: ClientPluginContext): () => void {
-  return ctx.registerPanel({
+  // 侧栏：标题由宿主画成和「项目」一样的分组标题，点击可以收起。
+  const disposePanel = ctx.registerPanel({
     id: "demo-panel",
-    title: "Demo Panel",
+    title: "Demo",
     render(container) {
-      container.textContent = "Hello from my UI plugin"
+      container.append(ctx.ui.text("Hello from my UI plugin", { tone: "muted", size: "sm" }))
     },
   })
+  // 右栏：出现在启动器和「+」菜单的「插件」组里，打开后是和文件、终端一样的标签。
+  const disposeSurface = ctx.registerSurface({
+    id: "demo-inspector",
+    title: "Demo Inspector",
+    description: "启动器里悬停显示的一句说明",
+    render(container) {
+      container.append(
+        ctx.ui.section({
+          title: "状态",
+          children: [ctx.ui.row({ title: "主题", control: ctx.ui.badge(ctx.theme.get()) })],
+        }),
+      )
+      // 返回的函数在标签关闭、插件停用或内容重画前调用。
+      return ctx.theme.subscribe(() => undefined)
+    },
+  })
+  return () => {
+    disposePanel()
+    disposeSurface()
+  }
 }
 ```
 
-`apply` 可以返回清理函数；`registerPanel` 本身也返回 disposer，返回它即可在停用时移除面板。
+- `render(container)` 可以返回清理函数；宿主在移除或重画前调用它，然后清空容器。
+  `render` 抛出的错误显示在内容区里，不影响宿主。
+- 容器带 `pg-root` 类：字体、字号、颜色和行高已经是宿主的；侧栏面板（`pg-panel`）是紧凑排版，
+  右栏标签（`pg-surface`）带内边距、最宽 720px。
+- 插件停用或卸载后，已经打开的右栏标签会显示“插件已停用或卸载”，用户可以直接关掉。
+
+### 和宿主一致的组件：`ctx.ui`
+
+`ctx.ui` 返回普通的 DOM 元素，插件自己 `append` 到容器里。按钮、输入框、开关和徽标直接用宿主控件的类
+（`btn`、`input`、`switch`、`badge`），跟随宿主的主题、强调色与字号；其余用 `pg-*` 排版：
+
+| 方法                                                | 生成的元素                                                            |
+| --------------------------------------------------- | --------------------------------------------------------------------- |
+| `section({ title?, description?, children? })`      | 带标题的分组，内容是一张卡片（侧栏里没有卡片背景）                    |
+| `row({ title, description?, control? })`            | 设置行：左边标题与说明，右边是控件                                    |
+| `button({ label, variant?, disabled?, onClick? })`  | 按钮；`variant` 为 `primary`、`secondary`（默认）、`ghost`、`danger`  |
+| `input({ label, value?, placeholder?, onChange? })` | 文本输入框，`label` 作为无障碍名称                                    |
+| `toggle({ label, checked, onChange? })`             | 开关（`role="switch"`）                                               |
+| `badge(label, tone?)`                               | 徽标；`tone` 为 `neutral`、`accent`、`success`、`warning`、`danger`   |
+| `text(content, { tone?, size? })`                   | 一段文字；`tone` 为 `default`、`muted`、`faint`，`size` 为 `md`、`sm` |
+| `code(content)`                                     | 等宽代码块                                                            |
+| `list(items)`                                       | 一列条目：`title`、`description`、`meta`，给 `onClick` 时整行可点     |
+| `empty({ title, description? })`                    | 空状态                                                                |
+
+### 宿主的主题与语言
+
+- `ctx.theme.get()` 返回 `"light"` 或 `"dark"`，`ctx.theme.subscribe(listener)` 在切换时通知，返回取消订阅函数。
+- `ctx.locale.get()` 返回界面语言（`zh-CN`、`en-US`），`ctx.locale.subscribe` 同上。插件的文案自己按语言选择。
+
+### 自己写样式
+
+需要 `ctx.ui` 以外的样式时，只用下面这些 CSS 变量，不要写死颜色——它们跟随宿主的主题、强调色与字号：
+
+| 变量                                                  | 用途                             |
+| ----------------------------------------------------- | -------------------------------- |
+| `--pg-font`、`--pg-mono`                              | 界面字体、等宽字体               |
+| `--pg-fs`、`--pg-fs-sm`                               | 正文字号、小字号                 |
+| `--pg-fg`、`--pg-fg-2`、`--pg-muted`、`--pg-faint`    | 文字：主要、次要、说明、最弱     |
+| `--pg-bg`、`--pg-surface`、`--pg-field`、`--pg-hover` | 背景：内容区、卡片、输入框、悬停 |
+| `--pg-border`、`--pg-divider`                         | 边框与分隔线                     |
+| `--pg-accent`、`--pg-accent-soft`                     | 强调色与它的浅色底               |
+| `--pg-success`、`--pg-warning`、`--pg-danger`         | 状态文字色                       |
+| `--pg-radius`、`--pg-radius-sm`                       | 卡片与控件圆角                   |
+
+### slot
 
 也可以向内置 slot 注册条目：
 
@@ -428,8 +495,8 @@ slot 规则：
 - 未注册的名称会被忽略，不会抛异常。
 - 同一 slot 内 `id` 必须唯一。重复注册会显式失败：第二次注册被拒绝，并记录
   `SLOT_CONFLICT`（控制台和插件错误表），不会静默覆盖。
-- 第三方 client bundle 无法解析裸 `react` 导入，因此需要真实 DOM 面板时优先使用
-  `ctx.registerPanel`；`ctx.slots.register` 适合返回字符串等 React 可渲染的原始值。
+- 第三方 client bundle 无法解析裸 `react` 导入，因此需要真实 DOM 界面时用
+  `ctx.registerPanel` 或 `ctx.registerSurface`；`ctx.slots.register` 适合返回字符串等 React 可渲染的原始值。
 - `ctx.host.call(method, params)` 通过现有 MessagePort RPC 调用 Host，不引入 HTTP/WebSocket/token。
 
 UI 插件运行在渲染进程，不应访问 Node 或 Electron API。
@@ -455,7 +522,8 @@ UI 插件运行在渲染进程，不应访问 Node 或 Electron API。
 桌面端有两个入口，背后是同一套安装流程：
 
 - **设置 → Agent → 安装 agent**：安装 agent 插件，可以用“选择文件夹…”挑本地目录。
-- **设置 → 插件 → 插件目录或 npm 包**：安装任意种类的插件，然后点击“安装插件”。
+- **设置 → 插件 → 安装插件**：安装任意种类的插件。两个入口是同一个对话框：填插件目录或 npm 包，
+  或者用“选择文件夹…”。插件管理页和 Agent 页是同一种列表，开关启停，点开一行看包名、权限与卸载。
 
 可以填的内容：
 
@@ -503,7 +571,7 @@ pnpm create-plugin /tmp/pigcode-plugin-demo ui demo
 ```text
 /tmp/pigcode-plugin-demo/
 ├── package.json   # name: pigcode-ui-demo
-└── client.ts      # 侧栏面板
+└── client.ts      # 侧栏面板与右栏标签
 ```
 
 agent（provider）/ capability 会生成 `package.json` 和 `index.ts`。脚本结束时打印本地安装路径：

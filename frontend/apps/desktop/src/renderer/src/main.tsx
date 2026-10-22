@@ -14,6 +14,8 @@ const locale = new LocaleController()
 
 const savedLocale = window.localStorage.getItem("pigcode.locale")
 if (savedLocale === "zh-CN" || savedLocale === "en-US") locale.setLocale(savedLocale)
+// 根元素的 lang 选对中日文字形，也是 UI 插件读取界面语言的地方。
+document.documentElement.lang = locale.getLocale()
 
 const connection = new Connection({
   onEvent: (event) => store.addEvent(event),

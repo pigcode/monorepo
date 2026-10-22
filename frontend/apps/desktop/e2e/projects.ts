@@ -43,6 +43,15 @@ export async function openThread(
   return { app, page, root }
 }
 
+/** 在插件管理页打开「安装插件」对话框，安装一个插件目录或 npm 包。 */
+export async function installPlugin(page: Page, spec: string): Promise<void> {
+  await page.getByRole("button", { name: "安装插件" }).click()
+  const dialog = page.getByRole("dialog", { name: "安装插件" })
+  await dialog.getByLabel("插件目录或 npm 包").fill(spec)
+  await dialog.getByRole("button", { name: "安装", exact: true }).click()
+  await expect(dialog).toBeHidden()
+}
+
 /**
  * 系统文件夹选择框无法由 Playwright 操作，先在主进程里把它换成直接返回 rootPath，
  * 再走对话框的完整流程：添加项目 → 选择文件夹 → 创建项目。

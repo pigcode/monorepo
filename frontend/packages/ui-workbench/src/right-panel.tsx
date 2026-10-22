@@ -1,4 +1,7 @@
-/** 右侧面板：多标签的 surface（浏览器、终端、文件、Diff、PR、检查点）、添加菜单与空状态启动器。 */
+/**
+ * 右侧面板：多标签的 surface（浏览器、终端、文件、Diff、PR、检查点，以及插件注册的标签）、
+ * 添加菜单与空状态启动器。插件标签和内置标签用同一套标签栏与外框。
+ */
 import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react"
 import {
   FileDiff,
@@ -7,34 +10,22 @@ import {
   GitPullRequest,
   History,
   Plus,
+  Puzzle,
   SquareTerminal,
   X,
   type LucideIcon,
 } from "lucide-react"
-import { Menu } from "@pigcode/ui-primitives"
-import { FileIcon } from "@pigcode/ui-primitives"
+import { FileIcon, Menu } from "@pigcode/ui-primitives"
+import {
+  SURFACE_KINDS,
+  SURFACE_SHORTCUTS,
+  type PanelSurface,
+  type PanelSurfaceKind,
+  type PluginSurfaceOption,
+  type SurfaceKind,
+} from "./surface-state"
 
-/** 可以打开的 surface 种类；顺序即启动器与添加菜单里的顺序。 */
-export const SURFACE_KINDS = ["browser", "terminal", "files", "diff", "pr", "checkpoint"] as const
-
-/** surface 种类标识。 */
-export type SurfaceKind = (typeof SURFACE_KINDS)[number]
-
-/** 启动器与添加菜单里的单键快捷键。 */
-export const SURFACE_SHORTCUTS: Record<SurfaceKind, string> = {
-  browser: "B",
-  terminal: "T",
-  files: "F",
-  diff: "D",
-  pr: "P",
-  checkpoint: "C",
-}
-
-/** 可以同时打开多个实例的种类；其余种类再次打开时切到已有标签。 */
-export const MULTI_INSTANCE_KINDS: ReadonlySet<SurfaceKind> = new Set(["browser", "terminal"])
-
-/** 标签的种类：启动器里的 surface，加上从文件树或聊天里打开的单个文件。 */
-export type PanelSurfaceKind = SurfaceKind | "file"
+export * from "./surface-state"
 
 const SURFACE_ICONS: Record<SurfaceKind, LucideIcon> = {
   browser: Globe,
@@ -45,118 +36,6 @@ const SURFACE_ICONS: Record<SurfaceKind, LucideIcon> = {
   checkpoint: History,
 }
 
-/** 右侧面板里的一个标签。 */
-export interface PanelSurface {
-  id: string
-  kind: PanelSurfaceKind
-  title: string
-  /** 浏览器最近一次导航的地址；面板随会话重新挂载时用它恢复页面。 */
-  url?: string
-  /** 文件标签显示的文件（工作目录内的相对路径）。 */
-  path?: string
-  /** 打开文件时定位到的行（从 1 开始）。 */
-  line?: number
-  /** 有未保存的修改；标签上显示圆点。 */
-  dirty?: boolean
-}
-
-/** 一组标签与当前激活的标签；没有标签时 activeId 为 null，面板显示启动器。 */
-export interface PanelSurfaceState {
-  surfaces: PanelSurface[]
-  activeId: string | null
-}
-
-/** 空面板。 */
-export const EMPTY_SURFACE_STATE: PanelSurfaceState = { surfaces: [], activeId: null }
-
-/**
- * 打开一个 surface：单实例种类已存在时只切换过去；多实例种类追加新标签。
- * title 收到同种类的序号（从 1 开始），用于生成「终端 2」这样的标题。
- */
-export function addSurface(
-  state: PanelSurfaceState,
-  kind: SurfaceKind,
-  id: string,
-  title: (index: number) => string,
-): PanelSurfaceState {
-  if (!MULTI_INSTANCE_KINDS.has(kind)) {
-    const existing = state.surfaces.find((surface) => surface.kind === kind)
-    if (existing) return { ...state, activeId: existing.id }
-  }
-  const used = new Set(
-    state.surfaces.filter((surface) => surface.kind === kind).map((surface) => surface.title),
-  )
-  let index = 1
-  while (used.has(title(index))) index += 1
-  return {
-    surfaces: [...state.surfaces, { id, kind, title: title(index) }],
-    activeId: id,
-  }
-}
-
-/** 关闭一个 surface；关闭的是当前标签时激活右侧邻居，没有则激活左侧邻居。 */
-export function closeSurface(state: PanelSurfaceState, id: string): PanelSurfaceState {
-  const index = state.surfaces.findIndex((surface) => surface.id === id)
-  if (index === -1) return state
-  const surfaces = state.surfaces.filter((surface) => surface.id !== id)
-  if (state.activeId !== id) return { surfaces, activeId: state.activeId }
-  const next = surfaces[index] ?? surfaces[index - 1] ?? null
-  return { surfaces, activeId: next?.id ?? null }
-}
-
-/**
- * 打开一个文件标签：同一文件已经打开时切过去（并更新要定位的行）；
- * replace 给出时用新标签替换那个标签（从文件树标签打开文件时，文件树收进文件标签的侧栏）。
- */
-export function openFileSurface(
-  state: PanelSurfaceState,
-  path: string,
-  id: string,
-  options: { line?: number | undefined; replace?: string | undefined } = {},
-): PanelSurfaceState {
-  const title = path.split("/").at(-1) ?? path
-  const existing = state.surfaces.find(
-    (surface) => surface.kind === "file" && surface.path === path,
-  )
-  if (existing) {
-    const surfaces = state.surfaces
-      .filter((surface) => surface.id !== options.replace || surface.id === existing.id)
-      .map((surface) =>
-        surface.id === existing.id && options.line ? { ...surface, line: options.line } : surface,
-      )
-    return { surfaces, activeId: existing.id }
-  }
-  const surface: PanelSurface = {
-    id,
-    kind: "file",
-    title,
-    path,
-    ...(options.line ? { line: options.line } : {}),
-  }
-  const index = options.replace
-    ? state.surfaces.findIndex((item) => item.id === options.replace)
-    : -1
-  const surfaces =
-    index === -1
-      ? [...state.surfaces, surface]
-      : [...state.surfaces.slice(0, index), surface, ...state.surfaces.slice(index + 1)]
-  return { surfaces, activeId: id }
-}
-
-/** 修改某个标签的标题、地址、文件或未保存状态，例如浏览器加载页面后显示主机名。 */
-export function updateSurface(
-  state: PanelSurfaceState,
-  id: string,
-  patch: Partial<Pick<PanelSurface, "title" | "url" | "path" | "dirty">>,
-): PanelSurfaceState {
-  return {
-    ...state,
-    surfaces: state.surfaces.map((surface) =>
-      surface.id === id ? { ...surface, ...patch } : surface,
-    ),
-  }
-}
-
 /** 右侧面板文案；容器按 locale 注入，组件本身不依赖 locale。 */
 export interface RightPanelLabels {
   panel: string
@@ -164,6 +43,8 @@ export interface RightPanelLabels {
   launcher: string
   add: string
   close: string
+  /** 启动器与菜单里插件标签那一组的标题。 */
+  plugins: string
   surfaces: Record<SurfaceKind, string>
 }
 
@@ -174,6 +55,7 @@ export const DEFAULT_RIGHT_PANEL_LABELS: RightPanelLabels = {
   launcher: "打开一个面板",
   add: "添加面板",
   close: "关闭",
+  plugins: "插件",
   surfaces: {
     browser: "浏览器",
     terminal: "终端",
@@ -194,6 +76,9 @@ export interface RightPanelProps {
   onAdd: (kind: SurfaceKind) => void
   /** 暂不可用的种类及原因；在启动器和菜单里置灰。 */
   unavailable?: Partial<Record<SurfaceKind, string>>
+  /** 插件注册的标签；列在启动器与菜单的「插件」组里。 */
+  plugins?: readonly PluginSurfaceOption[]
+  onAddPlugin?: ((id: string) => void) | undefined
   /** 标签栏右侧的布局按钮（最大化、底部终端、收起面板）。 */
   controls?: ReactNode
   labels?: Partial<Omit<RightPanelLabels, "surfaces">> & {
@@ -226,8 +111,40 @@ function shortcutKind(
 
 function SurfaceIcon({ kind, title }: { kind: PanelSurfaceKind; title?: string }) {
   if (kind === "file") return <FileIcon name={title ?? ""} kind="file" />
-  const Icon = SURFACE_ICONS[kind]
+  const Icon = kind === "plugin" ? Puzzle : SURFACE_ICONS[kind]
   return <Icon className="ic ic-sm" aria-hidden="true" />
+}
+
+/** 启动器里插件标签那一组；没有插件标签时不显示。 */
+function PluginLauncherGroup({
+  labels,
+  plugins,
+  onAddPlugin,
+}: {
+  labels: RightPanelLabels
+  plugins: readonly PluginSurfaceOption[]
+  onAddPlugin: ((id: string) => void) | undefined
+}) {
+  if (plugins.length === 0 || !onAddPlugin) return null
+  return (
+    <>
+      <h4 className="surface-launcher-group">{labels.plugins}</h4>
+      <div className="surface-launcher-list">
+        {plugins.map((plugin) => (
+          <button
+            key={plugin.id}
+            type="button"
+            className="surface-launcher-item"
+            title={plugin.description}
+            onClick={() => onAddPlugin(plugin.id)}
+          >
+            <SurfaceIcon kind="plugin" />
+            <span className="grow truncate">{plugin.title}</span>
+          </button>
+        ))}
+      </div>
+    </>
+  )
 }
 
 /** 空面板：列出可以打开的 surface；面板显示时单键即可打开，方向键在列表里移动。 */
@@ -235,10 +152,14 @@ function SurfaceLauncher({
   labels,
   unavailable,
   onAdd,
+  plugins,
+  onAddPlugin,
 }: {
   labels: RightPanelLabels
   unavailable: Partial<Record<SurfaceKind, string>>
   onAdd: (kind: SurfaceKind) => void
+  plugins: readonly PluginSurfaceOption[]
+  onAddPlugin: ((id: string) => void) | undefined
 }) {
   const available = SURFACE_KINDS.filter((kind) => unavailable[kind] === undefined)
   const [highlight, setHighlight] = useState(-1)
@@ -310,20 +231,25 @@ function SurfaceLauncher({
             )
           })}
         </div>
+        <PluginLauncherGroup labels={labels} plugins={plugins} onAddPlugin={onAddPlugin} />
       </div>
     </div>
   )
 }
 
-/** 标签栏末尾的「+」：菜单打开时同样支持单键选择。 */
+/** 标签栏末尾的「+」：菜单打开时同样支持单键选择；插件标签列在分隔线下面。 */
 function AddSurfaceMenu({
   labels,
   unavailable,
   onAdd,
+  plugins,
+  onAddPlugin,
 }: {
   labels: RightPanelLabels
   unavailable: Partial<Record<SurfaceKind, string>>
   onAdd: (kind: SurfaceKind) => void
+  plugins: readonly PluginSurfaceOption[]
+  onAddPlugin: ((id: string) => void) | undefined
 }) {
   const [open, setOpen] = useState(false)
   const available = SURFACE_KINDS.filter((kind) => unavailable[kind] === undefined)
@@ -365,6 +291,24 @@ function AddSurfaceMenu({
                 </kbd>
               </Menu.Item>
             ))}
+            {plugins.length > 0 && onAddPlugin ? (
+              <>
+                <Menu.Separator className="menu-sep" />
+                <Menu.Group>
+                  <Menu.Label className="menu-label">{labels.plugins}</Menu.Label>
+                  {plugins.map((plugin) => (
+                    <Menu.Item
+                      key={plugin.id}
+                      className="menu-item"
+                      onClick={() => onAddPlugin(plugin.id)}
+                    >
+                      <SurfaceIcon kind="plugin" />
+                      <span className="grow">{plugin.title}</span>
+                    </Menu.Item>
+                  ))}
+                </Menu.Group>
+              </>
+            ) : null}
           </Menu.Popup>
         </Menu.Positioner>
       </Menu.Portal>
@@ -381,6 +325,8 @@ export function RightPanel({
   onClose,
   onAdd,
   unavailable = {},
+  plugins = [],
+  onAddPlugin,
   controls,
   labels: overrides,
   children,
@@ -449,7 +395,13 @@ export function RightPanel({
             )
           })}
         </div>
-        <AddSurfaceMenu labels={labels} unavailable={unavailable} onAdd={onAdd} />
+        <AddSurfaceMenu
+          labels={labels}
+          unavailable={unavailable}
+          onAdd={onAdd}
+          plugins={plugins}
+          onAddPlugin={onAddPlugin}
+        />
         <span className="right-panel-drag" />
         {controls}
       </div>
@@ -460,7 +412,13 @@ export function RightPanel({
         {...(activeId ? { "aria-labelledby": `surface-tab-${activeId}` } : {})}
       >
         {activeId === null ? (
-          <SurfaceLauncher labels={labels} unavailable={unavailable} onAdd={onAdd} />
+          <SurfaceLauncher
+            labels={labels}
+            unavailable={unavailable}
+            onAdd={onAdd}
+            plugins={plugins}
+            onAddPlugin={onAddPlugin}
+          />
         ) : null}
         {children}
       </div>

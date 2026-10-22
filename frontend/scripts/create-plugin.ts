@@ -194,19 +194,35 @@ export function apply(ctx: PluginHostContext): void {
 `
 }
 
-/** UI 入口：注册一个纯 DOM 侧栏面板，不依赖 React。 */
+/** UI 入口：一个侧栏面板与一个右栏标签，用 ctx.ui 拼出和宿主一致的界面，不依赖 React。 */
 function uiEntry(pkgName: string, name: string, displayName: string): string {
-  return `/** ${pkgName}：最小 UI 插件，在侧栏添加一个只读面板。 */
+  return `/** ${pkgName}：最小 UI 插件，在侧栏添加一个面板、在右栏添加一种标签。 */
 import type { ClientPluginContext } from "@pigcode/plugin-sdk"
 
 export function apply(ctx: ClientPluginContext): () => void {
-  return ctx.registerPanel({
+  const disposePanel = ctx.registerPanel({
     id: "${name}-panel",
     title: "${displayName}",
     render(container) {
-      container.textContent = "Hello from ${pkgName}"
+      container.append(ctx.ui.text("Hello from ${pkgName}", { tone: "muted", size: "sm" }))
     },
   })
+  const disposeSurface = ctx.registerSurface({
+    id: "${name}-surface",
+    title: "${displayName}",
+    render(container) {
+      container.append(
+        ctx.ui.section({
+          title: "${displayName}",
+          children: [ctx.ui.row({ title: "Theme", control: ctx.ui.badge(ctx.theme.get()) })],
+        }),
+      )
+    },
+  })
+  return () => {
+    disposePanel()
+    disposeSurface()
+  }
 }
 `
 }
