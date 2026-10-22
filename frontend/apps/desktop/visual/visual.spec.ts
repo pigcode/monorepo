@@ -1,9 +1,24 @@
 /** 对 shell、聊天、设置、插件页做浅/深色截图。 */
+import { mkdtempSync } from "node:fs"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
 import { _electron as electron, expect, test } from "@playwright/test"
 
-/** 启动应用并等待主题应用到根元素，避免截到主题切换前的画面。 */
+/**
+ * 启动应用并等待主题应用到根元素，避免截到主题切换前的画面。每次用一个空的用户 profile：
+ * 前面的用例装过的插件会让列表变长、出现滚动条，页面跟着横移。
+ */
 async function launch(theme: "light" | "dark") {
-  const app = await electron.launch({ args: ["."] })
+  const env = Object.fromEntries(
+    Object.entries(process.env).filter(
+      (entry): entry is [string, string] => entry[1] !== undefined,
+    ),
+  )
+  const profileDir = mkdtempSync(join(tmpdir(), "pigcode-visual-"))
+  const app = await electron.launch({
+    args: ["."],
+    env: { ...env, PIGCODE_PROFILE_DIR: profileDir },
+  })
   const page = await app.firstWindow()
   await page.emulateMedia({ colorScheme: theme })
   await page.waitForSelector(".app")
