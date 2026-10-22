@@ -1,10 +1,10 @@
 /**
- * 把线程事件整理成一轮一轮的对话：用户消息、这一轮的工作（工具、过程消息、计划、子 agent）、
- * 待处理的审批、最后的回答、文件改动与结束状态。时间线按轮渲染，结束的轮把工作折叠起来。
+ * 把线程事件整理成一轮一轮的对话（参照 ZCode 的 turn render unit）：用户消息、折叠起来的工作
+ * （思考、工具、过程消息、提问与子 agent）、待处理的审批、工作区之外的最终回答、改过的文件与
+ * 结束状态。待办与进入计划模式不进时间线，待办在状态面板里显示。
  */
 import type { ThreadEvent } from "@pigcode/contracts"
-import type { ApprovalDecision, ApprovalRequest } from "./approval-card"
-import type { FileChangeSummary } from "./diff-summary"
+import type { ApprovalRequest } from "./approval-card"
 import {
   approvalFromEvent,
   asRecord,
@@ -13,28 +13,28 @@ import {
   collectResolved,
   collectSubagents,
   collectTools,
-  diffFromEvent,
   isParentScoped,
-  planFromEvent,
   questionFromEvent,
   toolFromEvent,
 } from "./event-parsers"
-import type { PlanUpdate } from "./plan-card"
+import { fileChanges, mergeFileChanges, toolInputValue, type FileChange } from "./file-changes"
 import type { QuestionRequestView } from "./question-card"
 import type { SubagentCall } from "./subagent-card"
-import { browserAction, isCommandTool, type ToolCall, type ToolStatus } from "./tool-meta"
+import { todoItems, type TodoItem } from "./tool-fields"
+import { isHiddenTool, toolFamily } from "./tool-identity"
+import type { ToolCall, ToolStatus } from "./tool-meta"
+import { groupTools, type GroupKind } from "./work-groups"
 
 /** 一轮里的一项工作。 */
 export type WorkItem =
   | { kind: "message"; key: string; text: string }
+  | { kind: "reasoning"; key: string; text: string; durationMs: number | null }
   | { kind: "tool"; key: string; tool: ToolCall }
-  | { kind: "explore"; key: string; tools: ToolCall[] }
-  | { kind: "commands"; key: string; tools: ToolCall[] }
-  | { kind: "browser"; key: string; tools: ToolCall[] }
-  | { kind: "plan"; key: string; plan: PlanUpdate }
+  | { kind: GroupKind; key: string; tools: ToolCall[] }
   | { kind: "subagent"; key: string; subagent: SubagentCall }
+  | { kind: "question"; key: string; request: QuestionRequestView; answers: string[] | undefined }
 
-/** 一轮的状态；waiting 表示在等用户审批。 */
+/** 一轮的状态；waiting 表示在等用户审批或回答。 */
 export type TurnStatus = "queued" | "running" | "waiting" | "completed" | "failed" | "interrupted"
 
 /** 一轮对话。signature 在内容不变时保持不变，供渲染时跳过未变化的轮。 */
@@ -47,15 +47,17 @@ export interface Turn {
   startedAt: string | null
   endedAt: string | null
   work: WorkItem[]
-  approvals: Array<{ request: ApprovalRequest; resolved: ApprovalDecision | undefined }>
-  /** agent 的提问；answers 为 undefined 表示还在等回答。 */
-  questions: Array<{ request: QuestionRequestView; answers: string[] | undefined }>
-  /** 结束后的最终回答；运行中为 null，所有文字都算过程。 */
+  /** 还在等用户处理的审批；处理过的只体现在工具行的状态上。 */
+  approvals: ApprovalRequest[]
+  /** 工作区之外的最终回答；运行中或最后一项不是文字时为 null。 */
   answer: string | null
   /** 这一轮助手说过的全部文字，复制按钮用。 */
   replyText: string
   replyAt: string | null
-  changes: FileChangeSummary[]
+  /** 这一轮改过的文件（按路径合并）。 */
+  files: FileChange[]
+  /** 这一轮最新的待办；状态面板用。 */
+  plan: TodoItem[] | null
   error: string | null
   signature: string
 }
@@ -65,14 +67,6 @@ export type TimelineEntry =
   | { kind: "turn"; turn: Turn }
   | { kind: "switch"; key: string; agentId: string; handoff: boolean }
   | { kind: "brief"; key: string }
-
-/** 查阅类工具：连续多个时合成一行「查阅 N 个文件」。 */
-const EXPLORE_TOOL = /^(read|view|cat|open|grep|glob|search|find|ls|list)/i
-
-/** 判断工具是否属于查阅类。 */
-export function isExploreTool(name: string): boolean {
-  return EXPLORE_TOOL.test(name)
-}
 
 function emptyTurn(key: string, runId: string | null): Turn {
   return {
@@ -85,57 +79,14 @@ function emptyTurn(key: string, runId: string | null): Turn {
     endedAt: null,
     work: [],
     approvals: [],
-    questions: [],
     answer: null,
     replyText: "",
     replyAt: null,
-    changes: [],
+    files: [],
+    plan: null,
     error: null,
     signature: "",
   }
-}
-
-type GroupKind = "explore" | "commands" | "browser"
-
-/** 工具属于哪种可合并的分组：已完成的查阅、已结束的命令与浏览器操作；其余不合并。 */
-function groupKind(tool: ToolCall): GroupKind | null {
-  if (isExploreTool(tool.name) && tool.status === "completed") return "explore"
-  if (isCommandTool(tool.name) && tool.status !== "running") return "commands"
-  if (browserAction(tool.name) && tool.status !== "running") return "browser"
-  return null
-}
-
-/** 连续的已完成查阅、连续的已结束命令各自合成一组；只有一个时仍按普通工具显示。 */
-function groupWork(items: WorkItem[]): WorkItem[] {
-  const result: WorkItem[] = []
-  let run: Array<Extract<WorkItem, { kind: "tool" }>> = []
-  let runKind: GroupKind | null = null
-  const flush = () => {
-    if (run.length >= 2 && runKind) {
-      result.push({
-        kind: runKind,
-        key: `${runKind}-${run[0]?.key ?? ""}`,
-        tools: run.map((item) => item.tool),
-      })
-    } else {
-      result.push(...run)
-    }
-    run = []
-    runKind = null
-  }
-  for (const item of items) {
-    const kind = item.kind === "tool" ? groupKind(item.tool) : null
-    if (item.kind === "tool" && kind) {
-      if (kind !== runKind) flush()
-      runKind = kind
-      run.push(item)
-      continue
-    }
-    flush()
-    result.push(item)
-  }
-  flush()
-  return result
 }
 
 /** 结束状态对应的事件类型。 */
@@ -145,9 +96,20 @@ const END_STATUS: Partial<Record<ThreadEvent["type"], TurnStatus>> = {
   "run.interrupted": "interrupted",
 }
 
+/** 这一轮是否已经结束。 */
+export function isEnded(turn: Pick<Turn, "status">): boolean {
+  return turn.status === "completed" || turn.status === "failed" || turn.status === "interrupted"
+}
+
+/** 构建过程中的附加信息：消息位置与提问工具，结束时整理用。 */
+interface Draft {
+  texts: Array<{ text: string; at: string }>
+  hasQuestionEvents: boolean
+}
+
 /**
  * 按 runId 分轮；没有 runId 的助手消息各自成一轮。正在流式输出时（streaming）文字属于最后一个
- * 未结束的轮，没有未结束的轮时补一个运行中的轮。流式文字本身不参与分轮，增量到来时不必重算。
+ * 未结束的轮，没有未结束的轮时补一个运行中的轮。流式文本本身不参与分轮，增量到来时不必重算。
  */
 export function buildTimeline(events: readonly ThreadEvent[], streaming = false): TimelineEntry[] {
   const sorted = [...events].sort((left, right) => left.seq - right.seq)
@@ -157,7 +119,7 @@ export function buildTimeline(events: readonly ThreadEvent[], streaming = false)
   const subagents = collectSubagents(sorted)
   const entries: TimelineEntry[] = []
   const turns = new Map<string, Turn>()
-  const messages = new Map<string, Array<{ text: string; at: string; index: number }>>()
+  const drafts = new Map<string, Draft>()
   const seenTools = new Set<string>()
 
   const turnFor = (event: ThreadEvent): Turn => {
@@ -165,8 +127,11 @@ export function buildTimeline(events: readonly ThreadEvent[], streaming = false)
     let turn = turns.get(key)
     if (!turn) {
       turn = emptyTurn(key, event.runId)
+      // 有 runId 的轮在收到结束事件之前都还在进行。
+      if (event.runId !== null) turn.status = "running"
       turn.startedAt = event.createdAt
       turns.set(key, turn)
+      drafts.set(key, { texts: [], hasQuestionEvents: false })
       entries.push({ kind: "turn", turn })
     }
     turn.signature += `|${event.seq}`
@@ -177,19 +142,22 @@ export function buildTimeline(events: readonly ThreadEvent[], streaming = false)
     const payload = asRecord(event.payload)
     if (event.type === "thread.updated" && event.runId === null) {
       const agentId = asText(payload?.providerId)
-      if (agentId)
+      if (agentId) {
         entries.push({
           kind: "switch",
           key: `switch-${event.seq}`,
           agentId,
           handoff: Boolean(asText(payload?.handoff)),
         })
-      else if (asText(payload?.handoff)) entries.push({ kind: "brief", key: `brief-${event.seq}` })
+      } else if (asText(payload?.handoff)) {
+        entries.push({ kind: "brief", key: `brief-${event.seq}` })
+      }
       continue
     }
     if (event.runId === null && event.type !== "message.completed") continue
     const turn = turnFor(event)
-    // 子 agent 的消息与工具在它自己的卡片里显示；这里只记进签名，让卡片随之刷新。
+    const draft = drafts.get(turn.key)!
+    // 子 agent 的消息、思考与工具在它自己的卡片里显示；这里只记进签名，让卡片随之刷新。
     if (isParentScoped(event.type) && asText(payload?.parentToolUseId)) continue
     switch (event.type) {
       case "run.queued":
@@ -208,19 +176,36 @@ export function buildTimeline(events: readonly ThreadEvent[], streaming = false)
           turn.userText = text
           break
         }
-        const list = messages.get(turn.key) ?? []
-        list.push({ text, at: event.createdAt, index: turn.work.length })
-        messages.set(turn.key, list)
+        draft.texts.push({ text, at: event.createdAt })
         turn.work.push({ kind: "message", key: `msg-${event.seq}`, text })
+        break
+      }
+      case "reasoning.completed": {
+        const text = asText(payload?.text)
+        if (!text?.trim()) break
+        const duration = payload?.durationMs
+        turn.work.push({
+          kind: "reasoning",
+          key: `reasoning-${event.seq}`,
+          text,
+          durationMs: typeof duration === "number" ? duration : null,
+        })
         break
       }
       case "tool.started":
       case "tool.completed": {
         const status: ToolStatus = event.type === "tool.started" ? "running" : "completed"
-        const tool = toolFromEvent(event, status)
-        if (!tool || seenTools.has(tool.id)) break
-        seenTools.add(tool.id)
-        turn.work.push({ kind: "tool", key: `tool-${tool.id}`, tool: tools.get(tool.id) ?? tool })
+        const parsed = toolFromEvent(event, status)
+        if (!parsed || seenTools.has(parsed.id)) break
+        seenTools.add(parsed.id)
+        const tool = tools.get(parsed.id) ?? parsed
+        if (toolFamily(tool.name) === "todo") {
+          const items = todoItems(toolInputValue(tool))
+          if (items.length > 0) turn.plan = items
+        }
+        if (isHiddenTool(tool.name)) break
+        if (toolFamily(tool.name) === "agent" && subagents.has(tool.id)) break
+        turn.work.push({ kind: "tool", key: `tool-${tool.id}`, tool })
         break
       }
       case "subagent.started": {
@@ -230,23 +215,16 @@ export function buildTimeline(events: readonly ThreadEvent[], streaming = false)
         break
       }
       case "plan.updated": {
-        const plan = planFromEvent(event)
-        if (!plan) break
-        // 同一轮只保留最新的计划，放在第一次出现计划的位置。
-        const existing = turn.work.findIndex((item) => item.kind === "plan")
-        const item: WorkItem = {
-          kind: "plan",
-          key: existing >= 0 ? (turn.work[existing]?.key ?? "") : `plan-${event.seq}`,
-          plan,
-        }
-        if (existing >= 0) turn.work[existing] = item
-        else turn.work.push(item)
+        const items = todoItems(payload?.plan ?? payload?.steps ?? payload)
+        if (items.length > 0) turn.plan = items
         break
       }
       case "approval.requested": {
         const request = approvalFromEvent(event)
-        if (request) turn.approvals.push({ request, resolved: resolved.get(request.id) })
-        if (turn.status === "running") turn.status = "waiting"
+        if (request && !resolved.has(request.id)) turn.approvals.push(request)
+        if (turn.status === "running" && request && !resolved.has(request.id)) {
+          turn.status = "waiting"
+        }
         break
       }
       case "approval.resolved":
@@ -254,18 +232,16 @@ export function buildTimeline(events: readonly ThreadEvent[], streaming = false)
         break
       case "question.requested": {
         const request = questionFromEvent(event)
-        if (request) turn.questions.push({ request, answers: answered.get(request.id) })
-        if (turn.status === "running") turn.status = "waiting"
+        if (!request) break
+        draft.hasQuestionEvents = true
+        const answers = answered.get(request.id)
+        turn.work.push({ kind: "question", key: `question-${request.id}`, request, answers })
+        if (turn.status === "running" && answers === undefined) turn.status = "waiting"
         break
       }
       case "question.answered":
         if (turn.status === "waiting") turn.status = "running"
         break
-      case "file.changed": {
-        const summary = diffFromEvent(event)
-        if (summary) turn.changes.push(summary)
-        break
-      }
       case "run.completed":
       case "run.failed":
       case "run.interrupted":
@@ -278,8 +254,8 @@ export function buildTimeline(events: readonly ThreadEvent[], streaming = false)
     }
   }
 
-  // 没有 runId 的消息（旧数据）本身就是一轮完整的回答。
   for (const turn of turns.values()) {
+    // 没有 runId 的消息（旧数据）本身就是一轮完整的回答。
     if (turn.runId === null && turn.status !== "running") turn.endedAt ??= turn.startedAt
   }
 
@@ -290,26 +266,57 @@ export function buildTimeline(events: readonly ThreadEvent[], streaming = false)
     entries.push({ kind: "turn", turn })
   }
 
-  for (const turn of turns.values()) finalizeTurn(turn, messages.get(turn.key) ?? [])
+  for (const turn of turns.values()) finalizeTurn(turn, drafts.get(turn.key)!)
   return entries
 }
 
-/** 这一轮是否已经结束。 */
-export function isEnded(turn: Pick<Turn, "status" | "runId" | "endedAt">): boolean {
-  return turn.status === "completed" || turn.status === "failed" || turn.status === "interrupted"
+/** 一轮结束时还在运行的工具与子 agent 记为已停止。 */
+function stopUnfinished(item: WorkItem): WorkItem {
+  if (item.kind === "tool" && item.tool.status === "running") {
+    return { ...item, tool: { ...item.tool, status: "stopped" } }
+  }
+  if (item.kind === "subagent" && item.subagent.status === "running") {
+    return { ...item, subagent: { ...item.subagent, status: "interrupted" } }
+  }
+  return item
 }
 
-/** 结束的轮把最后一条助手消息提出来作为回答，其余工作再做查阅分组。 */
-function finalizeTurn(turn: Turn, texts: Array<{ text: string; at: string; index: number }>): void {
-  turn.replyText = texts.map((entry) => entry.text).join("\n\n")
-  turn.replyAt = texts.at(-1)?.at ?? null
-  const last = texts.at(-1)
-  if (isEnded(turn) && last && turn.work[last.index]?.kind === "message") {
-    turn.answer = last.text
-    turn.work = turn.work.filter((_item, index) => index !== last.index)
+/**
+ * 整理一轮：结束后还在运行的工具记为已停止；最后一项若是文字，提出来作为工作区之外的回答；
+ * 和提问事件重复的提问工具、结束后才失去意义的审批去掉；连续的同类工具合并；改过的文件按路径汇总。
+ */
+function finalizeTurn(turn: Turn, draft: Draft): void {
+  const ended = isEnded(turn)
+  turn.replyText = draft.texts.map((entry) => entry.text).join("\n\n")
+  turn.replyAt = draft.texts.at(-1)?.at ?? null
+  let work = turn.work
+  if (draft.hasQuestionEvents) {
+    work = work.filter(
+      (item) => item.kind !== "tool" || toolFamily(item.tool.name) !== "ask-user-question",
+    )
   }
-  turn.work = groupWork(turn.work)
-  turn.signature += `|${turn.status}|${turn.approvals.map((entry) => entry.resolved ?? "-").join(",")}`
+  if (ended) work = work.map(stopUnfinished)
+  const last = work.at(-1)
+  if (ended && last?.kind === "message") {
+    turn.answer = last.text
+    work = work.slice(0, -1)
+  }
+  if (ended) turn.approvals = []
+  turn.files = mergeFileChanges(
+    work.flatMap((item) =>
+      item.kind === "tool" && item.tool.status === "completed" ? fileChanges(item.tool) : [],
+    ),
+  )
+  turn.work = groupTools(work, (item) => (item.kind === "tool" ? item.tool : null)) as WorkItem[]
+  turn.signature += `|${turn.status}|${turn.approvals.map((request) => request.id).join(",")}`
+}
+
+/** 线程里最新的待办；没有任何待办时为 null。 */
+export function latestPlan(timeline: readonly TimelineEntry[]): TodoItem[] | null {
+  for (const entry of [...timeline].reverse()) {
+    if (entry.kind === "turn" && entry.turn.plan) return entry.turn.plan
+  }
+  return null
 }
 
 /** 是否还有未处理的审批。 */

@@ -1,9 +1,9 @@
 /**
  * agent 的提问卡片（Claude 的 AskUserQuestion）：每个问题列出选项（单选或多选），
- * 也可以填「其他」。全部答完才能提交；回答之后只显示问题与答案。
+ * 也可以填「其他」。全部答完才能提交；回答之后时间线里只留「已询问」的历史行。
  */
 import { useState } from "react"
-import { Check, MessageCircleQuestion } from "lucide-react"
+import { MessageCircleQuestion } from "lucide-react"
 import { Button, useLocale } from "@pigcode/ui-primitives"
 
 /** 一个问题。 */
@@ -30,36 +30,18 @@ function answerOf(draft: Draft): string {
   return [...draft.selected, draft.other.trim()].filter(Boolean).join(", ")
 }
 
-/** 渲染提问；answers 为 undefined 表示还没回答。 */
+/** 渲染还没回答的提问。 */
 export function QuestionCard({
   request,
-  answers,
   onAnswer,
 }: {
   request: QuestionRequestView
-  answers: string[] | undefined
   onAnswer: (requestId: string, answers: string[]) => void
 }) {
   const { t } = useLocale()
   const [drafts, setDrafts] = useState<Draft[]>(() =>
     request.questions.map(() => ({ selected: [], other: "" })),
   )
-
-  if (answers) {
-    return (
-      <div className="question-done" role="group" aria-label={t("chat.question.title")}>
-        {request.questions.map((question, index) => (
-          <div key={question.question} className="question-done-row">
-            <Check className="ic ic-sm" aria-hidden="true" />
-            <span className="question-done-q">{question.question}</span>
-            <span className="question-done-a">
-              {answers[index]?.trim() || t("chat.question.unanswered")}
-            </span>
-          </div>
-        ))}
-      </div>
-    )
-  }
 
   function update(index: number, patch: (draft: Draft) => Draft): void {
     setDrafts((current) => current.map((draft, at) => (at === index ? patch(draft) : draft)))

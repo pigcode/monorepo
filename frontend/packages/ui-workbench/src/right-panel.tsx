@@ -12,7 +12,7 @@ import {
   type LucideIcon,
 } from "lucide-react"
 import { Menu } from "@pigcode/ui-primitives"
-import { FileIcon } from "./file-icons"
+import { FileIcon } from "@pigcode/ui-primitives"
 
 /** 可以打开的 surface 种类；顺序即启动器与添加菜单里的顺序。 */
 export const SURFACE_KINDS = ["browser", "terminal", "files", "diff", "pr", "checkpoint"] as const

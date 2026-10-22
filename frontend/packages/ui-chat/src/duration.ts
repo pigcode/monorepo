@@ -1,24 +1,27 @@
 /** 时长的显示与运行中的计时。 */
 import { useEffect, useState } from "react"
 
-/** 把时长写成「12 秒 / 3 分 5 秒 / 1 时 2 分」，英文为「12s / 3m 5s / 1h 2m」。 */
+const UNITS: ReadonlyArray<[seconds: number, zh: string, en: string]> = [
+  [86_400, "天", "d"],
+  [3_600, "时", "h"],
+  [60, "分", "m"],
+  [1, "秒", "s"],
+]
+
+/**
+ * 把时长写成「12 秒 / 3 分 5 秒 / 1 时 2 分 / 2 天 3 时」，英文为「12s / 3m 5s」：四舍五入到秒、
+ * 至少 1 秒，只取最大的两个非零单位。
+ */
 export function formatDuration(ms: number, locale: string): string {
-  const total = Math.max(1, Math.round(ms / 1000))
-  const hours = Math.floor(total / 3600)
-  const minutes = Math.floor((total % 3600) / 60)
-  const seconds = total % 60
+  let rest = Math.max(1, Math.round(ms / 1000))
   const zh = locale.startsWith("zh")
-  const unit = (value: number, zhUnit: string, enUnit: string) =>
-    zh ? `${value} ${zhUnit}` : `${value}${enUnit}`
-  if (hours > 0)
-    return [unit(hours, "时", "h"), minutes > 0 ? unit(minutes, "分", "m") : null]
-      .filter(Boolean)
-      .join(" ")
-  if (minutes > 0)
-    return [unit(minutes, "分", "m"), seconds > 0 ? unit(seconds, "秒", "s") : null]
-      .filter(Boolean)
-      .join(" ")
-  return unit(seconds, "秒", "s")
+  const parts: string[] = []
+  for (const [size, zhUnit, enUnit] of UNITS) {
+    const value = Math.floor(rest / size)
+    rest %= size
+    if (value > 0) parts.push(zh ? `${value} ${zhUnit}` : `${value}${enUnit}`)
+  }
+  return parts.slice(0, 2).join(" ")
 }
 
 /** 运行中每秒刷新一次当前时间；结束后停止计时。 */
