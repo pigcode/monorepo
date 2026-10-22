@@ -145,6 +145,42 @@ export function languageForPath(path: string): string | null {
   return dot > 0 ? (EXTENSIONS[name.slice(dot + 1)] ?? null) : null
 }
 
+/** 代码围栏里常见的语言别名。 */
+const FENCE_ALIASES: Record<string, string> = {
+  console: "shellscript",
+  js: "javascript",
+  mjs: "javascript",
+  cjs: "javascript",
+  node: "javascript",
+  ts: "typescript",
+  py: "python",
+  rb: "ruby",
+  rs: "rust",
+  sh: "shellscript",
+  bash: "shellscript",
+  zsh: "shellscript",
+  shell: "shellscript",
+  shellsession: "shellscript",
+  yml: "yaml",
+  md: "markdown",
+  dockerfile: "docker",
+  ps: "powershell",
+  ps1: "powershell",
+  "c++": "cpp",
+  cs: "csharp",
+  kt: "kotlin",
+  golang: "go",
+  patch: "diff",
+}
+
+/** Markdown 代码围栏的语言名对应的高亮语言；不认识的返回 null。 */
+export function languageForFence(lang: string): string | null {
+  const name = lang.trim().toLowerCase()
+  if (!name) return null
+  const language = FENCE_ALIASES[name] ?? name
+  return language in LANGUAGES ? language : null
+}
+
 let highlighter: Promise<HighlighterCore> | null = null
 
 /** 第一次高亮时才创建 Shiki；主题只有浅色与深色两套。 */

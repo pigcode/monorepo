@@ -5,7 +5,7 @@
 import { ChevronRight, Ellipsis, PanelLeftClose, PanelLeftOpen, Save } from "lucide-react"
 import { useState } from "react"
 import { CodeEditor } from "./code-editor"
-import { languageForPath } from "./highlight"
+import { languageForPath } from "@pigcode/ui-primitives"
 
 /** 一次读取的文件；字段与 Host 的 workspace.readFile 一致。 */
 export interface FileViewerFile {

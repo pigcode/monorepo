@@ -4,7 +4,7 @@
  * 还没刷新到的行先按纯文字显示，保证文字与光标始终对齐。
  */
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react"
-import { highlightLines, type HighlightToken } from "./highlight"
+import { highlightLines, type HighlightToken } from "@pigcode/ui-primitives"
 
 /** 编辑器属性。 */
 export interface CodeEditorProps {
