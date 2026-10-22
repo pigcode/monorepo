@@ -345,7 +345,13 @@
   display: inline-flex;
   align-items: center;
   min-width: 0;
+  overflow: hidden;
   color: var(--faint);
+}
+/* 目录先收缩成省略号，文件名保持完整；比整行还长时才截断。 */
+.file-crumb-part:last-child {
+  flex-shrink: 0;
+  max-width: 100%;
 }
 .file-crumb {
   padding: 2px 4px;
