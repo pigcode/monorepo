@@ -69,7 +69,8 @@ export const providerContributionSchema = z
   .object({
     id: z.string().regex(/^[a-z][a-z0-9._-]*$/),
     description: localizedTextSchema.optional(),
-    homepage: z.string().url().optional(),
+    /** 桌面端只用系统浏览器打开 https 链接。 */
+    homepage: z.url({ protocol: /^https$/ }).optional(),
     /** 没装 CLI 时给用户的安装提示，例如安装命令。 */
     installHint: localizedTextSchema.optional(),
     settings: z.array(providerSettingFieldSchema).default([]),

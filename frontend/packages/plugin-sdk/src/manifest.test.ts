@@ -90,6 +90,17 @@ describe("plugin manifest", () => {
       pluginManifestSchema.parse(withSettings([{ key: "customModels", type: "text", label: "M" }])),
     ).toThrow(/reserved/)
   })
+
+  it("only accepts an https homepage, the only kind the desktop app opens", () => {
+    const withHomepage = (homepage: string) => ({
+      ...base,
+      pigcode: { ...base.pigcode, contributes: { provider: { id: "fake", homepage } } },
+    })
+    const manifest = pluginManifestSchema.parse(withHomepage("https://example.com/agent"))
+    expect(readProviderContribution(manifest)?.homepage).toBe("https://example.com/agent")
+    expect(() => pluginManifestSchema.parse(withHomepage("http://example.com"))).toThrow()
+    expect(() => pluginManifestSchema.parse(withHomepage("javascript:alert(1)"))).toThrow()
+  })
 })
 
 describe("plugin compatibility", () => {
