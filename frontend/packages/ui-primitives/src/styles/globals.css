@@ -3201,21 +3201,21 @@ body.is-resizing-rows iframe {
     0 0 0 3.5px var(--accent-ring);
 }
 
-/* ─── 浮层 ─────────────────────────────────────────────── */
+/* ─── 浮层：参照 ZCode 的菜单——8px 圆角、4px 内边距，28px 高的行、6px 圆角与中性的悬停色 ─── */
 .popover,
 .menu-popup {
-  padding: 5px;
-  border-radius: var(--r-panel);
+  padding: 4px;
+  border-radius: 8px;
 }
 .menu-item {
-  min-height: 30px;
-  padding: 4px 9px;
-  border-radius: var(--r-md);
+  min-height: 28px;
+  padding: 4px 8px;
+  border-radius: 6px;
 }
 .menu-item:hover,
 .menu-item[data-highlighted],
 .menu-item.is-focus {
-  background: var(--accent-soft);
+  background: var(--active);
 }
 .menu-item .check-mark {
   color: var(--accent);
