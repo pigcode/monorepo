@@ -229,18 +229,32 @@ export async function createWindow(): Promise<BrowserWindow> {
   return window
 }
 
-app.whenReady().then(async () => {
-  registerAppProtocol(resolveAppPath("out/renderer"))
-  registerPluginProtocol(profileDir())
-  host = startHost()
-  mainWindow = await createWindow()
+/**
+ * 默认 profile 只允许一个实例：两个 Host 同时读写一份数据库与 settings.json 会互相覆盖。
+ * 再次启动时把已有窗口带到前台后退出。显式指定 PIGCODE_PROFILE_DIR（E2E、并排的多个 profile）不加锁。
+ */
+const singleInstance = process.env.PIGCODE_PROFILE_DIR === undefined
+if (singleInstance && !app.requestSingleInstanceLock()) {
+  app.quit()
+} else {
+  app.on("second-instance", () => {
+    if (!mainWindow || mainWindow.isDestroyed()) return
+    if (mainWindow.isMinimized()) mainWindow.restore()
+    mainWindow.focus()
+  })
+  app.whenReady().then(async () => {
+    registerAppProtocol(resolveAppPath("out/renderer"))
+    registerPluginProtocol(profileDir())
+    host = startHost()
+    mainWindow = await createWindow()
 
-  if (process.env.PIGCODE_E2E === "1") {
-    app.on("pigcode:test-kill-host" as never, () => {
-      host?.stop()
-    })
-  }
-})
+    if (process.env.PIGCODE_E2E === "1") {
+      app.on("pigcode:test-kill-host" as never, () => {
+        host?.stop()
+      })
+    }
+  })
+}
 
 // 窗口都关掉以后才停 Host：退出时窗口可能因为未保存的修改被用户留下，退出随之取消。
 app.on("will-quit", () => {
