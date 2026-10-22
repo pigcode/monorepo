@@ -9,7 +9,7 @@ import {
 } from "@pigcode/contracts"
 import type { CommandMethod, PermissionMode, ReasoningEffort } from "@pigcode/contracts"
 import { buildSubagentBrief } from "../providers/switching"
-import { listAgents, validateAgentSettings } from "./agents"
+import { listAgents, uninstallPluginAndClearDefault, validateAgentSettings } from "./agents"
 
 /** 基于 Cordis 服务处理 RPC 请求的 Host 侧服务器。 */
 export class RpcServer {
@@ -297,7 +297,7 @@ export class RpcServer {
       case "plugin.disable":
         return this.ctx.plugins.disable((parsed as { id: string }).id)
       case "plugin.uninstall":
-        return this.ctx.plugins.uninstall((parsed as { id: string }).id)
+        return uninstallPluginAndClearDefault(this.ctx, (parsed as { id: string }).id)
       case "plugin.bootGraph":
         return this.ctx.plugins.bootGraph()
       case "workspace.tree":

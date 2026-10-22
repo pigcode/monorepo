@@ -110,6 +110,23 @@ describe("AgentsPage", () => {
     expect(screen.getByText("检测中…")).toBeTruthy()
   })
 
+  it("shows the default agent, or Automatic when it is disabled or gone", () => {
+    const selector = () => screen.getByRole("combobox", { name: "新会话使用" })
+    renderPage({ defaultProviderId: "echo" })
+    expect(selector().textContent).toContain("Echo")
+    cleanup()
+
+    const claude = agent({})
+    const echo = agent({ providerId: "echo", displayName: "Echo", enabled: false })
+    renderPage({ agents: [claude, echo], defaultProviderId: "echo" })
+    expect(selector().textContent).toContain("自动")
+    cleanup()
+
+    renderPage({ defaultProviderId: "removed-agent" })
+    expect(selector().textContent).toContain("自动")
+    expect(selector().textContent).not.toContain("removed-agent")
+  })
+
   it("toggles an agent through its plugin", async () => {
     const props = renderPage()
     await userEvent.click(screen.getByRole("switch", { name: "启用 Echo" }))

@@ -71,6 +71,21 @@ export async function listAgents(ctx: Context): Promise<AgentList> {
   return { agents, defaultProviderId: ctx.providers.configuredDefaultProvider() }
 }
 
+/**
+ * 卸载插件；它提供的 agent 是默认 agent 时把默认改回自动。停用是暂时的，默认选择保留，
+ * 重新启用后照旧生效；卸载以后这个选择就没有对象了。
+ */
+export async function uninstallPluginAndClearDefault(ctx: Context, id: string): Promise<void> {
+  const record = (await ctx.plugins.records()).find((item) => item.id === id)
+  await ctx.plugins.uninstall(id)
+  const manifest = record?.manifest
+  const providerId =
+    manifest?.pigcode.kind === "provider" ? readProviderContribution(manifest)?.id : undefined
+  if (providerId && ctx.providers.configuredDefaultProvider() === providerId) {
+    ctx.providers.setDefaultProvider(null)
+  }
+}
+
 /** 一个设置值是否符合字段声明的类型；留空（null、空字符串、空数组）总是允许。 */
 function matchesField(field: ProviderSettingField, value: unknown): boolean {
   if (value === null || value === "") return true

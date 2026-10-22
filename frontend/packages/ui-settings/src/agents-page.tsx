@@ -112,6 +112,10 @@ export function AgentsPage({
   const [installOpen, setInstallOpen] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const selectable = agents.filter((agent) => agent.enabled && agent.registered)
+  // 默认 agent 停用或不在了时，新会话按“自动”挑选；选择框显示实际生效的那一项。
+  const effectiveDefault = selectable.some((agent) => agent.providerId === defaultProviderId)
+    ? defaultProviderId
+    : null
 
   async function run(key: string, action: () => Promise<void>): Promise<void> {
     setPending(key)
@@ -156,7 +160,7 @@ export function AgentsPage({
       <SettingSection title={t("agents.default")}>
         <SettingRow title={t("agents.default.title")} description={t("agents.default.description")}>
           <Select.Root
-            value={defaultProviderId ?? AUTO}
+            value={effectiveDefault ?? AUTO}
             onValueChange={(value) =>
               void run("default", () =>
                 onSetDefault(value === AUTO || value === null ? null : String(value)),

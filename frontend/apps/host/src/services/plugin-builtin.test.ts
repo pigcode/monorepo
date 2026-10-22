@@ -7,6 +7,7 @@ import { join } from "node:path"
 import { pathToFileURL } from "node:url"
 import { describe, expect, it } from "vitest"
 import { apply as providers } from "../providers/registry"
+import { uninstallPluginAndClearDefault } from "../rpc/agents"
 import { MemoryTransport } from "../rpc/memory-transport"
 import { RpcServer } from "../rpc/server"
 import {
@@ -202,8 +203,29 @@ describe("plugins service", () => {
     expect(
       (await call("plugin.uninstall", { id: "provider.@pigcode/provider-alpha" })).error?.message,
     ).toContain("PLUGIN_BUILTIN")
+    expect((await call("agent.setDefault", { providerId: "beta" })).error).toBeUndefined()
     expect((await call("plugin.uninstall", { id: "provider.pigcode-beta" })).error).toBeUndefined()
     expect(ctx.providers.list().map((driver) => driver.id)).toEqual(["alpha"])
+    // 卸载默认 agent 的插件后默认回到自动；它的设置值保留，重新安装还在。
+    const after = (await call("agent.list", {})).result as { defaultProviderId: string | null }
+    expect(after.defaultProviderId).toBeNull()
+    expect(ctx.providers.getSettings("beta")).toEqual({
+      binaryPath: "/opt/beta",
+      customModels: ["beta-large"],
+    })
+    await ctx.fiber.dispose()
+  })
+
+  it("keeps the default agent when another plugin is uninstalled or it is only disabled", async () => {
+    const { ctx, root } = await host()
+    await ctx.plugins.loadAll()
+    const source = await writeProviderPackage(join(root, "src-beta"), "pigcode-beta", "beta")
+    await ctx.plugins.installLocal(source)
+    ctx.providers.setDefaultProvider("alpha")
+    await uninstallPluginAndClearDefault(ctx, "provider.pigcode-beta")
+    expect(ctx.providers.configuredDefaultProvider()).toBe("alpha")
+    await ctx.plugins.disable("provider.@pigcode/provider-alpha")
+    expect(ctx.providers.configuredDefaultProvider()).toBe("alpha")
     await ctx.fiber.dispose()
   })
 })
