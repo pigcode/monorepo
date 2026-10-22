@@ -25,6 +25,11 @@ export function normalizeCodexNotification(method: string, params: unknown): Pro
       const delta = asString(record.delta)
       return delta === undefined ? [] : [{ type: "message.delta", text: delta }]
     }
+    case "item/reasoning/summaryTextDelta":
+    case "item/reasoning/textDelta": {
+      const delta = asString(record.delta)
+      return delta ? [{ type: "reasoning.delta", text: delta }] : []
+    }
     case "item/commandExecution/outputDelta": {
       const delta = asString(record.delta)
       const itemId = asString(record.itemId)
@@ -113,6 +118,19 @@ function normalizeItem(value: unknown, started: boolean): ProviderEvent[] {
     ]
   }
 
+  if (type === "reasoning") {
+    if (started) return []
+    const text = reasoningText(item)
+    return text ? [{ type: "reasoning.completed", text }] : []
+  }
+
+  if (type === "webSearch") {
+    const input = { query: asString(item.query) ?? "" }
+    return started
+      ? [{ type: "tool.started", toolCallId: id, name: "WebSearch", input }]
+      : [{ type: "tool.completed", toolCallId: id, name: "WebSearch", output: "", isError: false }]
+  }
+
   if (type === "subAgentActivity") {
     return normalizeSubagentActivity(item, id)
   }
@@ -170,6 +188,17 @@ function normalizeCollabToolCall(item: UnknownRecord, id: string): ProviderEvent
     })
   }
   return events
+}
+
+/** 推理条目的文字：优先用摘要，没有摘要时用原始推理内容。 */
+function reasoningText(item: UnknownRecord): string | undefined {
+  for (const field of [item.summary, item.content]) {
+    const parts = Array.isArray(field)
+      ? field.filter((part): part is string => typeof part === "string" && part.trim() !== "")
+      : []
+    if (parts.length > 0) return parts.join("\n\n")
+  }
+  return undefined
 }
 
 /** 判断工具条目是否以错误结束；有 exitCode 时以退出码为准。 */

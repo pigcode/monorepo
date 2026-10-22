@@ -109,6 +109,59 @@ describe("normalizeSdkMessage", () => {
     expect(events).toContainEqual({ type: "run.completed" })
   })
 
+  it("maps thinking to reasoning and keeps the narration between tools", () => {
+    const state = createNormalizeState()
+    const delta = normalizeSdkMessage(
+      {
+        type: "stream_event",
+        event: {
+          type: "content_block_delta",
+          delta: { type: "thinking_delta", thinking: "Let me look" },
+        },
+        session_id: "s1",
+        uuid: "u0",
+      } as never,
+      state,
+    )
+    expect(delta).toEqual([{ type: "reasoning.delta", text: "Let me look" }])
+
+    const assistant = (uuid: string, content: unknown[]) =>
+      normalizeSdkMessage(
+        { type: "assistant", message: { content }, session_id: "s1", uuid } as never,
+        state,
+      )
+    expect(
+      assistant("u1", [
+        { type: "thinking", thinking: "Read the entry file first.", signature: "sig" },
+        { type: "text", text: "I'll read the file." },
+        { type: "tool_use", id: "tool_1", name: "Read", input: { file_path: "a.ts" } },
+      ]),
+    ).toEqual([
+      { type: "reasoning.completed", text: "Read the entry file first." },
+      { type: "message.completed", text: "I'll read the file." },
+      { type: "tool.started", toolCallId: "tool_1", name: "Read", input: { file_path: "a.ts" } },
+    ])
+    expect(assistant("u2", [{ type: "text", text: "All done." }])).toEqual([
+      { type: "message.completed", text: "All done." },
+    ])
+
+    // result 只是重复最后一段回答，不能再写一遍。
+    const result = normalizeSdkMessage(
+      {
+        type: "result",
+        subtype: "success",
+        is_error: false,
+        result: "All done.",
+        session_id: "s1",
+        uuid: "u3",
+        total_cost_usd: 0,
+        modelUsage: {},
+      } as never,
+      state,
+    )
+    expect(result.map((event) => event.type)).toEqual(["usage.updated", "run.completed"])
+  })
+
   it("emits run.failed for an error result", () => {
     const events = normalizeSdkMessage(
       {

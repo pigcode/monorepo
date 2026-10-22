@@ -25,6 +25,8 @@ const connection = new Connection({
       store.queueDelta(delta.threadId, delta.event.text)
     } else if (delta.event.type === "tool.outputDelta") {
       store.queueToolOutput(delta.threadId, delta.event.toolCallId, delta.event.delta)
+    } else if (delta.event.type === "reasoning.delta") {
+      store.queueReasoning(delta.threadId, delta.event.text)
     }
   },
   onStatus: (status) => store.update({ status }),

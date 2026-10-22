@@ -13,6 +13,8 @@ export interface ThreadViewState {
   streamingText: string
   /** 运行中命令已经流出的输出，按工具调用 id；命令结束后由完整输出取代。 */
   liveOutput: Readonly<Record<string, string>>
+  /** 正在流出的思考过程；思考结束（reasoning.completed）后由持久事件取代。 */
+  liveReasoning: string
   status: ThreadViewStatus
   pendingApprovals: number
   lastError: string | null
@@ -48,6 +50,7 @@ function emptyThreadState(): ThreadViewState {
     events: [],
     streamingText: "",
     liveOutput: {},
+    liveReasoning: "",
     status: "idle",
     pendingApprovals: 0,
     lastError: null,
@@ -180,12 +183,18 @@ function applyEvent(
   const endsStream =
     (event.type === "message.completed" && !isSubagentMessage(event)) ||
     RUN_END_EVENTS.has(event.type)
+  // 思考落成事件、开始回答或调用工具后，实时的思考文字都已经有了持久的去处。
+  const endsReasoning =
+    endsStream ||
+    ((event.type === "reasoning.completed" || event.type === "tool.started") &&
+      !isSubagentMessage(event))
   return {
     endsStream,
     state: {
       ...previous,
       streamingText: endsStream ? "" : previous.streamingText,
       liveOutput: liveOutputAfter(previous.liveOutput, event),
+      liveReasoning: endsReasoning ? "" : previous.liveReasoning,
       status,
       pendingApprovals: pendingApprovalsAfter(previous, event),
       lastError:
@@ -208,6 +217,7 @@ export class AppStore {
   private readonly listeners = new Set<() => void>()
   private readonly pendingDeltas = new Map<string, string>()
   private readonly pendingOutput = new Map<string, Map<string, string>>()
+  private readonly pendingReasoning = new Map<string, string>()
   private flushScheduled = false
   private readonly schedule: (callback: () => void) => void
 
@@ -384,14 +394,28 @@ export class AppStore {
     this.scheduleFlush()
   }
 
-  /** 把排队的流式文本与命令输出一次写入。 */
+  /** 排队一段思考过程，和流式文本一起按帧写入。 */
+  queueReasoning(threadId: string, text: string): void {
+    this.pendingReasoning.set(threadId, (this.pendingReasoning.get(threadId) ?? "") + text)
+    this.scheduleFlush()
+  }
+
+  /** 把排队的流式文本、命令输出与思考过程一次写入。 */
   flushDeltas(): void {
     this.flushScheduled = false
-    if (this.pendingDeltas.size === 0 && this.pendingOutput.size === 0) return
+    if (
+      this.pendingDeltas.size === 0 &&
+      this.pendingOutput.size === 0 &&
+      this.pendingReasoning.size === 0
+    ) {
+      return
+    }
     const pending = [...this.pendingDeltas]
     const output = [...this.pendingOutput]
+    const reasoning = [...this.pendingReasoning]
     this.pendingDeltas.clear()
     this.pendingOutput.clear()
+    this.pendingReasoning.clear()
     const threadStates = { ...this.state.threadStates }
     let streamingText = this.state.streamingText
     let changed = false
@@ -410,6 +434,12 @@ export class AppStore {
         liveOutput[toolCallId] = (liveOutput[toolCallId] ?? "") + delta
       }
       threadStates[threadId] = { ...previous, liveOutput }
+      changed = true
+    }
+    for (const [threadId, text] of reasoning) {
+      const previous = threadStates[threadId]
+      if (!previous) continue
+      threadStates[threadId] = { ...previous, liveReasoning: previous.liveReasoning + text }
       changed = true
     }
     if (!changed) return

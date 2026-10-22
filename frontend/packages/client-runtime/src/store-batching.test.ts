@@ -175,4 +175,27 @@ describe("AppStore batching", () => {
     store.addEvents([threadEvent("th_1", 2, "run.completed")])
     expect(store.getSnapshot().threadStates["th_1"]?.liveOutput).toEqual({})
   })
+
+  it("streams thinking per frame until the reasoning or a tool call lands", () => {
+    const frames = manualSchedule()
+    const store = new AppStore({ schedule: frames.schedule })
+    store.openThread("th_1")
+    store.queueReasoning("th_1", "Read the ")
+    store.queueReasoning("th_1", "tests first")
+    frames.flush()
+    expect(store.getSnapshot().threadStates["th_1"]?.liveReasoning).toBe("Read the tests first")
+
+    // 子 agent 的思考不影响主线程；主线程的思考落成事件后实时文字清空。
+    store.addEvents([
+      threadEvent("th_1", 1, "reasoning.completed", { text: "x", parentToolUseId: "task_1" }),
+    ])
+    expect(store.getSnapshot().threadStates["th_1"]?.liveReasoning).toBe("Read the tests first")
+    store.addEvents([threadEvent("th_1", 2, "reasoning.completed", { text: "Read the tests" })])
+    expect(store.getSnapshot().threadStates["th_1"]?.liveReasoning).toBe("")
+
+    store.queueReasoning("th_1", "next step")
+    frames.flush()
+    store.addEvents([threadEvent("th_1", 3, "tool.started", { toolCallId: "c1", name: "Read" })])
+    expect(store.getSnapshot().threadStates["th_1"]?.liveReasoning).toBe("")
+  })
 })
