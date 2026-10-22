@@ -16,6 +16,8 @@ export interface ActiveRun {
   approvals: Set<string>
   /** 已经流给 UI、还没有被 message.completed 持久化的助手文本。 */
   liveText: string
+  /** 当前这段思考第一次流出增量的时间；思考结束时据此记下持续时长。 */
+  reasoningStartedAt?: number | undefined
 }
 
 /**

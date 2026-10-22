@@ -1,22 +1,10 @@
-/** 工具调用的元信息：图标与动作文案、摘要、命令文本与改动行数。 */
-import {
-  Camera,
-  FilePen,
-  FileText,
-  Globe,
-  Keyboard,
-  ListChecks,
-  MousePointerClick,
-  ScanText,
-  Search,
-  SquareTerminal,
-  Wrench,
-  type LucideIcon,
-} from "lucide-react"
+/** 工具调用的数据与通用解析：浏览器操作的图标与摘要、MCP 内容块、命令文本与一行摘要。 */
+import { Camera, Globe, Keyboard, MousePointerClick, ScanText, type LucideIcon } from "lucide-react"
 import type { MessageKey } from "@pigcode/ui-primitives"
+import { browserAction } from "./tool-identity"
 
-/** 工具调用的生命周期状态。 */
-export type ToolStatus = "running" | "completed" | "failed"
+/** 工具调用的生命周期状态；stopped 是这一轮结束时还没完成的调用。 */
+export type ToolStatus = "running" | "completed" | "failed" | "stopped"
 
 /** 时间线里一行工具调用需要的数据。 */
 export interface ToolCall {
@@ -25,32 +13,14 @@ export interface ToolCall {
   status: ToolStatus
   input: string | undefined
   output: string | undefined
+  /** 事件里原样的输入与输出，渲染器按工具读取结构化字段。 */
+  inputValue?: unknown
+  outputValue?: unknown
   /** 开始与结束时间（事件的 createdAt），用来显示耗时。 */
   startedAt?: string | undefined
   endedAt?: string | undefined
   /** 命令的退出码；provider 不报告时缺省。 */
   exitCode?: number | undefined
-}
-
-/** 常见工具名到图标与动作文案的映射；未知工具用扳手和工具名。 */
-const TOOL_KINDS: Array<[RegExp, LucideIcon, MessageKey]> = [
-  [/^(bash|shell|exec|command|run|terminal)/i, SquareTerminal, "chat.tool.kind.run"],
-  [/^(read|view|cat|open)/i, FileText, "chat.tool.kind.read"],
-  [
-    /^(edit|write|multiedit|patch|apply|str_replace|create|notebookedit)/i,
-    FilePen,
-    "chat.tool.kind.edit",
-  ],
-  [/^(grep|glob|search|find)/i, Search, "chat.tool.kind.search"],
-  [/^(ls|list)/i, Search, "chat.tool.kind.list"],
-  [/^(web|fetch|http|browse)/i, Globe, "chat.tool.kind.fetch"],
-  [/^(todo|plan|task)/i, ListChecks, "chat.tool.kind.task"],
-]
-
-/** MCP 工具名 `mcp__server__tool` 里的工具部分；其他名字原样返回。 */
-export function baseToolName(name: string): string {
-  if (!name.startsWith("mcp__")) return name
-  return name.split("__").slice(2).join("__") || name
 }
 
 const BROWSER_ACTIONS: Record<string, [LucideIcon, MessageKey]> = {
@@ -66,31 +36,10 @@ const BROWSER_ACTIONS: Record<string, [LucideIcon, MessageKey]> = {
   screenshot: [Camera, "chat.tool.browser.screenshot"],
 }
 
-/** 内置浏览器工具的动作名（open、click…）；不是浏览器工具时返回 null。 */
-export function browserAction(name: string): string | null {
-  const base = baseToolName(name)
-  return base.startsWith("browser_") ? base.slice("browser_".length) : null
-}
-
-/** 选出工具图标。 */
-export function toolIcon(name: string): LucideIcon {
-  const action = browserAction(name)
-  if (action) return BROWSER_ACTIONS[action]?.[0] ?? Globe
-  return TOOL_KINDS.find(([pattern]) => pattern.test(name))?.[1] ?? Wrench
-}
-
-/** 工具的动作文案；未知工具返回 null，界面直接显示工具名。 */
-export function toolKind(name: string): MessageKey | null {
-  const action = browserAction(name)
-  if (action) return BROWSER_ACTIONS[action]?.[1] ?? null
-  return TOOL_KINDS.find(([pattern]) => pattern.test(name))?.[2] ?? null
-}
-
-/** 真正执行 shell 命令的工具（Claude 的 Bash、Codex 的 commandExecution 等）。 */
-const COMMAND_TOOL = /^(bash|shell|exec|exec_command|local_shell|run_command|terminal)$/i
-
-export function isCommandTool(name: string): boolean {
-  return COMMAND_TOOL.test(name)
+/** 浏览器操作的图标与动作文案；不认识的动作用地球图标，文案为 null（界面显示工具名）。 */
+export function browserVisual(name: string): { icon: LucideIcon; label: MessageKey | null } {
+  const entry = BROWSER_ACTIONS[browserAction(name) ?? ""]
+  return { icon: entry?.[0] ?? Globe, label: entry?.[1] ?? null }
 }
 
 function parseJson(text: string | undefined): Record<string, unknown> | undefined {
@@ -185,28 +134,6 @@ export function browserPreview(
   }
 }
 
-/** 读写文件类工具操作的文件路径；其他工具返回 undefined。 */
-export function toolFilePath(tool: Pick<ToolCall, "name" | "input">): string | undefined {
-  const kind = toolKind(tool.name)
-  if (kind !== "chat.tool.kind.read" && kind !== "chat.tool.kind.edit") return undefined
-  const value = parseJson(tool.input)
-  if (value) {
-    for (const key of ["file_path", "path", "notebook_path"]) {
-      const candidate = value[key]
-      if (typeof candidate === "string" && candidate.trim()) return candidate.trim()
-    }
-    return undefined
-  }
-  if (!tool.input?.trim().startsWith("[")) return undefined
-  try {
-    const entries = JSON.parse(tool.input) as Array<{ path?: unknown } | null>
-    const first = Array.isArray(entries) ? entries[0]?.path : undefined
-    return typeof first === "string" && first.trim() ? first.trim() : undefined
-  } catch {
-    return undefined
-  }
-}
-
 /** 从工具输入里挑一行最能说明意图的摘要：JSON 优先取命令、路径或查询字段。 */
 export function toolPreview(input: string | undefined): string | undefined {
   if (!input) return undefined
@@ -255,73 +182,4 @@ export function commandText(input: string | undefined): string | undefined {
     return parts.join(" ")
   }
   return undefined
-}
-
-function countLines(text: unknown): number {
-  if (typeof text !== "string" || text.length === 0) return 0
-  return text.replace(/\n$/, "").split("\n").length
-}
-
-/** 统一 diff 里新增与删除的行数，跳过 +++/--- 文件头。 */
-function unifiedStats(diff: string): { added: number; removed: number } {
-  let added = 0
-  let removed = 0
-  for (const line of diff.split("\n")) {
-    if (line.startsWith("+++") || line.startsWith("---")) continue
-    if (line.startsWith("+")) added += 1
-    else if (line.startsWith("-")) removed += 1
-  }
-  return { added, removed }
-}
-
-/** Codex 的文件改动列表：每项带统一 diff，或新文件的完整内容。 */
-function parseChanges(input: string | undefined): { added: number; removed: number } | null {
-  if (!input?.trim().startsWith("[")) return null
-  let entries: unknown
-  try {
-    entries = JSON.parse(input)
-  } catch {
-    return null
-  }
-  if (!Array.isArray(entries)) return null
-  let added = 0
-  let removed = 0
-  for (const entry of entries as Array<Record<string, unknown> | null>) {
-    const diff = entry?.diff ?? entry?.unified_diff
-    if (typeof diff === "string") {
-      const stats = unifiedStats(diff)
-      added += stats.added
-      removed += stats.removed
-    } else if (typeof entry?.content === "string") {
-      added += countLines(entry.content)
-    }
-  }
-  return { added, removed }
-}
-
-/** 编辑类工具改了多少行；无法判断时返回 null。 */
-export function diffStats(tool: Pick<ToolCall, "name" | "input">): {
-  added: number
-  removed: number
-} | null {
-  if (toolKind(tool.name) !== "chat.tool.kind.edit") return null
-  const changes = parseChanges(tool.input)
-  if (changes) return changes
-  const value = parseJson(tool.input)
-  if (!value) return null
-  if (typeof value.old_string === "string" || typeof value.new_string === "string") {
-    return { added: countLines(value.new_string), removed: countLines(value.old_string) }
-  }
-  if (Array.isArray(value.edits)) {
-    let added = 0
-    let removed = 0
-    for (const edit of value.edits as Array<Record<string, unknown>>) {
-      added += countLines(edit?.new_string)
-      removed += countLines(edit?.old_string)
-    }
-    return { added, removed }
-  }
-  if (typeof value.content === "string") return { added: countLines(value.content), removed: 0 }
-  if (typeof value.patch === "string") return unifiedStats(value.patch)
-  return null
 }

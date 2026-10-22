@@ -17,13 +17,14 @@ import {
   runFakeScript,
 } from "./fake-script"
 import { FAKE_BROWSER_PREFIX, runFakeBrowser, type FakeToolCaller } from "./fake-browser"
+import { FAKE_SHOWCASE_TEXT, fakeShowcaseScript } from "./fake-showcase"
 
 /** fake provider 固定输出的文本分片。 */
 const CHUNKS = ["Hello", " from", " fake", " provider"]
 
 /** 长跑输入的标记；用于验证 run 中断与进程清理。 */
 export const FAKE_LONG_RUN_TEXT = "long"
-export { FAKE_SCRIPT_TEXT, FAKE_SUBAGENT_TEXT }
+export { FAKE_SCRIPT_TEXT, FAKE_SHOWCASE_TEXT, FAKE_SUBAGENT_TEXT }
 
 /** fake provider 的模型目录：一个可调思考深度，一个不可调，用来覆盖两种界面状态。 */
 export const FAKE_MODELS: ProviderModelInfo[] = [
@@ -138,7 +139,9 @@ export class FakeProviderDriver implements ProviderDriver {
         ? fakeScript
         : input.text === FAKE_SUBAGENT_TEXT
           ? fakeSubagentScript
-          : null
+          : input.text === FAKE_SHOWCASE_TEXT
+            ? fakeShowcaseScript
+            : null
     if (script) {
       await runFakeScript(runtime, this.stepMs, script)
       if (!runtime.signal.aborted) runtime.emit({ type: "run.completed" })

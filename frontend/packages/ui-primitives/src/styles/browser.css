@@ -111,17 +111,3 @@
     animation: none;
   }
 }
-
-/* 时间线里浏览器截图的缩略图 */
-.tool-row-images {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  padding: 10px 12px 4px;
-}
-.tool-row-images img {
-  max-width: 100%;
-  max-height: 320px;
-  border-radius: 8px;
-  box-shadow: 0 0 0 var(--hair) var(--border-strong);
-}

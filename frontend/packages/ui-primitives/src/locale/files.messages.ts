@@ -30,7 +30,6 @@ export const filesZhCN = {
   "files.menu.copyPath": "复制路径",
   "files.menu.copyRelativePath": "复制相对路径",
   "files.menu.reveal": "在文件管理器中显示",
-  "files.copied": "已复制",
   "files.discard.title": "放弃未保存的修改？",
   "files.discard.description": "{file} 有未保存的修改，关闭后这些修改会丢失。",
   "files.discard.window": "有文件还没保存，关闭或刷新窗口后这些修改会丢失。",
@@ -69,7 +68,6 @@ export const filesEnUS: Record<keyof typeof filesZhCN, string> = {
   "files.menu.copyPath": "Copy path",
   "files.menu.copyRelativePath": "Copy relative path",
   "files.menu.reveal": "Reveal in file manager",
-  "files.copied": "Copied",
   "files.discard.title": "Discard unsaved changes?",
   "files.discard.description": "{file} has unsaved changes. They will be lost if you close it.",
   "files.discard.window":

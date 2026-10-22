@@ -1,8 +1,6 @@
 /** 把线程事件的 payload 解析成时间线组件需要的结构；字段名兼容各 provider 的变体。 */
 import type { ThreadEvent } from "@pigcode/contracts"
 import type { ApprovalDecision, ApprovalRequest } from "./approval-card"
-import type { DiffFile, FileChangeSummary } from "./diff-summary"
-import type { PlanStep, PlanStepStatus, PlanUpdate } from "./plan-card"
 import type { QuestionRequestView, QuestionView } from "./question-card"
 import type { SubagentCall, SubagentStatus } from "./subagent-card"
 import type { ToolCall, ToolStatus } from "./tool-meta"
@@ -51,15 +49,16 @@ export function toolFromEvent(event: ThreadEvent, status: ToolStatus): ToolCall 
     asText(payload.callId) ??
     `tool-${event.seq}`
   const exitCode = asNumber(payload.exitCode)
+  const inputValue = payload.input ?? payload.command ?? payload.arguments
+  const outputValue = payload.output ?? payload.result
   return {
     id,
     name,
     status,
-    input:
-      displayValue(payload.input) ??
-      displayValue(payload.command) ??
-      displayValue(payload.arguments),
-    output: displayValue(payload.output) ?? displayValue(payload.result),
+    input: displayValue(inputValue),
+    output: displayValue(outputValue),
+    ...(inputValue === undefined ? {} : { inputValue }),
+    ...(outputValue === undefined ? {} : { outputValue }),
     ...(event.type === "tool.started" ? { startedAt: event.createdAt } : {}),
     ...(event.type === "tool.completed" ? { endedAt: event.createdAt } : {}),
     ...(exitCode === undefined ? {} : { exitCode }),
@@ -72,12 +71,16 @@ function mergeTool(existing: ToolCall | undefined, next: ToolCall): ToolCall {
   const startedAt = existing.startedAt ?? next.startedAt
   const endedAt = next.endedAt ?? existing.endedAt
   const exitCode = next.exitCode ?? existing.exitCode
+  const inputValue = next.inputValue ?? existing.inputValue
+  const outputValue = next.outputValue ?? existing.outputValue
   return {
     id: existing.id,
     name: next.name === "tool" ? existing.name : next.name,
     status: next.status,
     input: next.input ?? existing.input,
     output: next.output ?? existing.output,
+    ...(inputValue === undefined ? {} : { inputValue }),
+    ...(outputValue === undefined ? {} : { outputValue }),
     ...(startedAt ? { startedAt } : {}),
     ...(endedAt ? { endedAt } : {}),
     ...(exitCode === undefined ? {} : { exitCode }),
@@ -191,103 +194,6 @@ export function collectAnswers(events: ThreadEvent[]): Map<string, string[]> {
   return answers
 }
 
-/** 归一化计划步骤状态。 */
-function asPlanStatus(value: unknown): PlanStepStatus {
-  switch (value) {
-    case "completed":
-    case "done":
-      return "completed"
-    case "in-progress":
-    case "in_progress":
-    case "active":
-    case "running":
-      return "in-progress"
-    default:
-      return "pending"
-  }
-}
-
-/** 解析 plan.updated 事件；支持字符串步骤和对象步骤。 */
-export function planFromEvent(event: ThreadEvent): PlanUpdate | undefined {
-  const payload = asRecord(event.payload)
-  if (!payload) return undefined
-  const rawSteps =
-    asArray(payload.steps).length > 0 ? asArray(payload.steps) : asArray(payload.plan)
-  const steps: PlanStep[] = []
-  for (const [index, entry] of rawSteps.entries()) {
-    if (typeof entry === "string") {
-      steps.push({ text: entry, status: "pending" })
-      continue
-    }
-    const record = asRecord(entry)
-    if (!record) continue
-    steps.push({
-      text: asText(record.text) ?? asText(record.step) ?? asText(record.title) ?? `#${index + 1}`,
-      status: asPlanStatus(record.status),
-    })
-  }
-  if (steps.length === 0 && typeof payload.text === "string") {
-    for (const line of payload.text.split("\n")) {
-      const text = line.trim()
-      if (text) steps.push({ text, status: "pending" })
-    }
-  }
-  if (steps.length === 0) return undefined
-  return { title: asText(payload.title) ?? asText(payload.explanation), steps }
-}
-
-/** 解析 diff 文本或行数组。 */
-function parseDiffLines(value: unknown): string[] {
-  if (typeof value === "string") return value.split("\n").filter((line) => line.length > 0)
-  if (!Array.isArray(value)) return []
-  const lines: string[] = []
-  for (const entry of value as unknown[]) {
-    if (typeof entry === "string") lines.push(entry)
-  }
-  return lines
-}
-
-/** 解析 file.changed 事件。 */
-export function diffFromEvent(event: ThreadEvent): FileChangeSummary | undefined {
-  const payload = asRecord(event.payload)
-  if (!payload) return undefined
-  const entries =
-    asArray(payload.files).length > 0 ? asArray(payload.files) : asArray(payload.changes)
-  const files: DiffFile[] = []
-  for (const entry of entries) {
-    if (typeof entry === "string") {
-      files.push({ path: entry, lines: [] })
-      continue
-    }
-    const record = asRecord(entry)
-    if (!record) continue
-    const path = asText(record.path) ?? asText(record.file) ?? asText(record.name)
-    if (!path) continue
-    files.push({ path, lines: parseDiffLines(record.diff ?? record.patch ?? record.lines) })
-  }
-  if (files.length === 0) {
-    const path = asText(payload.path) ?? asText(payload.file) ?? asText(payload.name)
-    if (path) files.push({ path, lines: parseDiffLines(payload.diff ?? payload.patch) })
-  }
-  if (files.length === 0) return undefined
-
-  let additions = asNumber(payload.additions)
-  let deletions = asNumber(payload.deletions)
-  if (additions === undefined || deletions === undefined) {
-    let countedAdditions = 0
-    let countedDeletions = 0
-    for (const file of files) {
-      for (const line of file.lines) {
-        if (line.startsWith("+")) countedAdditions += 1
-        else if (line.startsWith("-") || line.startsWith("−")) countedDeletions += 1
-      }
-    }
-    additions = additions ?? countedAdditions
-    deletions = deletions ?? countedDeletions
-  }
-  return { files, additions, deletions }
-}
-
 /** 解析子 agent 完成状态；缺失时按 isError 推导。 */
 function asSubagentStatus(value: unknown, isError: boolean): SubagentStatus {
   switch (value) {
@@ -318,7 +224,12 @@ function subagentOutput(value: unknown): string | undefined {
 
 /** 判断事件是否属于某个子 agent；这类事件只在卡片内部展示。 */
 export function isParentScoped(type: ThreadEvent["type"]): boolean {
-  return type === "message.completed" || type === "tool.started" || type === "tool.completed"
+  return (
+    type === "message.completed" ||
+    type === "reasoning.completed" ||
+    type === "tool.started" ||
+    type === "tool.completed"
+  )
 }
 
 /** 收集子 agent 卡片及其内部事件。 */

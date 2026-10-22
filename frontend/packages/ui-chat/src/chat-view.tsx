@@ -1,4 +1,7 @@
-/** 聊天主视图：标签栏（主会话与子代理）、消息时间线、输入框与环境抽屉。 */
+/**
+ * 聊天主视图：标签栏（主会话与子代理）、消息时间线、输入框与环境抽屉。时间线左侧是问题导航，
+ * 右上角浮着状态面板，离开底部时出现圆形的「滚动到底部」按钮。
+ */
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 import type { ProviderCapabilities, Thread, ThreadEvent } from "@pigcode/contracts"
 import { ArrowDown, ArrowLeft, Ellipsis, PanelRight } from "lucide-react"
@@ -12,13 +15,14 @@ import {
 } from "@pigcode/ui-composer"
 import { Button, formatShortcut, useLocale } from "@pigcode/ui-primitives"
 import type { ApprovalDecision } from "./approval-card"
-import type { FileChangeSummary } from "./diff-summary"
 import { EnvironmentDrawer, type EnvironmentInfo } from "./environment-drawer"
 import { MessageList, type EmptyStateText } from "./message-list"
+import { StatusPanel } from "./status-panel"
 import type { SubagentCall } from "./subagent-card"
 import { SubagentView } from "./subagent-view"
 import { ThreadTabs, type ThreadTabsProps } from "./thread-tabs"
-import type { ToolCall } from "./tool-card"
+import { TurnNavigator } from "./turn-navigator"
+import { buildTimeline } from "./turns"
 
 /** 线程头切换入口需要的 provider 展示信息。 */
 export interface ProviderOption {
@@ -31,7 +35,9 @@ export interface ChatViewProps {
   thread?: Thread | null
   events: ThreadEvent[]
   streamingText?: string
-  /** 当前工作目录；Task 12 的容器可以传入项目根目录。 */
+  /** 正在输出的思考。 */
+  liveReasoning?: string
+  /** 当前工作目录（项目根目录）；时间线里的路径按它显示成相对路径。 */
   cwd?: string
   /** 发送消息；交给 composer 提交，附带本次的思考深度。 */
   onStart?: (text: string, options: ComposerSubmitOptions) => void
@@ -54,8 +60,10 @@ export interface ChatViewProps {
   files?: () => Promise<readonly string[]>
   /** 输入框里的 / 命令。 */
   commands?: readonly ComposerCommand[]
-  onViewTool?: (tool: ToolCall) => void
-  onViewDiff?: (summary: FileChangeSummary) => void
+  /** 打开时间线里提到的文件（工具行与 @ 引用里的路径，可能是绝对路径）。 */
+  onOpenFile?: (path: string) => void
+  /** 在右栏查看改动；path 是要看的文件。 */
+  onViewDiff?: (path?: string) => void
   /** 右栏是否展开；提供 onToggleRight 且没有 layoutControls 时在线程头显示右栏按钮。 */
   rightOpen?: boolean
   /** 切换右栏；由容器维护展开状态。 */
@@ -101,6 +109,7 @@ export function ChatView({
   thread = null,
   events,
   streamingText = "",
+  liveReasoning = "",
   cwd,
   onStart,
   onSubmit,
@@ -114,7 +123,7 @@ export function ChatView({
   onPermissionMode,
   files,
   commands,
-  onViewTool,
+  onOpenFile,
   onViewDiff,
   rightOpen = false,
   onToggleRight,
@@ -149,6 +158,11 @@ export function ChatView({
   )
   const runOpen = useMemo(() => isRunOpen(events), [events])
   const running = Boolean(streamingText) || runOpen
+  const streaming = streamingText.length > 0
+  const timeline = useMemo(
+    () => buildTimeline(visibleEvents, streaming),
+    [visibleEvents, streaming],
+  )
   const providerId = thread?.lastProviderId ?? thread?.defaultProviderId ?? null
   const modelId = thread?.lastModelId ?? null
   const agentName = useCallback(
@@ -172,7 +186,7 @@ export function ChatView({
     if (!pinned) return
     const element = threadRef.current
     if (element) element.scrollTop = element.scrollHeight
-  }, [events, streamingText, liveOutput, pinned, subagent])
+  }, [events, streamingText, liveReasoning, liveOutput, pinned, subagent])
 
   function handleScroll(): void {
     const element = threadRef.current
@@ -233,30 +247,47 @@ export function ChatView({
           </Button>
         ) : null}
       </div>
-      <div className="thread" ref={threadRef} onScroll={handleScroll}>
-        {subagent ? (
-          <SubagentView subagent={subagent} onViewTool={onViewTool} />
-        ) : (
-          <MessageList
-            events={visibleEvents}
-            streamingText={streamingText}
-            agentName={agentName}
-            onApproval={onApproval ?? (() => undefined)}
-            onViewTool={onViewTool}
-            onViewDiff={onViewDiff}
-            onOpenSubagent={onOpenSubagent}
-            empty={empty}
-            liveOutput={liveOutput}
-            onAnswer={onAnswer}
-          />
-        )}
+      <div className="thread-wrap">
+        <div className="thread" ref={threadRef} onScroll={handleScroll}>
+          {subagent ? (
+            <SubagentView
+              subagent={subagent}
+              root={cwd}
+              onOpenFile={onOpenFile}
+              onViewDiff={onViewDiff}
+            />
+          ) : (
+            <MessageList
+              events={visibleEvents}
+              timeline={timeline}
+              streamingText={streamingText}
+              liveReasoning={liveReasoning}
+              agentName={agentName}
+              onApproval={onApproval ?? (() => undefined)}
+              root={cwd}
+              onOpenFile={onOpenFile}
+              onViewDiff={onViewDiff}
+              onOpenSubagent={onOpenSubagent}
+              empty={empty}
+              liveOutput={liveOutput}
+              onAnswer={onAnswer}
+            />
+          )}
+        </div>
+        {subagent ? null : <TurnNavigator timeline={timeline} scroller={threadRef} />}
+        {subagent ? null : <StatusPanel timeline={timeline} />}
+        {!pinned ? (
+          <button
+            type="button"
+            className="scroll-bottom"
+            aria-label={t("chat.scrollToBottom")}
+            title={t("chat.scrollToBottom")}
+            onClick={jumpToLatest}
+          >
+            <ArrowDown className="ic ic-sm" aria-hidden="true" />
+          </button>
+        ) : null}
       </div>
-      {!pinned ? (
-        <button type="button" className="jump-latest" onClick={jumpToLatest}>
-          <ArrowDown className="ic ic-sm" aria-hidden="true" />
-          {t("chat.jumpLatest")}
-        </button>
-      ) : null}
       <div className="composer-wrap">
         {subagent ? (
           <div className="subagent-readonly" role="note">

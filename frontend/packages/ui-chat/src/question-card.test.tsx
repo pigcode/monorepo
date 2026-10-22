@@ -1,4 +1,4 @@
-/** 验证提问卡片：单选与多选、补充「其他」、答完才能提交，回答后显示答案；时间线显示「等待回答」。 */
+/** 验证提问卡片：单选与多选、补充「其他」、答完才能提交；时间线显示「等待回答」。 */
 // @vitest-environment jsdom
 import { cleanup, render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
@@ -32,7 +32,7 @@ describe("QuestionCard", () => {
     const onAnswer = vi.fn()
     render(
       <LocaleProvider locale="zh-CN">
-        <QuestionCard request={REQUEST} answers={undefined} onAnswer={onAnswer} />
+        <QuestionCard request={REQUEST} onAnswer={onAnswer} />
       </LocaleProvider>,
     )
     const submit = screen.getByRole("button", { name: "提交回答" })
@@ -51,11 +51,11 @@ describe("QuestionCard", () => {
     expect(onAnswer).toHaveBeenCalledWith("q_1", ["Linux, FreeBSD", "Jest"])
   })
 
-  it("replaces a single choice with typed text and shows answers once sent", async () => {
+  it("replaces a single choice with typed text", async () => {
     const onAnswer = vi.fn()
-    const { rerender } = render(
+    render(
       <LocaleProvider locale="zh-CN">
-        <QuestionCard request={REQUEST} answers={undefined} onAnswer={onAnswer} />
+        <QuestionCard request={REQUEST} onAnswer={onAnswer} />
       </LocaleProvider>,
     )
     await userEvent.click(screen.getByRole("checkbox", { name: "Windows" }))
@@ -67,15 +67,6 @@ describe("QuestionCard", () => {
     expect((screen.getByRole("radio", { name: /Vitest/ }) as HTMLInputElement).checked).toBe(false)
     await userEvent.click(screen.getByRole("button", { name: "提交回答" }))
     expect(onAnswer).toHaveBeenCalledWith("q_1", ["Windows", "node:test"])
-
-    rerender(
-      <LocaleProvider locale="zh-CN">
-        <QuestionCard request={REQUEST} answers={["Windows", ""]} onAnswer={onAnswer} />
-      </LocaleProvider>,
-    )
-    expect(screen.queryByRole("button", { name: "提交回答" })).toBeNull()
-    expect(screen.getByText("Windows")).toBeTruthy()
-    expect(screen.getByText("没有回答")).toBeTruthy()
   })
 
   it("shows a plan from plan mode as the plan itself, with start or keep planning", async () => {

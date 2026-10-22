@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it, vi } from "vitest"
 import {
   EMPTY_SURFACE_STATE,
   RightPanel,
+  addPluginSurface,
   addSurface,
   closeSurface,
   updateSurface,
@@ -58,6 +59,18 @@ describe("surface state", () => {
     state = closeSurface(state, "a")
     expect(state.activeId).toBe("b")
     expect(updateSurface(state, "b", { title: "zsh" }).surfaces[0]?.title).toBe("zsh")
+  })
+
+  it("opens one tab per plugin surface and switches back to it", () => {
+    const inspector = { id: "debug-inspector", title: "Debug Inspector" }
+    let state = addPluginSurface(EMPTY_SURFACE_STATE, inspector, "p1")
+    state = addSurface(state, "terminal", "t1", terminalTitle)
+    state = addPluginSurface(state, inspector, "p2")
+    expect(state.surfaces).toEqual([
+      { id: "p1", kind: "plugin", title: "Debug Inspector", plugin: "debug-inspector" },
+      { id: "t1", kind: "terminal", title: "终端 1" },
+    ])
+    expect(state.activeId).toBe("p1")
   })
 
   it("remembers the browser address next to its title", () => {
@@ -167,5 +180,27 @@ describe("RightPanel", () => {
 
     fireEvent.keyDown(menu, { key: "d" })
     expect(onAdd).toHaveBeenCalledWith("diff")
+  })
+
+  it("lists plugin surfaces in the launcher and the + menu, with a puzzle icon on their tabs", async () => {
+    const onAddPlugin = vi.fn()
+    const plugins = [{ id: "debug-inspector", title: "Debug Inspector", description: "状态" }]
+    renderPanel({ surfaces: [], activeId: null, plugins, onAddPlugin })
+    expect(screen.getByText("插件")).toBeTruthy()
+    await userEvent.click(screen.getByRole("button", { name: "Debug Inspector" }))
+    expect(onAddPlugin).toHaveBeenCalledWith("debug-inspector")
+    cleanup()
+
+    renderPanel({
+      surfaces: [{ id: "p1", kind: "plugin", title: "Debug Inspector", plugin: "debug-inspector" }],
+      activeId: "p1",
+      plugins,
+      onAddPlugin,
+    })
+    expect(screen.getByRole("tab", { name: "Debug Inspector" })).toBeTruthy()
+    await userEvent.click(screen.getByRole("button", { name: "添加面板" }))
+    const menu = await screen.findByRole("menu")
+    await userEvent.click(within(menu).getByRole("menuitem", { name: "Debug Inspector" }))
+    expect(onAddPlugin).toHaveBeenCalledTimes(2)
   })
 })

@@ -7,13 +7,7 @@ import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react
 import type { PermissionMode, Thread } from "@pigcode/contracts"
 import { useAppStore, type AppStore, type Connection } from "@pigcode/client-runtime"
 import { useLocale } from "@pigcode/ui-primitives"
-import {
-  ChatView,
-  collectSubagents,
-  toolFilePath,
-  type ApprovalDecision,
-  type ToolCall,
-} from "@pigcode/ui-chat"
+import { ChatView, collectSubagents, type ApprovalDecision } from "@pigcode/ui-chat"
 import type { ComposerCommand } from "@pigcode/ui-composer"
 import { OpenInButton } from "@pigcode/ui-shell"
 import type { ClientPluginController } from "./client-plugins"
@@ -150,6 +144,11 @@ export function ChatViewContainer({
     : mainId
       ? state.threadStates[mainId]?.liveOutput
       : undefined
+  const liveReasoning = viewChild
+    ? (viewState?.liveReasoning ?? "")
+    : mainId
+      ? (state.threadStates[mainId]?.liveReasoning ?? "")
+      : ""
   const viewProviderId = thread ? (thread.lastProviderId ?? thread.defaultProviderId) : null
   const capabilities =
     (viewProviderId ? capabilityMap[viewProviderId] : undefined) ?? state.providerCapabilities
@@ -311,6 +310,7 @@ export function ChatViewContainer({
         thread={thread}
         events={events}
         streamingText={streamingText}
+        liveReasoning={liveReasoning}
         liveOutput={liveOutput}
         capabilities={capabilities}
         agents={agents}
@@ -328,8 +328,8 @@ export function ChatViewContainer({
         onAnswer={answerQuestion}
         {...(onOpenFile
           ? {
-              onViewTool: (tool: ToolCall) => {
-                const path = projectRelative(toolFilePath(tool), project?.rootPath)
+              onOpenFile: (target: string) => {
+                const path = projectRelative(target, project?.rootPath)
                 if (path) onOpenFile(path)
               },
             }

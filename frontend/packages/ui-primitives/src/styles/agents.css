@@ -1,19 +1,20 @@
-/* ─── Agent 设置页 ─────────────────────────────────────────
-   列表一行一个 agent：头像、名称与徽标、状态点与说明、启用开关；点开后下面展开编辑区。 */
+/* ─── Agent 设置页与插件管理页 ─────────────────────────────
+   两页共用一种列表（ext-*）：一行一个 agent 或插件——头像、名称与徽标、状态点与说明、启用开关；
+   点开后下面展开编辑区或详情。 */
 
-.agent-list {
+.ext-list {
   overflow: hidden;
 }
-.agent-item + .agent-item {
+.ext-item + .ext-item {
   box-shadow: inset 0 1px 0 var(--divider);
 }
-.agent-row {
+.ext-row {
   display: flex;
   align-items: center;
   gap: 10px;
   padding: 0 12px 0 0;
 }
-.agent-row-main {
+.ext-row-main {
   display: flex;
   align-items: center;
   gap: 11px;
@@ -25,15 +26,15 @@
   border-radius: var(--r-lg);
   transition: background var(--t-fast);
 }
-.agent-row-main:hover {
+.ext-row-main:hover {
   background: var(--hover);
 }
-.agent-row-main:focus-visible {
+.ext-row-main:focus-visible {
   outline: 2px solid var(--border-focus);
   outline-offset: -2px;
 }
-.agent-avatar {
-  --agent-hue: 264;
+.entity-avatar {
+  --entity-hue: 264;
   flex: none;
   display: grid;
   place-items: center;
@@ -43,21 +44,21 @@
   font-size: 12px;
   font-weight: 650;
   letter-spacing: 0.02em;
-  color: oklch(42% 0.12 var(--agent-hue));
-  background: oklch(92% 0.045 var(--agent-hue));
+  color: oklch(42% 0.12 var(--entity-hue));
+  background: oklch(92% 0.045 var(--entity-hue));
 }
-[data-theme="dark"] .agent-avatar {
-  color: oklch(86% 0.09 var(--agent-hue));
-  background: oklch(32% 0.06 var(--agent-hue));
+[data-theme="dark"] .entity-avatar {
+  color: oklch(86% 0.09 var(--entity-hue));
+  background: oklch(32% 0.06 var(--entity-hue));
 }
-.agent-row-text {
+.ext-row-text {
   display: flex;
   flex-direction: column;
   gap: 2px;
   min-width: 0;
   flex: 1;
 }
-.agent-row-title {
+.ext-row-title {
   display: flex;
   align-items: center;
   gap: 7px;
@@ -66,12 +67,12 @@
   font-weight: var(--font-weight-ui);
   color: var(--fg);
 }
-.agent-version {
+.ext-version {
   color: var(--faint);
   font-size: var(--fs-xs);
   font-variant-numeric: tabular-nums;
 }
-.agent-row-status {
+.ext-row-status {
   display: flex;
   align-items: center;
   gap: 6px;
@@ -79,30 +80,30 @@
   color: var(--muted);
   font-size: var(--fs-sm);
 }
-.agent-row-detail {
+.ext-row-detail {
   color: var(--faint);
 }
-.agent-dot {
+.ext-dot {
   flex: none;
   width: 7px;
   height: 7px;
   border-radius: 50%;
   background: var(--faint);
 }
-.agent-row-status[data-tone="ready"] .agent-dot {
+.ext-row-status[data-tone="ready"] .ext-dot {
   background: var(--ok);
 }
-.agent-row-status[data-tone="warning"] .agent-dot {
+.ext-row-status[data-tone="warning"] .ext-dot {
   background: var(--warn);
 }
-.agent-row-status[data-tone="error"] .agent-dot {
+.ext-row-status[data-tone="error"] .ext-dot {
   background: var(--bad);
 }
-.agent-row-status[data-tone="checking"] .agent-dot {
+.ext-row-status[data-tone="checking"] .ext-dot {
   background: var(--info);
   animation: agent-pulse 1.2s ease-in-out infinite;
 }
-.agent-row-status[data-tone="off"] {
+.ext-row-status[data-tone="off"] {
   color: var(--faint);
 }
 @keyframes agent-pulse {
@@ -111,17 +112,61 @@
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  .agent-row-status[data-tone="checking"] .agent-dot {
+  .ext-row-status[data-tone="checking"] .ext-dot {
     animation: none;
   }
 }
-.agent-chevron {
+.ext-chevron {
   flex: none;
   color: var(--faint);
   transition: transform var(--t-fast);
 }
-.agent-row[data-expanded] .agent-chevron {
+.ext-row[data-expanded] .ext-chevron {
   transform: rotate(180deg);
+}
+
+/* 插件详情：包名、类型、权限与提供的能力，底部是卸载 */
+.ext-details {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 4px 16px 14px 55px;
+}
+.ext-facts {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 6px 14px;
+  font-size: var(--fs-sm);
+}
+.ext-facts dt {
+  color: var(--muted);
+}
+.ext-facts dd {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  min-width: 0;
+  color: var(--fg-2);
+  overflow-wrap: anywhere;
+}
+.ext-facts .mono {
+  font-size: var(--fs-sm);
+}
+.ext-error {
+  padding: 8px 10px;
+  border-radius: var(--r-md);
+  background: var(--bad-soft);
+  color: var(--bad-text);
+  font-size: var(--fs-sm);
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.ext-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+  padding-top: 12px;
+  box-shadow: inset 0 1px 0 var(--divider);
 }
 
 /* 编辑区：与列表同一张卡片，上面一条分隔线；分节标题小一号。 */
@@ -275,20 +320,43 @@
   font-size: var(--fs-sm);
 }
 
-/* 安装对话框 */
-.agent-install {
+/* 安装对话框（Agent 页与插件管理页共用） */
+.install-dialog {
   width: min(520px, calc(100vw - 48px));
 }
-.agent-install form {
+.install-dialog form {
   display: flex;
   flex-direction: column;
   gap: 12px;
+  padding: 20px 22px 18px;
 }
-.agent-install-title {
+.install-dialog-title {
   font-size: var(--fs-lg);
   font-weight: 600;
 }
-.agent-trust {
+.install-dialog-desc {
+  color: var(--muted);
+  font-size: var(--fs-sm);
+  line-height: 1.5;
+}
+.install-dialog-label {
+  font-size: var(--fs-sm);
+  color: var(--fg);
+}
+.install-dialog-input {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.install-dialog-input .input {
+  flex: 1;
+  min-width: 0;
+}
+.install-dialog-input .mono {
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+}
+.install-dialog-trust {
   display: flex;
   gap: 7px;
   align-items: flex-start;
@@ -299,11 +367,11 @@
   font-size: var(--fs-sm);
   line-height: 1.5;
 }
-.agent-trust .ic {
+.install-dialog-trust .ic {
   flex: none;
   margin-top: 2px;
 }
-.agent-install-actions {
+.install-dialog-actions {
   display: flex;
   justify-content: flex-end;
   gap: 8px;

@@ -1,4 +1,4 @@
-/** 验证文件树的数据逻辑：可见行、紧凑文件夹、搜索树、模糊匹配位置与 git 装饰。 */
+/** 验证文件树的数据逻辑：可见行、紧凑文件夹、搜索树、模糊匹配位置、git 装饰与文件标签。 */
 import { describe, expect, it } from "vitest"
 import {
   ancestorsOf,
@@ -11,7 +11,6 @@ import {
   type DirectoryState,
   type ExplorerEntry,
 } from "./file-tree-model"
-import { languageForPath } from "./highlight"
 import { openFileSurface, type PanelSurfaceState } from "./right-panel"
 
 const dir = (path: string, ignored = false): ExplorerEntry => ({
@@ -101,16 +100,6 @@ describe("path helpers", () => {
     expect(files.get("src/lib/a.ts")).toBe("modified")
     expect(files.get("new")).toBe("untracked")
     expect([...directories].sort()).toEqual(["src", "src/lib"])
-  })
-
-  it("picks highlight languages by name and extension", () => {
-    expect(languageForPath("src/app.tsx")).toBe("tsx")
-    expect(languageForPath("Dockerfile")).toBe("docker")
-    expect(languageForPath("Dockerfile.dev")).toBe("docker")
-    expect(languageForPath("config/.env.local")).toBe("ini")
-    expect(languageForPath("tsconfig.json")).toBe("jsonc")
-    expect(languageForPath("notes.unknown")).toBeNull()
-    expect(languageForPath("Makefile")).toBe("make")
   })
 })
 

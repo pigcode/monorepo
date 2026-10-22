@@ -21,7 +21,7 @@ import {
   type PanelSurfaceState,
 } from "@pigcode/ui-workbench"
 import { BrowserHost } from "./browser-host"
-import { PluginPanels } from "./client-plugins"
+import { PluginPanels, useRegistry } from "./client-plugins"
 import type { ChatSlotProps, CoreDeps } from "./chat-container"
 import { ConnectionBanner } from "./connection-banner"
 import { UnsavedGuard } from "./unsaved-guard"
@@ -107,6 +107,7 @@ function LayoutControls(props: Omit<PanelLayoutControlsProps, "labels">) {
 export function App({ store, slots, connection, plugins, locale }: AppProps) {
   const state = useAppStore(store)
   const appearance = useAppearance()
+  const pluginSurfaces = useRegistry(plugins.surfaces)
   const [view, setView] = useState<ShellView>("chat")
   const [section, setSection] = useState<SettingsSection>("general")
   const [rightOpen, setRightOpen] = useState(false)
@@ -420,6 +421,7 @@ export function App({ store, slots, connection, plugins, locale }: AppProps) {
               onError={(message) => store.update({ error: message })}
               projectName={activeProjectName}
               workspaceRevision={activeRevision}
+              pluginSurfaces={pluginSurfaces}
             />
           </Suspense>
         ) : undefined

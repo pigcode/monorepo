@@ -13,6 +13,45 @@ describe("normalizeCodexNotification", () => {
     expect(events).toContainEqual({ type: "message.delta", text: "OK" })
   })
 
+  it("maps reasoning summaries and web searches", () => {
+    expect(
+      normalizeCodexNotification("item/reasoning/summaryTextDelta", {
+        itemId: "r1",
+        delta: "Checking the tests",
+        summaryIndex: 0,
+      }),
+    ).toEqual([{ type: "reasoning.delta", text: "Checking the tests" }])
+    expect(
+      normalizeCodexNotification("item/completed", {
+        item: { id: "r1", type: "reasoning", summary: ["Checking the tests", "Then the docs"] },
+      }),
+    ).toEqual([{ type: "reasoning.completed", text: "Checking the tests\n\nThen the docs" }])
+    expect(
+      normalizeCodexNotification("item/completed", {
+        item: { id: "r2", type: "reasoning", summary: [], content: ["raw thought"] },
+      }),
+    ).toEqual([{ type: "reasoning.completed", text: "raw thought" }])
+    expect(
+      normalizeCodexNotification("item/started", {
+        item: { id: "w1", type: "webSearch", query: "vitest coverage" },
+      }),
+    ).toEqual([
+      {
+        type: "tool.started",
+        toolCallId: "w1",
+        name: "WebSearch",
+        input: { query: "vitest coverage" },
+      },
+    ])
+    expect(
+      normalizeCodexNotification("item/completed", {
+        item: { id: "w1", type: "webSearch", query: "vitest coverage" },
+      }),
+    ).toEqual([
+      { type: "tool.completed", toolCallId: "w1", name: "WebSearch", output: "", isError: false },
+    ])
+  })
+
   it("maps completed command execution", () => {
     const events = normalizeCodexNotification("item/completed", {
       threadId: "t1",

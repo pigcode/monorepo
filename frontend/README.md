@@ -40,10 +40,25 @@ Pigcode 桌面端的 pnpm monorepo，包含 `apps/`（desktop、host）与 `pack
 
 ## Timeline
 
-Each run is one turn: the user's message on the right, then the agent's work (tool calls,
-plans, intermediate messages, subagents) under a "Working for…" header that folds into
-"Worked for N s" when the run ends, leaving the final answer, file changes and the copy
-button. Pending approvals always stay visible.
+The conversation follows ZCode's history layout. Each run is one turn: the user's
+message on the right (long messages fold, `@files` show as file chips), then the agent's
+work under a "Working for…" header that folds into "Worked for N s" when the run ends,
+leaving the final answer, a "N files changed" card and hover actions (copy, time).
+The work stays open while running and when a run fails or is stopped.
+
+- Every tool has its own row in ZCode's style: terminal (with `$ command` and live output),
+  read, write/edit with an inline diff, search, web fetch, MCP (server · tool, result and
+  call details), skill, background task output and stop, AskUserQuestion, the plan card
+  from plan mode, browser steps, sub-agents (opened in a tab) and a fallback for anything
+  else. Running rows shimmer; failures show "Failed" with the reason and exit code on hover.
+- Two or more lookups in a row fold into "Explore · 3 files, 2 searches"; two or more
+  commands into "Terminal · N commands, M failed"; browser steps into one browser row.
+- Thinking shows as "Thinking" while streaming and "Thought · for N seconds" afterwards.
+- Todos stay out of the stream and appear in the floating status panel (capsule or panel),
+  together with running commands and sub-agents. A rail on the left jumps between questions.
+- Answers render Markdown with tables, task lists, nested lists, images and code blocks
+  (language, wrap and copy, highlighted with Shiki). Pending approvals and questions stay
+  visible below the work.
 
 ## TypeScript
 
@@ -112,6 +127,12 @@ and environment variables, plus custom model ids that appear in the composer's p
 Changes apply to the next run; running sessions are not interrupted. The page also picks
 the default agent for new sessions; Automatic uses the first agent that is installed and
 signed in.
+
+Settings → Plugins uses the same list as the Agent page: a switch per plugin, and its
+package, kind, permissions and conflicts when expanded. UI plugins draw inside host chrome:
+sidebar panels get the sidebar's group header, right-panel surfaces open as regular tabs
+from the launcher, and `ctx.ui` builds buttons, inputs, switches and badges with the host's
+own control styles, following its theme and language.
 
 See [docs/plugin-authoring.md](docs/plugin-authoring.md) for writing agent and other
 plugins.

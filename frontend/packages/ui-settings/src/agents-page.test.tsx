@@ -4,9 +4,9 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import userEvent from "@testing-library/user-event"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import type { AgentSummary, ProviderStatus } from "@pigcode/contracts"
-import { LocaleProvider } from "@pigcode/ui-primitives"
+import { LocaleProvider, entityInitials } from "@pigcode/ui-primitives"
 import { AgentsPage, type AgentsPageProps } from "./agents-page"
-import { agentHeadline, agentInitials } from "./agent-status"
+import { agentHeadline } from "./agent-status"
 
 afterEach(cleanup)
 
@@ -229,7 +229,7 @@ describe("agent status helpers", () => {
     expect(agentHeadline(base, { installed: true, version: null, authenticated: null }).tone).toBe(
       "ready",
     )
-    expect(agentInitials("Claude Code")).toBe("CC")
-    expect(agentInitials("codex")).toBe("CO")
+    expect(entityInitials("Claude Code")).toBe("CC")
+    expect(entityInitials("codex")).toBe("CO")
   })
 })

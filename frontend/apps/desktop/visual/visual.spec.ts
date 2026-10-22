@@ -48,11 +48,11 @@ for (const theme of ["light", "dark"] as const) {
     // 窗口侧栏与设置页各有一套分区导航，取窗口侧栏的入口。
     await page.getByRole("button", { name: "插件", exact: true }).first().click()
     await expect(page.getByRole("heading", { name: "插件管理" })).toBeVisible()
-    // 已安装列表依赖 profile 状态；只截到安装表单底部，保证基线不受列表内容影响。
-    const installForm = page.locator("form.section").first()
-    await expect(installForm).toBeVisible()
-    const box = await installForm.boundingBox()
-    if (!box) throw new Error("plugin install form has no layout box")
+    // 已安装列表依赖 profile 状态；只截到页头（标题、说明、刷新与安装）下方，保证基线不受列表内容影响。
+    const pageHead = page.locator(".settings-page .page-head").first()
+    await expect(pageHead).toBeVisible()
+    const box = await pageHead.boundingBox()
+    if (!box) throw new Error("plugin page header has no layout box")
     const viewport = await page.evaluate(() => ({
       width: window.innerWidth,
       height: window.innerHeight,

@@ -1,14 +1,20 @@
-/** 右侧面板容器：把浏览器、终端、文件、Diff、PR 与检查点 surface 接到 Host RPC。 */
+/**
+ * 右侧面板容器：把浏览器、终端、文件、Diff、PR 与检查点 surface 接到 Host RPC，
+ * 插件注册的标签挂在同样的标签栏与外框里。
+ */
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react"
 import { Plus, Trash2 } from "lucide-react"
 import type { Connection } from "@pigcode/client-runtime"
+import type { ClientSurface } from "@pigcode/plugin-sdk"
 import { Button, useLocale } from "@pigcode/ui-primitives"
+import { PluginContentHost } from "@pigcode/ui-shell"
 import {
   CheckpointPanel,
   DiffView,
   PrPanel,
   RightPanel,
   WorktreePicker,
+  addPluginSurface,
   addSurface,
   closeSurface,
   openFileSurface,
@@ -40,6 +46,8 @@ export interface WorkbenchPanelProps {
   projectName: string
   /** agent 改过文件（工具调用结束、run 结束）时递增，文件树与打开的文件据此重读。 */
   workspaceRevision: number
+  /** 插件注册的右栏标签。 */
+  pluginSurfaces?: readonly ClientSurface[]
 }
 
 let surfaceSeq = 0
@@ -80,6 +88,7 @@ export function WorkbenchPanel({
   onError,
   projectName,
   workspaceRevision,
+  pluginSurfaces = [],
 }: WorkbenchPanelProps) {
   const { t } = useLocale()
   const tab: PanelSurfaceKind | null =
@@ -201,6 +210,11 @@ export function WorkbenchPanel({
     )
   }
 
+  function addPlugin(id: string): void {
+    const plugin = pluginSurfaces.find((surface) => surface.id === id)
+    if (plugin) onPanelChange((state) => addPluginSurface(state, plugin, nextSurfaceId()))
+  }
+
   /** 关闭标签；有未保存修改的文件标签先确认。 */
   function close(id: string): void {
     const surface = panel.surfaces.find((item) => item.id === id)
@@ -306,6 +320,8 @@ export function WorkbenchPanel({
         onActivate={(id) => onPanelChange((state) => ({ ...state, activeId: id }))}
         onClose={close}
         onAdd={add}
+        plugins={pluginSurfaces}
+        onAddPlugin={addPlugin}
         controls={controls}
         labels={labels}
       >
@@ -381,6 +397,18 @@ export function WorkbenchPanel({
                   line={surface.line}
                   onOpenFile={(path) => openFile(path)}
                 />
+              </div>
+            )
+          }
+          if (surface.kind === "plugin") {
+            const plugin = pluginSurfaces.find((item) => item.id === surface.plugin)
+            return (
+              <div key={surface.id} className="surface-pane surface-scroll">
+                {plugin ? (
+                  <PluginContentHost id={plugin.id} render={plugin.render} kind="surface" />
+                ) : (
+                  <p className="workbench-empty">{t("plugins.surfaceGone")}</p>
+                )}
               </div>
             )
           }

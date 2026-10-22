@@ -7,12 +7,18 @@ export function UserMessage({ text }: { text: string }) {
   return <div className="msg-user">{text}</div>
 }
 
-/** 助手消息容器；时间线按轮渲染后不再逐条显示头像，保留给插件的消息渲染器使用。 */
+/** 助手消息容器；保留给插件的消息渲染器使用。 */
 export function AssistantMessage({ children }: { children: ReactNode }) {
   return <div className="msg-ai md">{children}</div>
 }
 
-/** 渲染助手文本；同一段文本只解析一次 Markdown。 */
-export const MessageText = memo(function MessageText({ text }: { text: string }) {
-  return <Markdown text={text} />
+/** 渲染助手文本；同一段文本只解析一次 Markdown。streaming 时未闭合的代码块先不高亮。 */
+export const MessageText = memo(function MessageText({
+  text,
+  streaming = false,
+}: {
+  text: string
+  streaming?: boolean
+}) {
+  return <Markdown text={text} streaming={streaming} />
 })

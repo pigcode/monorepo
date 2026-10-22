@@ -1,6 +1,6 @@
 /** 验证聊天页渲染用户消息、流式文本、审批按钮与 capability 驱动的控件。 */
 // @vitest-environment jsdom
-import { cleanup, render, screen } from "@testing-library/react"
+import { cleanup, render, screen, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import type { ProviderCapabilities } from "@pigcode/contracts"
@@ -79,8 +79,8 @@ describe("ChatView", () => {
         />
       </LocaleProvider>,
     )
-    expect(screen.getByText("half an answer")).toBeTruthy()
-    expect(screen.getByText("已中断")).toBeTruthy()
+    expect(screen.getByText("half an answer").closest(".msg-ai")).not.toBeNull()
+    expect(screen.getByRole("button", { name: "已停止" })).toBeTruthy()
     expect(screen.queryByText("运行中")).toBeNull()
     expect(screen.queryByRole("button", { name: "中断" })).toBeNull()
   })
@@ -99,7 +99,7 @@ describe("ChatView", () => {
         />
       </LocaleProvider>,
     )
-    expect(screen.queryByRole("button", { name: "复制" })).toBeNull()
+    expect(document.querySelector(".turn-actions")).toBeNull()
 
     rerender(
       <LocaleProvider locale="zh-CN">
@@ -114,10 +114,11 @@ describe("ChatView", () => {
         />
       </LocaleProvider>,
     )
-    await userEvent.click(screen.getByRole("button", { name: "复制" }))
+    const footer = document.querySelector<HTMLElement>(".turn-actions")!
+    await userEvent.click(within(footer).getByRole("button", { name: "复制" }))
     expect(writeText).toHaveBeenCalledWith("part one\n\npart two")
-    expect(await screen.findByRole("button", { name: "已复制" })).toBeTruthy()
-    const time = document.querySelector(".turn-actions time")
+    expect(await within(footer).findByRole("button", { name: "已复制" })).toBeTruthy()
+    const time = footer.querySelector("time")
     expect(time?.getAttribute("datetime")).toBe("2026-10-20T00:00:00.000Z")
     expect(time?.textContent).not.toBe("")
     Reflect.deleteProperty(navigator, "clipboard")

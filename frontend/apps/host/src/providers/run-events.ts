@@ -55,6 +55,22 @@ export function mapProviderEvent(run: ActiveRun, event: ProviderEvent, hooks: Ru
         ...parentField(event.parentToolUseId),
       })
       return
+    case "reasoning.delta":
+      if (event.parentToolUseId !== undefined) return
+      run.reasoningStartedAt ??= Date.now()
+      run.emitLive?.(event)
+      return
+    case "reasoning.completed": {
+      if (event.text.trim().length === 0) return
+      const startedAt = event.parentToolUseId === undefined ? run.reasoningStartedAt : undefined
+      if (event.parentToolUseId === undefined) run.reasoningStartedAt = undefined
+      hooks.append(run.threadId, run.runId, "reasoning.completed", {
+        text: event.text,
+        ...(startedAt === undefined ? {} : { durationMs: Math.max(0, Date.now() - startedAt) }),
+        ...parentField(event.parentToolUseId),
+      })
+      return
+    }
     case "tool.started":
       hooks.append(run.threadId, run.runId, "tool.started", {
         id: event.toolCallId,

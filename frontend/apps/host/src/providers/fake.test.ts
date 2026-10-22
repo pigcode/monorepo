@@ -1,7 +1,13 @@
 import { describe, expect, it } from "vitest"
 import type { ProviderEvent } from "@pigcode/contracts"
 import type { ProviderRuntime } from "./driver"
-import { FAKE_MODELS, FAKE_SCRIPT_TEXT, FAKE_SUBAGENT_TEXT, FakeProviderDriver } from "./fake"
+import {
+  FAKE_MODELS,
+  FAKE_SCRIPT_TEXT,
+  FAKE_SHOWCASE_TEXT,
+  FAKE_SUBAGENT_TEXT,
+  FakeProviderDriver,
+} from "./fake"
 import { FAKE_BROWSER_PREFIX } from "./fake-browser"
 
 describe("fake provider", () => {
@@ -63,6 +69,47 @@ describe("fake provider", () => {
     ])
     expect(events.filter((event) => event.type === "plan.updated")).toHaveLength(3)
     expect(events.filter((event) => event.type === "message.completed")).toHaveLength(3)
+    expect(events.at(-1)).toEqual({ type: "run.completed" })
+  })
+
+  it("plays the showcase with thinking and every kind of tool", async () => {
+    const driver = new FakeProviderDriver({ stepMs: 0 })
+    const session = await driver.createSession({ threadId: "th_1", cwd: "/tmp" })
+    const events: ProviderEvent[] = []
+    await driver.send(
+      session,
+      { text: FAKE_SHOWCASE_TEXT },
+      {
+        signal: new AbortController().signal,
+        emit: (event) => events.push(event),
+        requestApproval: async () => "deny",
+      },
+    )
+    const tools = new Set(
+      events.flatMap((event) => (event.type === "tool.started" ? [event.name] : [])),
+    )
+    for (const name of [
+      "Read",
+      "Glob",
+      "Grep",
+      "Bash",
+      "TodoWrite",
+      "ExitPlanMode",
+      "Write",
+      "Edit",
+      "MultiEdit",
+      "BashOutput",
+      "KillShell",
+      "WebSearch",
+      "WebFetch",
+      "Skill",
+      "mcp__context7__get-library-docs",
+    ]) {
+      expect(tools.has(name), name).toBe(true)
+    }
+    expect(events.filter((event) => event.type === "reasoning.completed")).toHaveLength(2)
+    expect(events.some((event) => event.type === "reasoning.delta")).toBe(true)
+    expect(events.some((event) => event.type === "subagent.started")).toBe(true)
     expect(events.at(-1)).toEqual({ type: "run.completed" })
   })
 

@@ -12,13 +12,15 @@ interface SubagentInfo {
 /** 单次 run 内的归一化状态；记录已流式文本、工具名与活跃子 agent。 */
 export interface NormalizeState {
   streamedText: string
+  /** 主 agent 最后落成的一段文字；result 重复它时不再写第二遍。 */
+  lastText: string
   toolNames: Map<string, string>
   subagents: Map<string, SubagentInfo>
 }
 
 /** 创建一次 run 专属的归一化状态。 */
 export function createNormalizeState(): NormalizeState {
-  return { streamedText: "", toolNames: new Map(), subagents: new Map() }
+  return { streamedText: "", lastText: "", toolNames: new Map(), subagents: new Map() }
 }
 
 /** 只有非空 parent_tool_use_id 才需要写入事件 payload。 */
@@ -55,6 +57,12 @@ export function normalizeSdkMessage(message: SDKMessage, state: NormalizeState):
         text: event.delta.text,
         ...parentFields(parentToolUseId),
       })
+    } else if (event.type === "content_block_delta" && event.delta.type === "thinking_delta") {
+      events.push({
+        type: "reasoning.delta",
+        text: event.delta.thinking,
+        ...parentFields(parentToolUseId),
+      })
     }
     return events
   }
@@ -74,15 +82,23 @@ export function normalizeSdkMessage(message: SDKMessage, state: NormalizeState):
           input: block.input,
           ...parentFields(parentToolUseId),
         })
-      } else if (block.type === "text" && parentToolUseId) {
-        // 子 agent 的文本不冒充主助手消息，带 parent 归入对应卡片。
-        if (block.text.trim().length > 0) {
+      } else if (block.type === "thinking") {
+        if (block.thinking.trim().length > 0) {
           events.push({
-            type: "message.completed",
-            text: block.text,
+            type: "reasoning.completed",
+            text: block.thinking,
             ...parentFields(parentToolUseId),
           })
         }
+      } else if (block.type === "text" && block.text.trim().length > 0) {
+        // 工具之间的说明也要落成消息，否则结束后时间线里只剩最后一段回答；
+        // 子 agent 的文本带 parent 归入对应卡片，不冒充主助手消息。
+        if (!parentToolUseId) state.lastText = block.text
+        events.push({
+          type: "message.completed",
+          text: block.text,
+          ...parentFields(parentToolUseId),
+        })
       }
     }
     return events
@@ -126,7 +142,8 @@ export function normalizeSdkMessage(message: SDKMessage, state: NormalizeState):
       events.push({ type: "run.failed", message: failure })
       return events
     }
-    if (message.result.trim().length > 0) {
+    const result = message.result.trim()
+    if (result.length > 0 && result !== state.lastText.trim()) {
       events.push({ type: "message.completed", text: message.result })
     }
     events.push({

@@ -12,6 +12,7 @@ export const threadEventTypeSchema = z.enum([
   "run.failed",
   "run.interrupted",
   "message.completed",
+  "reasoning.completed",
   "tool.started",
   "tool.completed",
   "approval.requested",
@@ -50,6 +51,17 @@ export const providerEventSchema = z.discriminatedUnion("type", [
   }),
   z.object({
     type: z.literal("message.completed"),
+    text: z.string(),
+    parentToolUseId: z.string().optional(),
+  }),
+  /** 模型的思考过程（Claude 的 thinking、Codex 的 reasoning 摘要）；增量只走实时通道。 */
+  z.object({
+    type: z.literal("reasoning.delta"),
+    text: z.string(),
+    parentToolUseId: z.string().optional(),
+  }),
+  z.object({
+    type: z.literal("reasoning.completed"),
     text: z.string(),
     parentToolUseId: z.string().optional(),
   }),

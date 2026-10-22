@@ -33,6 +33,7 @@ export function rightPanelLabels(t: Translate): RightPanelLabels {
     launcher: t("panel.launcher"),
     add: t("panel.add"),
     close: t("panel.close"),
+    plugins: t("panel.plugins"),
     surfaces: surfaceLabels(t),
   }
 }
