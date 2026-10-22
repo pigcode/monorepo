@@ -9,9 +9,9 @@ import type { ProviderRuntime } from "./driver"
 export const FAKE_SCRIPT_TEXT = "tools"
 
 /** 脚本里的一步：事件，或者等待。 */
-type Step = ProviderEvent | { wait: number }
+export type Step = ProviderEvent | { wait: number }
 
-function message(text: string): Step[] {
+export function message(text: string): Step[] {
   const words = text.split(/(?<=\s)/)
   return [
     ...words.map((word): Step => ({ type: "message.delta", text: word })),
@@ -19,7 +19,13 @@ function message(text: string): Step[] {
   ]
 }
 
-function tool(id: string, name: string, input: unknown, output: unknown, waitMs: number): Step[] {
+export function tool(
+  id: string,
+  name: string,
+  input: unknown,
+  output: unknown,
+  waitMs: number,
+): Step[] {
   return [
     { type: "tool.started", toolCallId: id, name, input },
     { wait: waitMs },
@@ -28,7 +34,13 @@ function tool(id: string, name: string, input: unknown, output: unknown, waitMs:
 }
 
 /** 跑一条命令：输出分几段流出来，最后带完整输出与退出码结束。 */
-function command(id: string, cmd: string, chunks: string[], waitMs: number, exitCode = 0): Step[] {
+export function command(
+  id: string,
+  cmd: string,
+  chunks: string[],
+  waitMs: number,
+  exitCode = 0,
+): Step[] {
   return [
     { type: "tool.started", toolCallId: id, name: "Bash", input: { command: cmd } },
     ...chunks.flatMap((delta): Step[] => [
