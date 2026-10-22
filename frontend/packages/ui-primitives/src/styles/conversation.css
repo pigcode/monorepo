@@ -679,7 +679,7 @@
 .tool-row-server {
   color: var(--cv-subtle);
 }
-.agent-type {
+.subagent-type {
   color: var(--subagent-node-fg);
 }
 :root {
@@ -1130,17 +1130,17 @@
 }
 
 /* 子 agent 行展开后的过程卡片 */
-.agent-card {
+.subagent-card {
   gap: 12px;
 }
-.agent-card-section {
+.subagent-section {
   display: flex;
   flex-direction: column;
   gap: 6px;
 }
-.agent-prompt,
-.agent-output,
-.agent-message {
+.subagent-prompt,
+.subagent-output,
+.subagent-message {
   max-height: 256px;
   overflow: auto;
   font-size: var(--cv-fs);

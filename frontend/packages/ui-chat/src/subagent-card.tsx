@@ -65,9 +65,9 @@ function SubagentMessages({ events }: { events: readonly ThreadEvent[] }) {
     .filter((message) => message.text)
   if (messages.length === 0) return null
   return (
-    <div className="agent-card-section">
+    <div className="subagent-section">
       {messages.map((message) => (
-        <div key={message.key} className="md agent-message">
+        <div key={message.key} className="md subagent-message">
           <MessageText text={message.text} />
         </div>
       ))}
@@ -94,12 +94,12 @@ export const AgentRow = memo(function AgentRow({ subagent }: { subagent: Subagen
       icon={Bot}
       kind={t("chat.toolCall.agent.label")}
       running={running}
-      kindDetail={<span className="agent-type">{subagent.name}</span>}
+      kindDetail={<span className="subagent-type">{subagent.name}</span>}
       separator={Boolean(title || (running && activity))}
       primary={running && activity ? <span className="truncate">{activity}</span> : title}
       status={status}
       title={subagent.prompt ?? title}
-      className="agent-row"
+      className="subagent-row"
       dataStatus={subagent.status}
       action={
         onOpenSubagent
@@ -111,20 +111,20 @@ export const AgentRow = memo(function AgentRow({ subagent }: { subagent: Subagen
       }
     >
       {() => (
-        <div className="tool-card agent-card">
+        <div className="tool-card subagent-card">
           {subagent.prompt ? (
-            <div className="agent-card-section">
+            <div className="subagent-section">
               <span className="tool-card-label">{t("chat.toolCall.agent.prompt")}</span>
-              <div className="agent-prompt md">
+              <div className="subagent-prompt md">
                 <MessageText text={subagent.prompt} />
               </div>
             </div>
           ) : null}
           <SubagentMessages events={subagent.events} />
           {subagent.output ? (
-            <div className="agent-card-section">
+            <div className="subagent-section">
               <span className="tool-card-label">{t("chat.toolCall.agent.output")}</span>
-              <div className="agent-output md">
+              <div className="subagent-output md">
                 <MessageText text={subagent.output} />
               </div>
             </div>
