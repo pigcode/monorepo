@@ -1,13 +1,22 @@
 // Agent 设置页：默认 agent、已安装的 agent 列表（状态与启用开关），点开一项编辑它的设置。
-import { useState, type CSSProperties } from "react"
+import { useState } from "react"
 import { ChevronDown, Plus, RefreshCw } from "lucide-react"
 import type { AgentSummary, ProviderSettingsValues, ProviderStatus } from "@pigcode/contracts"
-import { Badge, Button, Select, Switch, useLocale } from "@pigcode/ui-primitives"
+import {
+  Badge,
+  Button,
+  EntityAvatar,
+  InstallDialog,
+  Select,
+  SettingPage,
+  SettingRow,
+  SettingSection,
+  Switch,
+  useLocale,
+} from "@pigcode/ui-primitives"
 import { AgentEditor } from "./agent-editor"
 import type { PickPath } from "./agent-fields"
-import { AgentInstallDialog } from "./agent-install-dialog"
-import { agentHeadline, agentHue, agentInitials } from "./agent-status"
-import { SettingPage, SettingRow, SettingSection } from "./settings-page"
+import { agentHeadline } from "./agent-status"
 
 /** Agent 页的数据与操作；操作失败时抛错，页面展示原因。 */
 export interface AgentsPageProps {
@@ -48,36 +57,30 @@ function AgentRow({
   const { t } = useLocale()
   const headline = agentHeadline(agent, status)
   return (
-    <div className="agent-row" data-expanded={expanded || undefined}>
+    <div className="ext-row" data-expanded={expanded || undefined}>
       <button
         type="button"
-        className="agent-row-main"
+        className="ext-row-main"
         aria-expanded={expanded}
         aria-label={t("agents.expand").replace("{agent}", agent.displayName)}
         onClick={onToggle}
       >
-        <span
-          className="agent-avatar"
-          aria-hidden="true"
-          style={{ "--agent-hue": agentHue(agent.providerId) } as CSSProperties}
-        >
-          {agentInitials(agent.displayName)}
-        </span>
-        <span className="agent-row-text">
-          <span className="agent-row-title">
+        <EntityAvatar id={agent.providerId} name={agent.displayName} />
+        <span className="ext-row-text">
+          <span className="ext-row-title">
             <span className="truncate">{agent.displayName}</span>
             {agent.builtin && agent.pluginId ? <Badge>{t("agents.builtin")}</Badge> : null}
-            {agent.version ? <span className="agent-version">{agent.version}</span> : null}
+            {agent.version ? <span className="ext-version">{agent.version}</span> : null}
           </span>
-          <span className="agent-row-status" data-tone={headline.tone}>
-            <span className="agent-dot" aria-hidden="true" />
+          <span className="ext-row-status" data-tone={headline.tone}>
+            <span className="ext-dot" aria-hidden="true" />
             <span>{t(headline.label)}</span>
             {headline.detail ? (
-              <span className="agent-row-detail truncate">· {headline.detail}</span>
+              <span className="ext-row-detail truncate">· {headline.detail}</span>
             ) : null}
           </span>
         </span>
-        <ChevronDown className="ic ic-sm agent-chevron" aria-hidden="true" />
+        <ChevronDown className="ic ic-sm ext-chevron" aria-hidden="true" />
       </button>
       {agent.pluginId ? (
         <Switch
@@ -209,11 +212,11 @@ export function AgentsPage({
         {agents.length === 0 ? (
           <div className="empty">{t("agents.empty")}</div>
         ) : (
-          <div className="group agent-list">
+          <div className="group ext-list">
             {agents.map((agent) => {
               const open = expanded === agent.providerId
               return (
-                <div className="agent-item" key={agent.providerId}>
+                <div className="ext-item" key={agent.providerId}>
                   <AgentRow
                     agent={agent}
                     status={statuses[agent.providerId]}
@@ -244,10 +247,23 @@ export function AgentsPage({
           </div>
         )}
       </section>
-      <AgentInstallDialog
+      <InstallDialog
         open={installOpen}
         onOpenChange={setInstallOpen}
         onInstall={onInstall}
+        inputId="agent-install-spec"
+        labels={{
+          title: t("agents.install.title"),
+          description: t("agents.install.description"),
+          spec: t("agents.install.spec"),
+          placeholder: t("agents.install.placeholder"),
+          chooseFolder: t("agents.install.chooseFolder"),
+          trust: t("agents.install.trust"),
+          cancel: t("agents.install.cancel"),
+          submit: t("agents.install.submit"),
+          installing: t("plugins.installing"),
+          failed: t("agents.failed"),
+        }}
         {...(onPickPath ? { onPickFolder: () => onPickPath("directory") } : {})}
       />
     </SettingPage>

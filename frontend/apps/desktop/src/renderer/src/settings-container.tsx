@@ -35,6 +35,7 @@ export function PluginManagerContainer({ deps }: { deps: CoreDeps }) {
       onDisable={(id) => applyAndReload(() => deps.connection.call("plugin.disable", { id }))}
       onUninstall={(id) => applyAndReload(() => deps.connection.call("plugin.uninstall", { id }))}
       onRefresh={() => applyAndReload(async () => undefined)}
+      onPickFolder={() => window.pigcodeNative?.pickPath?.("directory") ?? Promise.resolve(null)}
     />
   )
 }

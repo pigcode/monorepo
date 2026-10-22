@@ -16,9 +16,9 @@ test("agents are plugins with settings that reach the composer", async () => {
   const { app, page } = await openThread("agents")
   try {
     await openAgents(page)
-    const list = page.locator(".agent-list")
-    await expect(list.locator(".agent-row-title")).toContainText(["Claude Code", "Codex"])
-    await expect(list.locator(".agent-row").filter({ hasText: "Codex" })).toContainText("内置")
+    const list = page.locator(".ext-list")
+    await expect(list.locator(".ext-row-title")).toContainText(["Claude Code", "Codex"])
+    await expect(list.locator(".ext-row").filter({ hasText: "Codex" })).toContainText("内置")
 
     // 展开 Codex：manifest 声明的字段都在；改设置并保存。
     await page.getByRole("button", { name: "展开 Codex 的设置" }).click()
@@ -61,7 +61,7 @@ test("agents are plugins with settings that reach the composer", async () => {
     // 停用 Codex：插件卸下，输入框里不再有它；再启用回来。
     await openAgents(page)
     await page.getByRole("switch", { name: "启用 Codex" }).click()
-    await expect(list.locator(".agent-row").filter({ hasText: "Codex" })).toContainText("已停用")
+    await expect(list.locator(".ext-row").filter({ hasText: "Codex" })).toContainText("已停用")
     await page.getByRole("button", { name: "返回应用" }).first().click()
     await page.getByRole("button", { name: /Agent 与模型/ }).click()
     await expect(page.getByRole("tab", { name: "Claude Code" })).toBeVisible()
@@ -69,16 +69,14 @@ test("agents are plugins with settings that reach the composer", async () => {
     await page.keyboard.press("Escape")
     await openAgents(page)
     await page.getByRole("switch", { name: "启用 Codex" }).click()
-    await expect(list.locator(".agent-row").filter({ hasText: "Codex" })).not.toContainText(
-      "已停用",
-    )
+    await expect(list.locator(".ext-row").filter({ hasText: "Codex" })).not.toContainText("已停用")
 
     // 从对话框安装 echo agent，再卸载。
     await page.getByRole("button", { name: "安装 agent" }).click()
     const echo = new URL("../../../examples/provider-echo", import.meta.url).pathname
     await page.getByRole("textbox", { name: "npm 包或插件目录" }).fill(echo)
     await page.getByRole("dialog").getByRole("button", { name: "安装", exact: true }).click()
-    const echoRow = list.locator(".agent-row").filter({ hasText: "Echo" })
+    const echoRow = list.locator(".ext-row").filter({ hasText: "Echo" })
     await expect(echoRow).toContainText("就绪")
     await expect(echoRow).not.toContainText("内置")
     await page.screenshot({ path: "test-results/agents-list.png" })
