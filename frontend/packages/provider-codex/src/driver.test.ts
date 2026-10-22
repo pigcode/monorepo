@@ -1,7 +1,12 @@
 /** 用 scripted replay transport 驱动 CodexDriver，验证协议交互与事件归一化。 */
 import type { ProviderEvent } from "@pigcode/contracts"
 import { describe, expect, it } from "vitest"
-import type { ApprovalDecision, ApprovalRequest, ProviderRuntime } from "../driver"
+import type {
+  ApprovalDecision,
+  ApprovalRequest,
+  ProviderRuntime,
+  SessionMcp,
+} from "@pigcode/plugin-sdk"
 import { CodexDriver } from "./driver"
 import {
   ScriptedTransport,
@@ -124,15 +129,19 @@ describe("CodexDriver", () => {
   })
 
   it("injects MCP config into thread/start and thread/resume", async () => {
-    const config = {
-      mcp_servers: { pigcode: { command: "node", args: ["stdio-bridge.mjs"] } },
+    const server = { command: "node", args: ["stdio-bridge.mjs"], env: { PIGCODE_MCP_TOKEN: "t" } }
+    const mcp: SessionMcp = {
+      tools: [{ name: "echo", description: "Echo", inputSchema: {} }],
+      callTool: async () => null,
+      stdioServer: () => server,
     }
+    const config = { mcp_servers: { pigcode: server } }
 
     const started = setup()
     await started.driver.createSession({
       threadId: "t1",
       cwd: "/tmp",
-      mcp: { codexConfig: config },
+      mcp,
     })
     expect(messageOf(started.transport, "thread/start")?.params).toMatchObject({ config })
 
@@ -142,7 +151,7 @@ describe("CodexDriver", () => {
       threadId: "t2",
       cwd: "/tmp",
       nativeSessionId: "th_existing",
-      mcp: { codexConfig: config },
+      mcp,
     })
     expect(messageOf(resumed.transport, "thread/resume")?.params).toMatchObject({
       threadId: "th_existing",

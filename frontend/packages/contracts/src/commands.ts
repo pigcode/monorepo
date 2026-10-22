@@ -1,5 +1,6 @@
 /** 定义 Host 接受的命令参数；M0-A 只包含真实用到的命令。 */
 import { z } from "zod"
+import { providerSettingsValuesSchema } from "./agents"
 import { permissionModeSchema, reasoningEffortSchema } from "./domain"
 
 /** 命令方法到参数 schema 的映射。 */
@@ -59,10 +60,23 @@ export const commandSchemas = {
     requestId: z.string().min(1),
     answers: z.array(z.string()),
   }),
-  "provider.detect": z.object({}),
+  /** 只读检测；refresh 跳过缓存重新运行，providerId 只检测这一个 agent。 */
+  "provider.detect": z.object({
+    providerId: z.string().min(1).optional(),
+    refresh: z.boolean().optional(),
+  }),
   "provider.list": z.object({}),
   "provider.default": z.object({}),
   "provider.models": z.object({ providerId: z.string().min(1) }),
+  /** 设置页的 agent 列表：插件、能力、设置字段与当前值。 */
+  "agent.list": z.object({}),
+  /** 整体替换一个 agent 的设置值；对之后新建的会话、检测与模型目录生效。 */
+  "agent.updateSettings": z.object({
+    providerId: z.string().min(1),
+    values: providerSettingsValuesSchema,
+  }),
+  /** 新会话默认使用的 agent；null 表示自动挑选第一个可用的。 */
+  "agent.setDefault": z.object({ providerId: z.string().min(1).nullable() }),
   "thread.subscribe": z.object({
     threadId: z.string().min(1),
     cursor: z.number().int().nonnegative().default(0),
@@ -73,6 +87,8 @@ export const commandSchemas = {
   "plugin.installLocal": z.object({ sourceDir: z.string().min(1) }),
   "plugin.enable": z.object({ id: z.string().min(1) }),
   "plugin.disable": z.object({ id: z.string().min(1) }),
+  /** 卸载用户安装的插件；内置插件只能停用。 */
+  "plugin.uninstall": z.object({ id: z.string().min(1) }),
   "plugin.bootGraph": z.object({}),
   "workspace.tree": z.object({ threadId: z.string().min(1) }),
   "workspace.readFile": z.object({ threadId: z.string().min(1), path: z.string().min(1) }),

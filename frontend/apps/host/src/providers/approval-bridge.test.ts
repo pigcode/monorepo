@@ -1,11 +1,11 @@
 /** 验证审批请求持久化、RPC 决议与 resolver 完成。 */
 import { Context } from "cordis"
 import { describe, expect, it } from "vitest"
-import { apply as providers } from "../registry"
-import { apply as projects } from "../../services/projects"
-import { apply as sessions } from "../../services/sessions"
-import { apply as storage } from "../../services/storage"
-import { apply as threads } from "../../services/threads"
+import { apply as providers } from "./registry"
+import { apply as projects } from "../services/projects"
+import { apply as sessions } from "../services/sessions"
+import { apply as storage } from "../services/storage"
+import { apply as threads } from "../services/threads"
 
 describe("approval bridge", () => {
   it("resolves a pending approval", async () => {

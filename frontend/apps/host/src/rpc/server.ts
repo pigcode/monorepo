@@ -9,6 +9,7 @@ import {
 } from "@pigcode/contracts"
 import type { CommandMethod, PermissionMode, ReasoningEffort } from "@pigcode/contracts"
 import { buildSubagentBrief } from "../providers/switching"
+import { listAgents, validateAgentSettings } from "./agents"
 
 /** 基于 Cordis 服务处理 RPC 请求的 Host 侧服务器。 */
 export class RpcServer {
@@ -262,13 +263,29 @@ export class RpcServer {
         return { ok: true }
       }
       case "provider.detect":
-        return this.ctx.providers.detect()
+        return this.ctx.providers.detect(parsed as { providerId?: string; refresh?: boolean })
       case "provider.list":
         return this.ctx.providers.list()
       case "provider.default":
         return { id: await this.ctx.providers.defaultProvider() }
       case "provider.models":
         return this.ctx.providers.models((parsed as { providerId: string }).providerId)
+      case "agent.list":
+        return listAgents(this.ctx)
+      case "agent.updateSettings": {
+        const value = parsed as { providerId: string; values: Record<string, unknown> }
+        const agent = (await listAgents(this.ctx)).agents.find(
+          (item) => item.providerId === value.providerId,
+        )
+        if (!agent) throw new Error(`agent not found: ${value.providerId}`)
+        validateAgentSettings(agent, value.values)
+        return { values: this.ctx.providers.updateSettings(value.providerId, value.values) }
+      }
+      case "agent.setDefault": {
+        const value = parsed as { providerId: string | null }
+        this.ctx.providers.setDefaultProvider(value.providerId)
+        return { defaultProviderId: value.providerId }
+      }
       case "plugin.list":
         return this.ctx.plugins.list()
       case "plugin.install":
@@ -279,6 +296,8 @@ export class RpcServer {
         return this.ctx.plugins.enable((parsed as { id: string }).id)
       case "plugin.disable":
         return this.ctx.plugins.disable((parsed as { id: string }).id)
+      case "plugin.uninstall":
+        return this.ctx.plugins.uninstall((parsed as { id: string }).id)
       case "plugin.bootGraph":
         return this.ctx.plugins.bootGraph()
       case "workspace.tree":

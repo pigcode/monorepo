@@ -2,16 +2,16 @@
 import type { Context } from "cordis"
 import type { ProviderSession } from "@pigcode/contracts"
 import { activeWorktreePath } from "../services/worktrees"
-import { detectClaude } from "./claude/detect"
-import type { ProviderSessionStore } from "./claude/session-store"
-import type { ProviderDriver, ProviderModelInfo } from "./driver"
+import type { ProviderSessionStore } from "./session-store"
+import type { ProviderDriver, ProviderModelInfo, ProviderSettingsValues } from "./driver"
 
 /** 取 driver 的模型目录；不支持动态目录的 provider 返回空数组。 */
 export async function listProviderModels(
   driver: ProviderDriver | undefined,
+  settings: ProviderSettingsValues = {},
 ): Promise<ProviderModelInfo[]> {
   if (!driver) throw new Error("provider not found")
-  return driver.listModels ? driver.listModels() : []
+  return driver.listModels ? driver.listModels(settings) : []
 }
 
 /** 切换前关闭旧 provider 的 session，避免 app-server 子进程泄漏。 */
@@ -39,15 +39,6 @@ export interface Switch {
   handoff: string | null
   /** 同 provider 切换时的原生 fork 源；使用 handoff 时为 null。 */
   forkFromNativeSessionId: string | null
-}
-
-/** 选择新线程默认 provider：显式 env 指向已注册 provider 时优先，否则 Claude 已安装且登录时用 Claude。 */
-export async function defaultProvider(hasProvider: (id: string) => boolean): Promise<string> {
-  const forced = process.env.PIGCODE_PROVIDER
-  // 第三方 provider 插件注册后同样允许强制指定，供 E2E 与手动冒烟使用。
-  if (forced && hasProvider(forced)) return forced
-  const claude = await detectClaude()
-  return claude.installed && claude.loggedIn ? "claude" : "fake"
 }
 
 /** handoff 中保留的最近消息条数与工具名数量。 */

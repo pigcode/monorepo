@@ -2,7 +2,6 @@
 import { Context } from "cordis"
 import { describe, expect, it, vi } from "vitest"
 import { apply as providers } from "../providers/registry"
-import { answerRecord, parseQuestions } from "../providers/questions"
 import { apply as projects } from "../services/projects"
 import { apply as sessions } from "../services/sessions"
 import { apply as storage } from "../services/storage"
@@ -103,31 +102,5 @@ describe("agent questions", () => {
     })
     expect(events().at(-1)?.type).toBe("run.interrupted")
     await ctx.fiber.dispose()
-  })
-
-  it("parse AskUserQuestion input and build Claude's answer record", () => {
-    const questions = parseQuestions({
-      questions: [
-        {
-          question: "用哪个包管理器？",
-          header: "工具",
-          multiSelect: false,
-          options: [{ label: "pnpm", description: "仓库在用" }, { label: "" }, { label: "npm" }],
-        },
-        { question: "要哪些检查？", multiSelect: true, options: [] },
-      ],
-    })
-    expect(questions).toEqual([
-      {
-        question: "用哪个包管理器？",
-        header: "工具",
-        multiSelect: false,
-        options: [{ label: "pnpm", description: "仓库在用" }, { label: "npm" }],
-      },
-      { question: "要哪些检查？", multiSelect: true, options: [] },
-    ])
-    expect(parseQuestions({ questions: [{ header: "x" }] })).toBeNull()
-    expect(parseQuestions({})).toBeNull()
-    expect(answerRecord(questions!, ["pnpm", " "])).toEqual({ "用哪个包管理器？": "pnpm" })
   })
 })

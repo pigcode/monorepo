@@ -22,8 +22,15 @@ export class StdioCodexTransport implements CodexTransport {
   private readonly closeListeners = new Set<(reason: Error) => void>()
   private closed: Error | null = null
 
-  constructor(command = "codex", args = ["app-server", "--stdio"]) {
-    this.child = spawn(command, args, { stdio: ["pipe", "pipe", "pipe"] })
+  constructor(
+    command = "codex",
+    args = ["app-server", "--stdio"],
+    env: NodeJS.ProcessEnv | undefined = undefined,
+  ) {
+    this.child = spawn(command, args, {
+      stdio: ["pipe", "pipe", "pipe"],
+      ...(env ? { env } : {}),
+    })
     this.child.on("error", (error) =>
       this.finish(new Error(`codex app-server unavailable: ${error.message}`)),
     )

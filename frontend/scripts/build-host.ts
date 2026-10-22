@@ -1,5 +1,8 @@
-/** 把 Host utilityProcess 入口、核心服务与 stdio MCP 桥打成可加载的 ESM bundle。 */
-import { mkdir, writeFile } from "node:fs/promises"
+/**
+ * 把 Host utilityProcess 入口、核心服务、内置 agent 插件与 stdio MCP 桥打成可加载的 ESM bundle，
+ * 并生成随应用发布的核心 profile。
+ */
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises"
 import { join } from "node:path"
 import { fileURLToPath } from "node:url"
 import { build, type BuildOptions } from "esbuild"
@@ -24,9 +27,10 @@ const shared: BuildOptions = {
   },
 }
 
-/** 核心服务作为独立条目，供 profile 以相对 URL 加载。 */
+/** 核心服务作为独立条目，供 profile 以相对 URL 加载；顺序即加载顺序。 */
 const coreEntries: Record<string, string> = {
   storage: join(root, "apps/host/src/services/storage.ts"),
+  settings: join(root, "apps/host/src/services/settings.ts"),
   projects: join(root, "apps/host/src/services/projects.ts"),
   threads: join(root, "apps/host/src/services/threads.ts"),
   sessions: join(root, "apps/host/src/services/sessions.ts"),
@@ -42,12 +46,51 @@ const coreEntries: Record<string, string> = {
   schedules: join(root, "apps/host/src/services/schedules.ts"),
 }
 
+/** 核心条目的固定配置；storage 与 settings 的路径由 Host 启动时按用户 profile 填入。 */
+const coreConfig: Record<string, string[]> = {
+  // 随应用发布时不注册 fake agent；E2E 用 PIGCODE_PROVIDER=fake 打开。
+  providers: ["    config:", "      fake: false"],
+}
+
+/** 随应用内置的 agent 插件：包目录名即产物目录名。 */
+const builtinPlugins = ["provider-claude", "provider-codex"]
+
+await rm(outDir, { recursive: true, force: true })
+
 await build({
   entryPoints: [join(root, "apps/host/src/entry.ts")],
   outfile: join(outDir, "index.mjs"),
   ...shared,
 })
 await build({ entryPoints: coreEntries, outdir: join(outDir, "core"), ...shared })
+
+/**
+ * 每个内置插件打成一个 index.mjs，旁边放一份 manifest：入口改指向产物，去掉只对源码有意义的
+ * exports 与依赖声明。插件服务按 manifest 读取名称、设置字段与 provides。
+ */
+for (const name of builtinPlugins) {
+  const sourceDir = join(root, "packages", name)
+  const targetDir = join(outDir, "plugins", name)
+  await build({
+    entryPoints: [join(sourceDir, "src/index.ts")],
+    outfile: join(targetDir, "index.mjs"),
+    ...shared,
+  })
+  const manifest = JSON.parse(await readFile(join(sourceDir, "package.json"), "utf8")) as Record<
+    string,
+    unknown
+  > & { pigcode: Record<string, unknown> }
+  const shipped: Record<string, unknown> = {
+    name: manifest.name,
+    version: manifest.version,
+    description: manifest.description,
+    type: "module",
+    main: "./index.mjs",
+    engines: manifest.engines,
+    pigcode: { ...manifest.pigcode, host: "./index.mjs" },
+  }
+  await writeFile(join(targetDir, "package.json"), `${JSON.stringify(shipped, null, 2)}\n`, "utf8")
+}
 
 // stdio 桥由 Codex/Claude 以系统 node 子进程启动，不能依赖 Node 的类型剥离；单独编成 .mjs。
 await build({
@@ -59,20 +102,20 @@ await build({
   target: "node18",
 })
 
-/** 与 core bundle 对应的默认 profile；相对 entry 由 loader 按 baseUrl 解析。 */
+/** 与 core bundle 对应的核心 profile；相对 entry 由 loader 按 profile 目录解析。 */
 const profileDir = join(outDir, "profile")
 await mkdir(profileDir, { recursive: true })
 await writeFile(
   join(profileDir, "desktop.yml"),
   [
     "plugins:",
-    "  - id: core.storage",
-    "    name: ../core/storage.mjs",
-    "    config:",
-    '      path: ":memory:"',
-    ...Object.keys(coreEntries)
-      .filter((name) => name !== "storage")
-      .flatMap((name) => [`  - id: core.${name}`, `    name: ../core/${name}.mjs`]),
+    ...Object.keys(coreEntries).flatMap((name) => [
+      `  - id: core.${name}`,
+      `    name: ../core/${name}.mjs`,
+      ...(coreConfig[name] ?? []),
+    ]),
+    "builtinPlugins:",
+    ...builtinPlugins.map((name) => `  - ../plugins/${name}`),
     "",
   ].join("\n"),
   "utf8",

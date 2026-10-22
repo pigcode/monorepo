@@ -1,17 +1,18 @@
 /** Claude Code 的模型目录：从 SDK 会话读取，读不到时退回 CLI 的模型别名。 */
 import type { EffortLevel, ModelInfo, Query, SDKUserMessage } from "@anthropic-ai/claude-agent-sdk"
 import type { ReasoningEffort } from "@pigcode/contracts"
-import type { ProviderModelInfo } from "../driver"
-import { asReasoningEffort, sortEfforts } from "../model-catalog"
+import { asReasoningEffort, sortEfforts, type ProviderModelInfo } from "@pigcode/plugin-sdk"
 import type { ClaudeDetection } from "./detect"
 
 /** 读取目录时注入的依赖；测试替换 query 与检测。 */
 export interface ClaudeModelSource {
   queryFn: (params: {
     prompt: string | AsyncIterable<SDKUserMessage>
-    options: { pathToClaudeCodeExecutable?: string }
+    options: { pathToClaudeCodeExecutable?: string; env?: Record<string, string | undefined> }
   }) => Query
   executable: string | undefined
+  /** 设置页里的环境变量（含 CLAUDE_CONFIG_DIR）；没有覆盖时缺省。 */
+  env?: NodeJS.ProcessEnv | undefined
   detect: () => Promise<Pick<ClaudeDetection, "installed" | "loggedIn">>
   timeoutMs?: number
 }
@@ -118,7 +119,10 @@ export async function listClaudeModels(source: ClaudeModelSource): Promise<Provi
   try {
     stream = source.queryFn({
       prompt: input.iterable,
-      options: source.executable ? { pathToClaudeCodeExecutable: source.executable } : {},
+      options: {
+        ...(source.executable ? { pathToClaudeCodeExecutable: source.executable } : {}),
+        ...(source.env ? { env: source.env } : {}),
+      },
     })
     const models = parseClaudeModels(
       await withTimeout(stream.supportedModels(), source.timeoutMs ?? 15_000),

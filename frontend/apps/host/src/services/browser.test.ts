@@ -2,7 +2,8 @@
 import { Context } from "cordis"
 import { describe, expect, it } from "vitest"
 import { BROWSER_TOOLS, apply as browser, type ControlPortLike } from "./browser"
-import { apply as mcpBridge, toolResultContent } from "./mcp-bridge"
+import { toolResultContent } from "@pigcode/plugin-sdk"
+import { apply as mcpBridge } from "./mcp-bridge"
 
 /** 模拟 main 一侧：收到请求后按 action 回一个结果。 */
 function fakePort(

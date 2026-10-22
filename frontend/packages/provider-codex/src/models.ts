@@ -1,7 +1,6 @@
 /** 把 model/list 的未知响应收窄为 Pigcode 的模型条目。 */
 import type { ReasoningEffort } from "@pigcode/contracts"
-import type { ProviderModelInfo } from "../driver"
-import { asReasoningEffort } from "../model-catalog"
+import { asReasoningEffort, type ProviderModelInfo } from "@pigcode/plugin-sdk"
 
 /** Codex 模型条目；思考深度来自 supportedReasoningEfforts / defaultReasoningEffort。 */
 export type CodexModelInfo = ProviderModelInfo

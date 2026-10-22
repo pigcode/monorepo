@@ -1,5 +1,5 @@
 /** 审批请求的等待表；id 与持久化行一致。 */
-import type { ApprovalDecision } from "../driver"
+import type { ApprovalDecision } from "./driver"
 
 /** 一个等待 UI 决议的审批请求；Host 关闭时可统一拒绝。 */
 export interface Waiter {

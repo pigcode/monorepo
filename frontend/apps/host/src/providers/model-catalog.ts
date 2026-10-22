@@ -1,27 +1,9 @@
-/** 模型目录：把各 driver 的模型条目统一成协议形状，并缓存读取结果。 */
-import { reasoningEffortSchema, type ProviderModel, type ReasoningEffort } from "@pigcode/contracts"
+/** 模型目录：把各 driver 的模型条目统一成协议形状，追加用户的自定义模型，并缓存读取结果。 */
+import { asReasoningEffort, sortEfforts } from "@pigcode/plugin-sdk"
+import type { ProviderModel } from "@pigcode/contracts"
 import type { ProviderModelInfo } from "./driver"
 
-/** 把 CLI 返回的档位名收窄为协议里的思考深度；无法识别时返回 null。 */
-export function asReasoningEffort(value: unknown): ReasoningEffort | null {
-  if (typeof value !== "string") return null
-  const normalized = value
-    .trim()
-    .toLowerCase()
-    .replace(/[\s_-]+/g, "")
-  const alias = normalized === "extrahigh" ? "xhigh" : normalized
-  const parsed = reasoningEffortSchema.safeParse(alias)
-  return parsed.success ? parsed.data : null
-}
-
-/** 档位从低到高的顺序；目录与界面都按这个顺序展示。 */
-const EFFORT_ORDER = reasoningEffortSchema.options
-
-/** 去重并按从低到高排序。 */
-export function sortEfforts(efforts: Iterable<ReasoningEffort>): ReasoningEffort[] {
-  const unique = new Set(efforts)
-  return EFFORT_ORDER.filter((effort) => unique.has(effort))
-}
+export { asReasoningEffort, sortEfforts }
 
 /** 补齐可选字段、去掉重复 id；默认档位不在可选范围内时置空。 */
 export function normalizeModels(models: readonly ProviderModelInfo[]): ProviderModel[] {
@@ -43,6 +25,32 @@ export function normalizeModels(models: readonly ProviderModelInfo[]): ProviderM
     })
   }
   return result
+}
+
+/**
+ * 在 agent 自己的目录后面追加自定义模型；已经在目录里的 id 不重复添加。
+ * 自定义模型没有可调的思考深度，由 CLI 自己决定。
+ */
+export function withCustomModels(
+  models: readonly ProviderModel[],
+  customIds: readonly string[],
+): ProviderModel[] {
+  const known = new Set(models.map((model) => model.id))
+  const custom: ProviderModel[] = []
+  for (const raw of customIds) {
+    const id = raw.trim()
+    if (!id || known.has(id)) continue
+    known.add(id)
+    custom.push({
+      id,
+      displayName: id,
+      isDefault: false,
+      efforts: [],
+      defaultEffort: null,
+      custom: true,
+    })
+  }
+  return [...models, ...custom]
 }
 
 /** 模型目录缓存的选项；测试可以注入时钟。 */

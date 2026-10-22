@@ -1,7 +1,7 @@
 /** provider_sessions 持久化；同一线程复用最近一个活跃原生会话。 */
 import type { ProviderSession } from "@pigcode/contracts"
-import type { PigcodeDatabase } from "../../storage/database"
-import type { ProviderSessionHandle } from "../driver"
+import type { PigcodeDatabase } from "../storage/database"
+import type { ProviderSessionHandle } from "./driver"
 
 /** provider 会话行的读写入口。 */
 export class ProviderSessionStore {

@@ -9,9 +9,7 @@ import {
   type SDKUserMessage,
 } from "@anthropic-ai/claude-agent-sdk"
 import type { ProviderCapabilities } from "@pigcode/contracts"
-import { existsSync } from "node:fs"
 import { randomUUID } from "node:crypto"
-import { delimiter, join } from "node:path"
 import type {
   ApprovalDecision,
   ApprovalRequest,
@@ -20,13 +18,17 @@ import type {
   ProviderModelInfo,
   ProviderRuntime,
   ProviderSessionHandle,
+  ProviderSettingsValues,
+  ProviderStatus,
   SessionMcp,
   UserInput,
-} from "../driver"
+} from "@pigcode/plugin-sdk"
 import { detectClaude, type ClaudeDetection } from "./detect"
+import { claudeLaunch, type ClaudeLaunch } from "./launch"
+import { claudeMcpServer } from "./mcp"
 import { claudeModelOption, listClaudeModels, toClaudeEffort } from "./models"
 import { createNormalizeState, normalizeSdkMessage } from "./normalize"
-import { answerRecord, parseQuestions } from "../questions"
+import { answerRecord, parseQuestions } from "./questions"
 
 /** 可注入的 query 实现，便于测试替换真实 CLI 进程。 */
 export type ClaudeQueryFn = (params: {
@@ -37,8 +39,9 @@ export type ClaudeQueryFn = (params: {
 /** driver 的可选依赖；测试可替换 query、CLI 可执行文件路径与安装检测。 */
 export interface ClaudeDriverOptions {
   queryFn?: ClaudeQueryFn
+  /** 固定的可执行文件；给了就不再读设置页里的路径。 */
   executable?: string
-  detect?: () => Promise<Pick<ClaudeDetection, "installed" | "loggedIn">>
+  detect?: (launch: ClaudeLaunch) => Promise<ClaudeDetection>
 }
 
 /** 单个 provider 会话的运行时状态；承载取消信号与当前 SDK Query。 */
@@ -48,8 +51,10 @@ interface DriverSessionState {
   interruptRequested: boolean
   /** 下一次 send 需要从该原生会话 fork；首次成功启动 Query 后清空。 */
   forkFromNativeSessionId: string | null
-  /** 创建会话时注入的插件 MCP server；每次 send 复用同一实例。 */
+  /** 创建会话时传入的插件 MCP 工具；每次 send 据此建一个进程内 server。 */
   mcp?: SessionMcp
+  /** 创建会话时的设置；每个 run 开始前 Host 都会重新创建会话，所以总是最新的一份。 */
+  settings?: ProviderSettingsValues
 }
 
 /** 基于 @anthropic-ai/claude-agent-sdk 的 Claude Code provider。 */
@@ -74,24 +79,39 @@ export class ClaudeDriver implements ProviderDriver {
   }
 
   private readonly queryFn: ClaudeQueryFn
-  private readonly executable: string | undefined
-  private readonly detect: () => Promise<Pick<ClaudeDetection, "installed" | "loggedIn">>
+  private readonly fixedExecutable: string | undefined
+  private readonly probe: (launch: ClaudeLaunch) => Promise<ClaudeDetection>
   private readonly sessionStates = new Map<string, DriverSessionState>()
 
   constructor(options: ClaudeDriverOptions = {}) {
     this.queryFn = options.queryFn ?? query
-    // 打包后的 Host 不再位于 SDK 包内，SDK 无法按自身路径找到原生二进制；
-    // 默认从 PATH 解析已安装的 Claude Code CLI。
-    this.executable = options.executable ?? resolveClaudeExecutable()
-    this.detect = options.detect ?? (() => detectClaude())
+    this.fixedExecutable = options.executable
+    this.probe =
+      options.detect ?? ((launch) => detectClaude({ command: launch.executable, env: launch.env }))
+  }
+
+  /** 只读检测：版本与登录状态，用设置页里的可执行文件与环境变量。 */
+  async detect(settings: ProviderSettingsValues): Promise<ProviderStatus> {
+    const detection = await this.probe(claudeLaunch(settings, this.fixedExecutable))
+    const account = [detection.subscriptionType, detection.authMethod].filter(Boolean).join(" · ")
+    return {
+      installed: detection.installed,
+      version: detection.version,
+      authenticated: detection.installed ? detection.loggedIn : null,
+      account: account || null,
+      command: detection.command,
+      error: detection.error,
+    }
   }
 
   /** 模型目录：CLI 已登录时从 SDK 读取，否则返回 CLI 认得的模型别名。 */
-  async listModels(): Promise<ProviderModelInfo[]> {
+  async listModels(settings: ProviderSettingsValues = {}): Promise<ProviderModelInfo[]> {
+    const launch = claudeLaunch(settings, this.fixedExecutable)
     return listClaudeModels({
       queryFn: this.queryFn,
-      executable: this.executable,
-      detect: this.detect,
+      executable: launch.executable,
+      env: launch.env,
+      detect: () => this.probe(launch),
     })
   }
 
@@ -103,6 +123,8 @@ export class ClaudeDriver implements ProviderDriver {
       existing.forkFromNativeSessionId = input.forkFromNativeSessionId ?? null
       if (input.mcp) existing.mcp = input.mcp
       else delete existing.mcp
+      if (input.settings) existing.settings = input.settings
+      else delete existing.settings
     } else {
       this.sessionStates.set(id, {
         controller: new AbortController(),
@@ -110,6 +132,7 @@ export class ClaudeDriver implements ProviderDriver {
         interruptRequested: false,
         forkFromNativeSessionId: input.forkFromNativeSessionId ?? null,
         ...(input.mcp ? { mcp: input.mcp } : {}),
+        ...(input.settings ? { settings: input.settings } : {}),
       })
     }
     return {
@@ -142,6 +165,8 @@ export class ClaudeDriver implements ProviderDriver {
     const forkFromNativeSessionId = state.forkFromNativeSessionId
     const resumeId = forkFromNativeSessionId ?? session.nativeSessionId
     const model = claudeModelOption(session.model)
+    const launch = claudeLaunch(state.settings, this.fixedExecutable)
+    const mcpServer = state.mcp ? claudeMcpServer(state.mcp) : null
     const queryStream = this.queryFn({
       prompt,
       options: {
@@ -154,11 +179,11 @@ export class ClaudeDriver implements ProviderDriver {
         includePartialMessages: true,
         // 子 agent 的文本/思考块也作为带 parent_tool_use_id 的消息转发，供时间线归组。
         forwardSubagentText: true,
-        ...(this.executable ? { pathToClaudeCodeExecutable: this.executable } : {}),
-        // 插件工具以进程内 SDK MCP server 暴露，生命周期跟随本次会话。
-        ...(state.mcp?.claudeServer
-          ? { mcpServers: { pigcode: state.mcp.claudeServer as McpServerConfig } }
-          : {}),
+        ...(launch.executable ? { pathToClaudeCodeExecutable: launch.executable } : {}),
+        ...(launch.env ? { env: launch.env } : {}),
+        ...(Object.keys(launch.extraArgs).length > 0 ? { extraArgs: launch.extraArgs } : {}),
+        // 插件工具以进程内 SDK MCP server 暴露，生命周期跟随本次 Query。
+        ...(mcpServer ? { mcpServers: { pigcode: mcpServer as McpServerConfig } } : {}),
         permissionMode: mapPermissionMode(session.permissionMode),
         ...(session.permissionMode === "danger-full-access"
           ? { allowDangerouslySkipPermissions: true }
@@ -236,6 +261,12 @@ export class ClaudeDriver implements ProviderDriver {
     this.sessionStates.delete(session.id)
   }
 
+  /** 插件停用时结束所有会话的 Query，不留下 Claude Code 子进程。 */
+  close(): void {
+    for (const state of this.sessionStates.values()) this.abortState(state)
+    this.sessionStates.clear()
+  }
+
   /** 读取或创建会话状态。 */
   private stateFor(sessionId: string): DriverSessionState {
     const existing = this.sessionStates.get(sessionId)
@@ -304,21 +335,4 @@ function toPermissionResult(
     }
   }
   return { behavior: "allow" }
-}
-
-/** 从 PIGCODE_CLAUDE_PATH 或 PATH 解析 Claude Code 可执行文件。 */
-function resolveClaudeExecutable(): string | undefined {
-  const configured = process.env.PIGCODE_CLAUDE_PATH
-  if (configured) return configured
-  const searchPath = process.env.PATH
-  if (!searchPath) return undefined
-  const names = process.platform === "win32" ? ["claude.exe", "claude.cmd", "claude"] : ["claude"]
-  for (const dir of searchPath.split(delimiter)) {
-    if (!dir) continue
-    for (const name of names) {
-      const candidate = join(dir, name)
-      if (existsSync(candidate)) return candidate
-    }
-  }
-  return undefined
 }

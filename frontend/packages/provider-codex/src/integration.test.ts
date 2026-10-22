@@ -1,7 +1,7 @@
 /** 用 JSONL fixture 回放 app-server，验证 Codex turn 的完整链路。 */
 import type { ProviderEvent } from "@pigcode/contracts"
 import { describe, expect, it } from "vitest"
-import type { ApprovalRequest, ProviderRuntime } from "../driver"
+import type { ApprovalRequest, ProviderRuntime } from "@pigcode/plugin-sdk"
 import { CodexDriver } from "./driver"
 import { replayTransport } from "./replay"
 

@@ -8,9 +8,13 @@ import type {
   ProviderModelInfo,
   ProviderRuntime,
   ProviderSessionHandle,
+  ProviderSettingsValues,
+  ProviderStatus,
   UserInput,
-} from "../driver"
+} from "@pigcode/plugin-sdk"
 import { CodexRpcClient } from "./client"
+import { detectCodex, type CodexDetection } from "./detect"
+import { codexLaunch, launchKey, type CodexLaunch } from "./launch"
 import { parseCodexModels } from "./models"
 import { normalizeCodexNotification } from "./normalize"
 import { StdioCodexTransport, type CodexTransport } from "./transport"
@@ -23,6 +27,14 @@ interface CodexSessionState {
   interruptRequested: boolean
   permissionMode: string
   model: string | null
+  /** 启动这个 app-server 的命令指纹；设置改了就不再复用。 */
+  launchKey: string
+}
+
+/** driver 的可选依赖；测试替换传输与检测。 */
+export interface CodexDriverOptions {
+  transportFactory?: (launch: CodexLaunch) => CodexTransport
+  detect?: (launch: CodexLaunch) => Promise<CodexDetection>
 }
 
 /** Codex 审批响应；Pigcode 只会产生这三种决议。 */
@@ -54,10 +66,28 @@ export class CodexDriver implements ProviderDriver {
   }
 
   private readonly sessions = new Map<string, CodexSessionState>()
-  private readonly transportFactory: (() => CodexTransport) | undefined
+  private readonly transportFactory: (launch: CodexLaunch) => CodexTransport
+  private readonly probe: (launch: CodexLaunch) => Promise<CodexDetection>
 
-  constructor(options: { transportFactory?: () => CodexTransport } = {}) {
-    this.transportFactory = options.transportFactory
+  constructor(options: CodexDriverOptions = {}) {
+    this.transportFactory =
+      options.transportFactory ??
+      ((launch) => new StdioCodexTransport(launch.command, launch.args, launch.env))
+    this.probe =
+      options.detect ?? ((launch) => detectCodex({ command: launch.command, env: launch.env }))
+  }
+
+  /** 只读检测：版本与登录状态，用设置页里的可执行文件与 CODEX_HOME。 */
+  async detect(settings: ProviderSettingsValues): Promise<ProviderStatus> {
+    const detection = await this.probe(codexLaunch(settings))
+    return {
+      installed: detection.installed,
+      version: detection.version,
+      authenticated: detection.installed ? detection.loggedIn : null,
+      account: detection.account,
+      command: detection.command,
+      error: detection.error,
+    }
   }
 
   /** 启动 app-server 并创建或恢复原生 thread。 */
@@ -66,6 +96,8 @@ export class CodexDriver implements ProviderDriver {
     // 权限模式或模型变了就不复用，下面用 thread/resume 带上新的 sandbox 与审批策略。
     const permissionMode = input.permissionMode ?? "workspace-write"
     const model = input.model ?? null
+    const launch = codexLaunch(input.settings)
+    const key = launchKey(launch)
     const reusable = input.forkFromNativeSessionId
       ? undefined
       : input.nativeSessionId
@@ -74,7 +106,8 @@ export class CodexDriver implements ProviderDriver {
     if (
       reusable?.nativeThreadId &&
       reusable.permissionMode === permissionMode &&
-      reusable.model === model
+      reusable.model === model &&
+      reusable.launchKey === key
     ) {
       return {
         id: input.sessionId ?? `codex_${randomUUID()}`,
@@ -86,8 +119,7 @@ export class CodexDriver implements ProviderDriver {
       }
     }
 
-    const transport = this.transportFactory?.() ?? new StdioCodexTransport()
-    const client = new CodexRpcClient(transport)
+    const client = new CodexRpcClient(this.transportFactory(launch))
     try {
       await client.request("initialize", {
         clientInfo: { name: "pigcode", title: "Pigcode", version: "0.1.0" },
@@ -108,20 +140,21 @@ export class CodexDriver implements ProviderDriver {
           : ((await client.request("thread/start", params)) as { thread?: { id?: string } })
       const nativeThreadId =
         response.thread?.id ?? (forkFrom ? null : (input.nativeSessionId ?? null))
-      const key = nativeThreadId ?? input.threadId
+      const stateKey = nativeThreadId ?? input.threadId
       // 同一 key 的旧 state 必须先关闭，否则会遗留一个 app-server 子进程。
-      const previous = this.sessions.get(key)
+      const previous = this.sessions.get(stateKey)
       if (previous) {
         previous.client.close()
-        this.sessions.delete(key)
+        this.sessions.delete(stateKey)
       }
-      this.sessions.set(key, {
+      this.sessions.set(stateKey, {
         client,
         nativeThreadId,
         turnId: null,
         interruptRequested: false,
         permissionMode,
         model,
+        launchKey: key,
       })
       return {
         id: input.sessionId ?? `codex_${randomUUID()}`,
@@ -202,9 +235,8 @@ export class CodexDriver implements ProviderDriver {
   }
 
   /** 临时启动 app-server 拉取模型目录；失败时返回空目录，不影响设置页。 */
-  async listModels(): Promise<ProviderModelInfo[]> {
-    const transport = this.transportFactory?.() ?? new StdioCodexTransport()
-    const client = new CodexRpcClient(transport)
+  async listModels(settings: ProviderSettingsValues = {}): Promise<ProviderModelInfo[]> {
+    const client = new CodexRpcClient(this.transportFactory(codexLaunch(settings)))
     try {
       await client.request("initialize", {
         clientInfo: { name: "pigcode", title: "Pigcode", version: "0.1.0" },
@@ -237,6 +269,12 @@ export class CodexDriver implements ProviderDriver {
     }
   }
 
+  /** 插件停用时关闭所有 app-server，包括空闲等待复用的。 */
+  close(): void {
+    for (const state of this.sessions.values()) state.client.close()
+    this.sessions.clear()
+  }
+
   /** 按原生 thread id 或本地 thread id 查找 session 状态。 */
   private stateFor(session: ProviderSessionHandle): CodexSessionState | undefined {
     return this.sessions.get(session.nativeSessionId ?? session.threadId)
@@ -258,8 +296,8 @@ function createThreadParams(input: CreateSessionInput): Record<string, unknown> 
     approvalPolicy: permissionMode === "danger-full-access" ? "never" : "on-request",
     sandbox,
     ...(model ? { model } : {}),
-    // 插件 MCP server 由 app-server 按 config.mcp_servers 启动。
-    ...(input.mcp?.codexConfig ? { config: input.mcp.codexConfig } : {}),
+    // 插件工具经 stdio 桥接入：app-server 按 config.mcp_servers 启动桥进程。
+    ...(input.mcp ? { config: { mcp_servers: { pigcode: input.mcp.stdioServer() } } } : {}),
   }
 }
 

@@ -1,6 +1,6 @@
 /** 没装 Codex 或 app-server 中途退出时：Host 不崩溃，请求立即失败，正在进行的一轮以失败结束。 */
 import { describe, expect, it } from "vitest"
-import type { ProviderRuntime } from "../driver"
+import type { ProviderRuntime } from "@pigcode/plugin-sdk"
 import { CodexRpcClient } from "./client"
 import { CodexDriver } from "./driver"
 import { StdioCodexTransport, type CodexTransport } from "./transport"

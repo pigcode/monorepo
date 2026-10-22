@@ -1,6 +1,6 @@
 /** 验证 Codex 的思考深度、模型目录中的档位，以及权限变化后不复用旧的 app-server。 */
 import { describe, expect, it } from "vitest"
-import type { ProviderRuntime } from "../driver"
+import type { ProviderRuntime } from "@pigcode/plugin-sdk"
 import { CodexDriver } from "./driver"
 import { ScriptedTransport, messageOf, sentMessages } from "./scripted-transport"
 

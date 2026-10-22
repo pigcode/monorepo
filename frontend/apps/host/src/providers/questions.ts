@@ -1,5 +1,5 @@
 /**
- * agent 向用户提问（Claude 的 AskUserQuestion）：持久化待回答请求、写 question.requested、
+ * agent 向用户提问（例如 Claude 的 AskUserQuestion）：持久化待回答请求、写 question.requested、
  * 把线程置为 waiting-input，等用户在界面上作答后交回 driver。run 结束时未回答的问题以空答案结束，
  * driver 据此拒绝这次提问，不会永远挂起。
  */
@@ -7,67 +7,8 @@ import { randomUUID } from "node:crypto"
 import type { ThreadEvent } from "@pigcode/contracts"
 import type { PendingRequestStore } from "../storage/pending-request-store"
 import type { RunStore } from "../storage/run-store"
+import type { QuestionRequest } from "./driver"
 import type { ActiveRun } from "./run-queue"
-
-/** 一个问题：标题、可选项，是否多选。 */
-export interface AgentQuestion {
-  question: string
-  header?: string
-  options: Array<{ label: string; description?: string }>
-  multiSelect: boolean
-}
-
-/** 一次提问可以包含多个问题。 */
-export interface QuestionRequest {
-  questions: AgentQuestion[]
-}
-
-/** 从工具输入里读出问题；形状不对时返回 null。 */
-export function parseQuestions(input: unknown): AgentQuestion[] | null {
-  const list = (input as { questions?: unknown } | null)?.questions
-  if (!Array.isArray(list) || list.length === 0) return null
-  const questions: AgentQuestion[] = []
-  for (const entry of list as Array<Record<string, unknown> | null>) {
-    if (typeof entry?.question !== "string" || !entry.question.trim()) return null
-    const options = Array.isArray(entry.options)
-      ? (entry.options as Array<Record<string, unknown> | null>).flatMap((option) =>
-          typeof option?.label === "string" && option.label.trim()
-            ? [
-                {
-                  label: option.label,
-                  ...(typeof option.description === "string" && option.description
-                    ? { description: option.description }
-                    : {}),
-                },
-              ]
-            : [],
-        )
-      : []
-    questions.push({
-      question: entry.question,
-      ...(typeof entry.header === "string" && entry.header ? { header: entry.header } : {}),
-      options,
-      multiSelect: entry.multiSelect === true,
-    })
-  }
-  return questions
-}
-
-/**
- * Claude 的 AskUserQuestion 要的答案形状：问题原文 → 选中的选项（多选用逗号连接）。
- * answers 与问题顺序一致；没答的问题不写入。
- */
-export function answerRecord(
-  questions: AgentQuestion[],
-  answers: string[],
-): Record<string, string> {
-  const record: Record<string, string> = {}
-  questions.forEach((question, index) => {
-    const answer = answers[index]?.trim()
-    if (answer) record[question.question] = answer
-  })
-  return record
-}
 
 /** 提问流程需要的 registry 能力。 */
 export interface QuestionDeps {

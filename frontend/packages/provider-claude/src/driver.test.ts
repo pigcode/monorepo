@@ -1,8 +1,18 @@
 /** 用 replay query 驱动 driver，验证事件顺序与审批。 */
 import type { Options } from "@anthropic-ai/claude-agent-sdk"
+import type { SessionMcp } from "@pigcode/plugin-sdk"
 import { describe, expect, it } from "vitest"
 import { ClaudeDriver } from "./driver"
 import { replayQuery } from "./replay"
+
+/** 只有一个 echo 工具的会话 MCP。 */
+function echoMcp(): SessionMcp {
+  return {
+    tools: [{ name: "echo", description: "Echo", inputSchema: { type: "object", properties: {} } }],
+    callTool: async (_name, input) => input,
+    stdioServer: () => ({ command: "node", args: [], env: {} }),
+  }
+}
 
 describe("ClaudeDriver", () => {
   it("emits deltas, tool events, usage, and completion", async () => {
@@ -80,11 +90,10 @@ describe("ClaudeDriver", () => {
         return replay(params)
       },
     })
-    const claudeServer = { type: "sdk" as const, name: "pigcode", instance: {} }
     const session = await driver.createSession({
       threadId: "t5",
       cwd: "/tmp",
-      mcp: { claudeServer },
+      mcp: echoMcp(),
     })
     await driver.send(
       session,
@@ -96,7 +105,7 @@ describe("ClaudeDriver", () => {
       },
     )
     // 插件工具以进程内 MCP server 形式挂到 SDK 的 mcpServers 上。
-    expect(captured?.mcpServers).toEqual({ pigcode: claudeServer })
+    expect(captured?.mcpServers?.pigcode).toMatchObject({ type: "sdk", name: "pigcode" })
   })
 
   it("refreshes MCP tools when a session id is reused", async () => {
@@ -108,20 +117,17 @@ describe("ClaudeDriver", () => {
         return replay(params)
       },
     })
-    const firstServer = { type: "sdk" as const, name: "pigcode", instance: { first: true } }
-    const secondServer = { type: "sdk" as const, name: "pigcode", instance: { second: true } }
-
     await driver.createSession({
       threadId: "t6",
       cwd: "/tmp",
       sessionId: "ps_1",
-      mcp: { claudeServer: firstServer },
+      mcp: echoMcp(),
     })
+    // 插件停用后再建会话时没有工具了，复用同一个会话 id 也不能留着旧的 server。
     const session = await driver.createSession({
       threadId: "t6",
       cwd: "/tmp",
       sessionId: "ps_1",
-      mcp: { claudeServer: secondServer },
     })
     await driver.send(
       session,
@@ -134,7 +140,7 @@ describe("ClaudeDriver", () => {
     )
 
     expect(session.id).toBe("ps_1")
-    expect(captured?.mcpServers).toEqual({ pigcode: secondServer })
+    expect(captured?.mcpServers).toBeUndefined()
   })
 
   it("forks the native session instead of continuing it", async () => {
