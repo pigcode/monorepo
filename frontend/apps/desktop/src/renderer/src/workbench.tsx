@@ -2,26 +2,29 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react"
 import { Plus, Trash2 } from "lucide-react"
 import type { Connection } from "@pigcode/client-runtime"
-import type { PullRequestInfo } from "@pigcode/contracts"
 import { Button, useLocale } from "@pigcode/ui-primitives"
 import {
   CheckpointPanel,
   DiffView,
-  FilePreview,
-  FileTree,
   PrPanel,
   RightPanel,
   WorktreePicker,
   addSurface,
   closeSurface,
+  openFileSurface,
   type CheckpointPhase,
-  type FilePreviewFile,
+  type PanelSurface,
+  type PanelSurfaceKind,
   type PanelSurfaceState,
-  type PrCreateInput,
   type SurfaceKind,
 } from "@pigcode/ui-workbench"
 import { BrowserSurface } from "./browser-surface"
+import { DiscardDraftDialog } from "./discard-draft-dialog"
+import { getDraft, setDraft, useDraftVersion } from "./file-drafts"
+import { FileSurface, FilesSurface } from "./files-surface"
 import { TerminalSurface } from "./terminal-surface"
+import { usePullRequest } from "./use-pull-request"
+import { useWorktrees } from "./use-worktrees"
 import { browserLabels, prPanelLabels, rightPanelLabels, surfaceTitle } from "./workbench-labels"
 
 /** 右侧面板属性；标签状态由 App 按线程保存，线程切换时父组件用 key 重新挂载以释放终端。 */
@@ -33,6 +36,10 @@ export interface WorkbenchPanelProps {
   /** 标签栏右侧的布局按钮。 */
   controls?: ReactNode
   onError: (message: string) => void
+  /** 项目名：文件树与面包屑的根。 */
+  projectName: string
+  /** agent 改过文件（工具调用结束、run 结束）时递增，文件树与打开的文件据此重读。 */
+  workspaceRevision: number
 }
 
 let surfaceSeq = 0
@@ -43,11 +50,6 @@ function nextSurfaceId(): string {
   return `surface-${surfaceSeq}`
 }
 
-/** workspace.tree 返回的条目。 */
-interface WorkspaceEntry {
-  path: string
-}
-
 /** checkpoint.list 返回的记录；只保留 UI 需要的字段。 */
 interface CheckpointRecord {
   id: string
@@ -56,13 +58,6 @@ interface CheckpointRecord {
   commitSha: string | null
   label: string | null
   createdAt: string
-}
-
-/** worktree.create/switch 返回的记录。 */
-interface WorktreeRecord {
-  id: string
-  path: string
-  branch: string | null
 }
 
 /** 把 unknown 错误转成可展示文本。 */
@@ -83,16 +78,18 @@ export function WorkbenchPanel({
   onPanelChange,
   controls,
   onError,
+  projectName,
+  workspaceRevision,
 }: WorkbenchPanelProps) {
   const { t } = useLocale()
-  const tab: SurfaceKind | null =
+  const tab: PanelSurfaceKind | null =
     panel.surfaces.find((surface) => surface.id === panel.activeId)?.kind ?? null
-  const [entries, setEntries] = useState<WorkspaceEntry[]>([])
-  const [treeError, setTreeError] = useState<string | null>(null)
-  const [selectedPath, setSelectedPath] = useState<string | null>(null)
-  const [file, setFile] = useState<FilePreviewFile | null>(null)
-  const [fileLoading, setFileLoading] = useState(false)
-  const [fileError, setFileError] = useState<string | null>(null)
+  // 保存文件、恢复检查点、切换 worktree 都会改动工作目录，与 agent 改文件一样要让文件树、
+  // git 标记与打开的文件重读。
+  const [localRevision, setLocalRevision] = useState(0)
+  const revision = workspaceRevision + localRevision
+  const [pendingClose, setPendingClose] = useState<PanelSurface | null>(null)
+  const draftVersion = useDraftVersion()
   const [checkpoints, setCheckpoints] = useState<CheckpointRecord[]>([])
   const [checkpointError, setCheckpointError] = useState<string | null>(null)
   const [checkpointBusy, setCheckpointBusy] = useState(false)
@@ -100,64 +97,11 @@ export function WorkbenchPanel({
   const [diffLoading, setDiffLoading] = useState(false)
   const [diffError, setDiffError] = useState<string | null>(null)
   const [diffBase, setDiffBase] = useState<string | null>(null)
-  const [worktrees, setWorktrees] = useState<WorktreeRecord[]>([])
-  const [activeWorktree, setActiveWorktree] = useState<string | null>(null)
-  const [worktreeBusy, setWorktreeBusy] = useState(false)
-  const [pullRequest, setPullRequest] = useState<PullRequestInfo | null>(null)
-  const [prLoading, setPrLoading] = useState(false)
-  const [prCreating, setPrCreating] = useState(false)
-  const [prError, setPrError] = useState<string | null>(null)
-
-  // 从聊天里点开的文件：文件标签带着路径打开，直接选中它。
-  const requestedPath = panel.surfaces.find((surface) => surface.kind === "files")?.path
-  useEffect(() => {
-    if (requestedPath) setSelectedPath(requestedPath)
-  }, [requestedPath])
-
-  // 文件树：每次进入文件标签都重新读取，反映终端或外部编辑后的状态。
-  useEffect(() => {
-    if (tab !== "files") return undefined
-    let cancelled = false
-    setTreeError(null)
-    void callRpc<WorkspaceEntry[]>(connection, "workspace.tree", { threadId })
-      .then((list) => {
-        if (!cancelled) setEntries(list)
-      })
-      .catch((error: unknown) => {
-        if (!cancelled) setTreeError(messageOf(error))
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [tab, threadId, connection])
-
-  // 选中文件后通过 Host 读取，Renderer 不触碰磁盘。
-  useEffect(() => {
-    if (!selectedPath) {
-      setFile(null)
-      setFileError(null)
-      return undefined
-    }
-    let cancelled = false
-    setFileLoading(true)
-    setFileError(null)
-    void callRpc<FilePreviewFile>(connection, "workspace.readFile", {
-      threadId,
-      path: selectedPath,
-    })
-      .then((result) => {
-        if (!cancelled) setFile(result)
-      })
-      .catch((error: unknown) => {
-        if (!cancelled) setFileError(messageOf(error))
-      })
-      .finally(() => {
-        if (!cancelled) setFileLoading(false)
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [selectedPath, threadId, connection])
+  // 切换或新建 worktree 会换掉线程的工作目录，同样要重读文件树与打开的文件。
+  const worktrees = useWorktrees(connection, threadId, onError, () =>
+    setLocalRevision((count) => count + 1),
+  )
+  const pr = usePullRequest(connection, threadId, tab === "pr")
 
   /** 重新拉取 checkpoint 列表；Diff 与 Checkpoint tab 共用。 */
   const refreshCheckpoints = useCallback(async (): Promise<void> => {
@@ -220,30 +164,6 @@ export function WorkbenchPanel({
     }
   }, [tab, threadId, connection, baseSha, headSha])
 
-  // PR：进入 tab 时查询当前分支；没有 PR 与 gh 错误都作为面板状态展示。
-  useEffect(() => {
-    if (tab !== "pr") return undefined
-    let cancelled = false
-    setPrLoading(true)
-    setPrError(null)
-    void callRpc<PullRequestInfo | null>(connection, "pr.status", { threadId })
-      .then((info) => {
-        if (!cancelled) setPullRequest(info)
-      })
-      .catch((error: unknown) => {
-        if (!cancelled) {
-          setPullRequest(null)
-          setPrError(messageOf(error))
-        }
-      })
-      .finally(() => {
-        if (!cancelled) setPrLoading(false)
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [tab, threadId, connection])
-
   async function createCheckpoint(): Promise<void> {
     setCheckpointBusy(true)
     setCheckpointError(null)
@@ -262,90 +182,12 @@ export function WorkbenchPanel({
     setCheckpointError(null)
     try {
       await connection.call("checkpoint.restore", { threadId, checkpointId })
+      setLocalRevision((count) => count + 1)
       await refreshCheckpoints()
     } catch (error) {
       onError(messageOf(error))
     } finally {
       setCheckpointBusy(false)
-    }
-  }
-
-  /** 创建 PR；成功后替换状态卡，失败时把错误交给面板展示。 */
-  async function createPullRequest(input: PrCreateInput): Promise<void> {
-    setPrCreating(true)
-    setPrError(null)
-    try {
-      setPullRequest(
-        await callRpc<PullRequestInfo>(connection, "pr.create", { threadId, ...input }),
-      )
-    } catch (error) {
-      setPrError(messageOf(error))
-      throw error
-    } finally {
-      setPrCreating(false)
-    }
-  }
-
-  // worktree 记录在 Host 里；重开应用后从这里恢复列表与当前选择。
-  useEffect(() => {
-    let cancelled = false
-    void callRpc<{ worktrees: WorktreeRecord[]; activePath: string | null }>(
-      connection,
-      "worktree.list",
-      { threadId },
-    )
-      .then((result) => {
-        if (cancelled) return
-        setWorktrees(result.worktrees)
-        setActiveWorktree(result.activePath)
-      })
-      .catch(() => undefined)
-    return () => {
-      cancelled = true
-    }
-  }, [connection, threadId])
-
-  async function createWorktree(): Promise<void> {
-    setWorktreeBusy(true)
-    try {
-      const worktree = await callRpc<WorktreeRecord>(connection, "worktree.create", { threadId })
-      setWorktrees((current) => [
-        ...current.filter((item) => item.path !== worktree.path),
-        worktree,
-      ])
-      setActiveWorktree(worktree.path)
-    } catch (error) {
-      onError(messageOf(error))
-    } finally {
-      setWorktreeBusy(false)
-    }
-  }
-
-  async function switchWorktree(path: string): Promise<void> {
-    setWorktreeBusy(true)
-    try {
-      const worktree = await callRpc<WorktreeRecord>(connection, "worktree.switch", {
-        threadId,
-        path,
-      })
-      setActiveWorktree(worktree.path)
-    } catch (error) {
-      onError(messageOf(error))
-    } finally {
-      setWorktreeBusy(false)
-    }
-  }
-
-  async function removeWorktree(): Promise<void> {
-    setWorktreeBusy(true)
-    try {
-      await connection.call("worktree.remove", { threadId })
-      setWorktrees((current) => current.filter((item) => item.path !== activeWorktree))
-      setActiveWorktree(null)
-    } catch (error) {
-      onError(messageOf(error))
-    } finally {
-      setWorktreeBusy(false)
     }
   }
 
@@ -359,32 +201,43 @@ export function WorkbenchPanel({
     )
   }
 
+  /** 关闭标签；有未保存修改的文件标签先确认。 */
   function close(id: string): void {
+    const surface = panel.surfaces.find((item) => item.id === id)
+    if (surface?.kind === "file" && surface.path && getDraft(threadId, surface.path) !== null) {
+      setPendingClose(surface)
+      return
+    }
     onPanelChange((state) => closeSurface(state, id))
   }
 
-  const content: Record<"files" | "diff" | "checkpoint" | "pr", ReactNode> = {
-    files: (
-      <div className="workbench-files">
-        <div className="workbench-worktree-compact">
-          <WorktreePicker
-            worktrees={worktrees}
-            activePath={activeWorktree}
-            onCreate={createWorktree}
-            onSwitch={switchWorktree}
-            onRemove={removeWorktree}
-            busy={worktreeBusy}
-            compact
-          />
-        </div>
-        {treeError ? (
-          <p className="workbench-error">{treeError}</p>
-        ) : (
-          <FileTree entries={entries} selectedPath={selectedPath} onSelect={setSelectedPath} />
-        )}
-        <FilePreview file={file} loading={fileLoading} error={fileError} />
-      </div>
-    ),
+  /** 打开文件标签；从文件树标签打开时文件树收进文件标签的侧栏，原标签被替换。 */
+  function openFile(path: string, replace?: string): void {
+    onPanelChange((state) => openFileSurface(state, path, nextSurfaceId(), { replace }))
+  }
+
+  // 文件标签的标题后面带一个圆点表示未保存。
+  const surfaces = useMemo(
+    () =>
+      panel.surfaces.map((surface) =>
+        surface.kind === "file" && surface.path
+          ? { ...surface, dirty: getDraft(threadId, surface.path) !== null }
+          : surface,
+      ),
+    // draftVersion 变化时重新读取草稿。
+    [panel.surfaces, threadId, draftVersion],
+  )
+
+  const fileProps = {
+    connection,
+    threadId,
+    rootName: projectName,
+    revision,
+    onError,
+    onSaved: () => setLocalRevision((count) => count + 1),
+  }
+
+  const content: Record<"diff" | "checkpoint" | "pr", ReactNode> = {
     diff: (
       <div className="workbench-diff">
         {committed.length > 0 ? (
@@ -434,11 +287,11 @@ export function WorkbenchPanel({
     ),
     pr: (
       <PrPanel
-        pullRequest={pullRequest}
-        loading={prLoading}
-        creating={prCreating}
-        error={prError}
-        onCreate={createPullRequest}
+        pullRequest={pr.pullRequest}
+        loading={pr.loading}
+        creating={pr.creating}
+        error={pr.error}
+        onCreate={pr.create}
         labels={prLabels}
       />
     ),
@@ -448,7 +301,7 @@ export function WorkbenchPanel({
     <div className="workbench">
       <RightPanel
         threadId={threadId}
-        surfaces={panel.surfaces}
+        surfaces={surfaces}
         activeId={panel.activeId}
         onActivate={(id) => onPanelChange((state) => ({ ...state, activeId: id }))}
         onClose={close}
@@ -501,6 +354,36 @@ export function WorkbenchPanel({
             )
           }
           if (!active) return null
+          if (surface.kind === "files") {
+            return (
+              <div key={surface.id} className="surface-pane workbench-files">
+                <div className="workbench-worktree-compact">
+                  <WorktreePicker
+                    worktrees={worktrees.worktrees}
+                    activePath={worktrees.activePath}
+                    onCreate={worktrees.create}
+                    onSwitch={worktrees.switchTo}
+                    onRemove={worktrees.remove}
+                    busy={worktrees.busy}
+                    compact
+                  />
+                </div>
+                <FilesSurface {...fileProps} onOpenFile={(path) => openFile(path, surface.id)} />
+              </div>
+            )
+          }
+          if (surface.kind === "file") {
+            return (
+              <div key={surface.id} className="surface-pane">
+                <FileSurface
+                  {...fileProps}
+                  path={surface.path ?? ""}
+                  line={surface.line}
+                  onOpenFile={(path) => openFile(path)}
+                />
+              </div>
+            )
+          }
           return (
             <div key={surface.id} className="surface-pane surface-scroll">
               {content[surface.kind]}
@@ -508,6 +391,17 @@ export function WorkbenchPanel({
           )
         })}
       </RightPanel>
+      <DiscardDraftDialog
+        file={pendingClose?.title ?? null}
+        onCancel={() => setPendingClose(null)}
+        onDiscard={() => {
+          const surface = pendingClose
+          setPendingClose(null)
+          if (!surface) return
+          if (surface.path) setDraft(threadId, surface.path, null)
+          onPanelChange((state) => closeSurface(state, surface.id))
+        }}
+      />
     </div>
   )
 }

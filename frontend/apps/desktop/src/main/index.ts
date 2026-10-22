@@ -16,6 +16,7 @@ import {
   launchCommand,
   launchDetached,
   readDirectory,
+  readExistingPath,
   settleOpenPath,
   type OpenAppInfo,
 } from "./open-in"
@@ -110,6 +111,12 @@ function registerNativeBridge(): void {
     const url = readExternalUrl(value)
     if (!url) throw new Error("URL_NOT_ALLOWED")
     await shell.openExternal(url)
+  })
+  // 文件树的「在文件管理器中显示」：只接受已存在的绝对路径。
+  ipcMain.handle("pigcode:reveal-path", (_event, value: unknown) => {
+    const path = readExistingPath(value)
+    if (!path) throw new Error("PATH_NOT_FOUND")
+    shell.showItemInFolder(path)
   })
   // 项目文件夹交给系统文件管理器打开；页面只能传已存在的目录。
   ipcMain.handle("pigcode:open-folder", async (_event, value: unknown) => {

@@ -1,8 +1,10 @@
 /** 简体中文消息目录；新增 key 时先加在这里，成组的文案放在单独的模块里合并进来。 */
 import { agentsZhCN } from "./agents.messages"
+import { filesZhCN } from "./files.messages"
 
 export const zhCN = {
   ...agentsZhCN,
+  ...filesZhCN,
   "nav.newThread": "新会话",
   "nav.search": "搜索",
   "nav.projects": "项目",

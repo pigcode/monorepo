@@ -91,6 +91,8 @@ export const commandSchemas = {
   "plugin.uninstall": z.object({ id: z.string().min(1) }),
   "plugin.bootGraph": z.object({}),
   "workspace.tree": z.object({ threadId: z.string().min(1) }),
+  /** 线程工作目录的绝对路径；复制完整路径、在文件管理器中显示时用。 */
+  "workspace.root": z.object({ threadId: z.string().min(1) }),
   /** 列出一个目录；path 为空表示线程的工作目录。 */
   "workspace.list": z.object({
     threadId: z.string().min(1),

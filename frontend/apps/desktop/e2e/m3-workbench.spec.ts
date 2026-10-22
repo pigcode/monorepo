@@ -61,7 +61,7 @@ test("workbench files, terminal, checkpoint, and diff", async () => {
   // 确认按钮消失代表 restore RPC 已完成，再读文件避免竞态。
   await expect(page.getByRole("button", { name: "确认恢复" })).toBeHidden()
 
-  // 恢复后从文件标签读取 a.txt，确认工作区回到 checkpoint 的内容。
+  // 恢复后从文件树打开 a.txt，确认工作区回到 checkpoint 的内容；文件树标签换成文件标签。
   await page.getByRole("button", { name: "添加面板" }).click()
   await page.getByRole("menuitem", { name: /文件/ }).click()
   await expect(page.locator(".right-panel").getByRole("tab")).toHaveText([
@@ -69,7 +69,12 @@ test("workbench files, terminal, checkpoint, and diff", async () => {
     "检查点",
     "文件",
   ])
-  await page.getByRole("button", { name: "a.txt", exact: true }).click()
-  await expect(page.getByRole("region", { name: "文件预览 a.txt" })).toContainText("one")
+  await page.getByRole("treeitem", { name: "a.txt" }).click()
+  await expect(page.locator(".right-panel").getByRole("tab")).toHaveText([
+    "终端 1",
+    "检查点",
+    "a.txt",
+  ])
+  await expect(page.getByRole("textbox", { name: "文件内容 a.txt" })).toHaveValue("one\n")
   await app.close()
 })

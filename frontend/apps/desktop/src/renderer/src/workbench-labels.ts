@@ -2,6 +2,8 @@
 import type { MessageKey } from "@pigcode/ui-primitives"
 import type {
   BrowserViewLabels,
+  FileExplorerLabels,
+  FileViewerLabels,
   PanelLayoutLabels,
   PrPanelLabels,
   RightPanelLabels,
@@ -97,5 +99,42 @@ export function prPanelLabels(t: Translate): PrPanelLabels {
     basePlaceholder: t("pr.basePlaceholder"),
     create: t("pr.create"),
     creating: t("pr.creating"),
+  }
+}
+
+/** 文件资源管理器文案。 */
+export function explorerLabels(t: Translate): FileExplorerLabels {
+  return {
+    tree: t("files.tree"),
+    search: t("files.search"),
+    clearSearch: t("files.clearSearch"),
+    refresh: t("files.refresh"),
+    collapseAll: t("files.collapseAll"),
+    empty: t("files.empty"),
+    loading: t("files.loading"),
+    noMatches: t("files.noMatches"),
+    searchTruncated: t("files.searchTruncated"),
+    loadFailed: t("files.loadFailed"),
+  }
+}
+
+/** 文件标签文案。 */
+export function viewerLabels(t: Translate): FileViewerLabels {
+  return {
+    loading: t("files.viewer.loading"),
+    binary: t("files.viewer.binary"),
+    truncated: t("files.viewer.truncated"),
+    imageTooLarge: t("files.viewer.imageTooLarge"),
+    save: t("files.viewer.save"),
+    saving: t("files.viewer.saving"),
+    unsaved: t("files.viewer.unsaved"),
+    conflict: t("files.viewer.conflict"),
+    reload: t("files.viewer.reload"),
+    overwrite: t("files.viewer.overwrite"),
+    showExplorer: t("files.viewer.showExplorer"),
+    hideExplorer: t("files.viewer.hideExplorer"),
+    more: t("files.viewer.more"),
+    editor: t("files.viewer.editor"),
+    breadcrumbs: t("files.viewer.breadcrumbs"),
   }
 }

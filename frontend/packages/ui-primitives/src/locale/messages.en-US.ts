@@ -1,9 +1,11 @@
 /** 英文消息目录；key 必须与 zh-CN 完全一致。 */
 import { agentsEnUS } from "./agents.messages"
+import { filesEnUS } from "./files.messages"
 import type { zhCN } from "./messages.zh-CN"
 
 export const enUS = {
   ...agentsEnUS,
+  ...filesEnUS,
   "nav.newThread": "New chat",
   "nav.search": "Search",
   "nav.projects": "Projects",

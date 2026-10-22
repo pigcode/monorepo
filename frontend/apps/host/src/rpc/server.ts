@@ -302,6 +302,8 @@ export class RpcServer {
         return this.ctx.plugins.bootGraph()
       case "workspace.tree":
         return this.ctx.workspace.tree((parsed as { threadId: string }).threadId)
+      case "workspace.root":
+        return { root: this.ctx.workspace.root((parsed as { threadId: string }).threadId) }
       case "workspace.list": {
         const value = parsed as { threadId: string; path: string }
         return this.ctx.workspace.list(value.threadId, value.path)

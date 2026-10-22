@@ -49,6 +49,8 @@ export interface WriteOptions {
 
 /** 工作区读写入口。 */
 export interface WorkspaceService {
+  /** 线程工作目录的绝对路径。 */
+  root(threadId: string): string
   tree(threadId: string): Promise<WorkspaceEntry[]>
   /** 列出一个目录；空字符串表示工作目录本身。 */
   list(threadId: string, path?: string): Promise<DirectoryListing>
@@ -83,6 +85,7 @@ export interface WorkspacePlugin {
 export const apply: WorkspacePlugin = (ctx) => {
   const index = createPathIndex()
   const service: WorkspaceService = {
+    root: (threadId) => threadCwd(ctx, threadId),
     async tree(threadId) {
       const files = await index.files(threadCwd(ctx, threadId))
       return files.map((path) => ({ path, type: "file" as const }))

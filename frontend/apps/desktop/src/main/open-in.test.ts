@@ -4,7 +4,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { afterAll, describe, expect, it } from "vitest"
 import { appDefsFor, detectApps, findOnPath, type DetectedApp } from "./open-apps"
-import { launchCommand, readDirectory, settleOpenPath } from "./open-in"
+import { launchCommand, readDirectory, readExistingPath, settleOpenPath } from "./open-in"
 
 const folder = mkdtempSync(join(tmpdir(), "pigcode-open-in-"))
 const file = join(folder, "notes.txt")
@@ -26,6 +26,16 @@ describe("readDirectory", () => {
     expect(readDirectory(join(folder, "missing"))).toBeNull()
     expect(readDirectory("relative/path")).toBeNull()
     expect(readDirectory(42)).toBeNull()
+  })
+})
+
+describe("readExistingPath", () => {
+  it("accepts existing absolute files and folders only", () => {
+    expect(readExistingPath(folder)).toBe(folder)
+    expect(readExistingPath(file)).toBe(file)
+    expect(readExistingPath(join(folder, "missing"))).toBeNull()
+    expect(readExistingPath("relative/path")).toBeNull()
+    expect(readExistingPath(null)).toBeNull()
   })
 })
 

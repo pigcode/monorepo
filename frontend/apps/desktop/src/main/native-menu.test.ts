@@ -40,11 +40,18 @@ describe("readNativeMenu", () => {
     expect(readNativeMenu([{ role: "help" }], options)).toBeNull()
     expect(readNativeMenu([{ id: "", label: "空" }], options)).toBeNull()
     expect(readNativeMenu([{ id: "x", label: 3 }], options)).toBeNull()
-    expect(readNativeMenu([{ id: "x", label: "x", accelerator: "Ctrl+<script>" }], options)).toBeNull()
+    expect(
+      readNativeMenu([{ id: "x", label: "x", accelerator: "Ctrl+<script>" }], options),
+    ).toBeNull()
     expect(readNativeMenu([{ role: "copy", label: "" }], options)).toBeNull()
     expect(readNativeMenu("menu", options)).toBeNull()
     expect(readNativeMenu([], options)).toBeNull()
-    expect(readNativeMenu(Array.from({ length: 49 }, () => ({ role: "copy" })), options)).toBeNull()
+    expect(
+      readNativeMenu(
+        Array.from({ length: 49 }, () => ({ role: "copy" })),
+        options,
+      ),
+    ).toBeNull()
   })
 
   it("drops developer roles in packaged builds and tidies separators", () => {

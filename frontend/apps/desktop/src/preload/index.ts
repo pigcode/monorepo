@@ -28,6 +28,7 @@ contextBridge.exposeInMainWorld("pigcodeNative", {
   ): Promise<string | null> => ipcRenderer.invoke("pigcode:pick-path", kind, labels),
   openExternal: (url: string): Promise<void> => ipcRenderer.invoke("pigcode:open-external", url),
   openFolder: (path: string): Promise<void> => ipcRenderer.invoke("pigcode:open-folder", path),
+  revealPath: (path: string): Promise<void> => ipcRenderer.invoke("pigcode:reveal-path", path),
   listOpenApps: (): Promise<
     Array<{
       id: string
