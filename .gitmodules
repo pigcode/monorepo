@@ -1,0 +1,6 @@
+[submodule "frontend"]
+	path = frontend
+	url = https://github.com/pigcode/frontend.git
+[submodule "docs"]
+	path = docs
+	url = https://github.com/pigcode/docs.git
