@@ -4,7 +4,7 @@ How the engineering skills should consume this repo's domain documentation when 
 
 ## Path override: `adr/`, not `docs/adr/`
 
-In this repo `docs/` is a submodule (pigcode/docs) mirrored from pigcode-origin by `scripts/sync-from-origin.sh`, and the sync deletes any tracked file origin doesn't have. So ADRs live in **`adr/` at the aggregate repo root**. Wherever a skill says `docs/adr/` (`/domain-modeling`, its ADR format, `/improve-codebase-architecture`), read and write `adr/` instead. Never create `docs/adr/`, and never put `GLOSSARY.md` inside `frontend/` or `docs/`.
+In this repo `docs/` is a submodule (pigcode/docs), so a `docs/adr/` would land in that repo instead of next to `GLOSSARY.md` and the rest of the agent config. ADRs live in **`adr/` at the aggregate repo root**. Wherever a skill says `docs/adr/` (`/domain-modeling`, its ADR format, `/improve-codebase-architecture`), read and write `adr/` instead. Never create `docs/adr/`, and never put `GLOSSARY.md` inside `frontend/` or `docs/`.
 
 ## Before exploring, read these
 
@@ -26,7 +26,7 @@ pigcode/                 ← aggregate repo (pigcode/pigcode)
 │   └── 0002-....md
 ├── agents/
 ├── frontend/            ← submodule, code
-└── docs/                ← submodule, mirrored; don't write here
+└── docs/                ← submodule, design docs and plans
 ```
 
 ## Use the glossary's vocabulary

@@ -5,7 +5,11 @@
 - `frontend/`：pigcode/frontend，桌面端和插件平台（pnpm monorepo）
 - `docs/`：pigcode/docs，架构设计和里程碑计划
 
-`frontend/` 和 `docs/` 的内容由 `scripts/sync-from-origin.sh` 从 pigcode-origin 镜像过来，同步会删掉 origin 里没有的跟踪文件。所以 agent 配置、`GLOSSARY.md` 和 ADR 都放在聚合仓库根目录，不要写进这两个目录。同步完成后，在聚合仓库里提交新的 submodule 指针。
+直接在 `frontend/` 和 `docs/` 里开发：改动先在子仓库里提交并推送，再在聚合仓库里提交新的 submodule 指针（`git add frontend docs`）。顺序不能反，否则聚合仓库会指向 GitHub 上不存在的提交。
+
+agent 配置、`GLOSSARY.md` 和 ADR 描述的是整个 Pigcode，所以放在聚合仓库根目录，不写进两个子仓库。
+
+旧的 pigcode-origin 仓库已废弃。它的完整提交历史保存在 pigcode/pigcode 的 `archive/origin-main` 分支；frontend 的 `a36fc83` 把这 99 个提交压成了一个，要查这段时间的 `git log` 或 `git blame` 就去这个分支。`archive/ui-refinement-round-2` 是当时没合并的 PR #1。
 
 `docs/superpowers/` 是切换到 Matt Pocock skills 之前的设计稿和计划，作为背景资料阅读，不再往里面加新文件。
 
