@@ -9,7 +9,7 @@ Pigcode 驱动来完成工作的 coding CLI，例如 Claude Code、Codex。每�
 _Avoid_: Provider、driver、backend
 
 **Agent 功能（Agent feature）**:
-某个 Agent 支持或不支持的一项功能，例如原生 fork、计划模式、回滚文件。界面按它隐藏 Agent 不支持的控件。
+某个 Agent 支持或不支持的一项功能，例如原生 fork、计划模式、回滚会话。界面按它隐藏 Agent 不支持的控件。
 _Avoid_: capability、能力
 
 ## 插件
