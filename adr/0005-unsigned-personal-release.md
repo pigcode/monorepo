@@ -13,3 +13,4 @@
 - **macOS 上的自动更新用不了**：electron-updater 依赖签名来校验新版本，未签名的应用接不了。内部包只能覆盖安装。Windows 和 Linux 不受这条影响。
 - 下载源、更新源、发版流程这些决定仍然要做，只是不再受签名主体牵制。
 - 第一次公开发布之前要重新确认主体和标识：以后换 Team ID 或证书，已安装的用户可能收不到更新。
+- 打包先用 `com.pigcode.desktop` 作 appId、`Pigcode` 作 productName；这两个值会进入 bundle id、AppUserModelID 和 userData 目录，公开分发前要确认。
