@@ -1,8 +1,8 @@
 # Pigcode
 
-聚合仓库。代码在两个 submodule 里：
+聚合仓库 `pigcode/monorepo`。代码在两个 submodule 里：
 
-- `frontend/`：pigcode/frontend，桌面端和插件平台（pnpm monorepo）
+- `frontend/`：pigcode/pigcode，桌面端和插件平台（pnpm monorepo）
 - `docs/`：pigcode/docs，架构设计和里程碑计划
 
 直接在 `frontend/` 和 `docs/` 里开发：改动先在子仓库里提交并推送，再在聚合仓库里提交新的 submodule 指针（`git add frontend docs`）。顺序不能反，否则聚合仓库会指向 GitHub 上不存在的提交。

@@ -1,6 +1,6 @@
-# 在 pigcode/frontend 推 tag 发版，先出草稿再人工发布
+# 在 pigcode/pigcode 推 tag 发版，先出草稿再人工发布
 
-推 `vX.Y.Z` 这样的 tag 到 pigcode/frontend，release workflow 在三个平台上打包、跑冒烟测试，然后建一个 GitHub Release 草稿。人检查后手动点发布。tag 和 `apps/desktop/package.json` 的版本不一致时，workflow 直接失败。
+推 `vX.Y.Z` 这样的 tag 到 pigcode/pigcode，release workflow 在三个平台上打包、跑冒烟测试，然后建一个 GitHub Release 草稿。人检查后手动点发布。tag 和 `apps/desktop/package.json` 的版本不一致时，workflow 直接失败。
 
 代码都在 frontend，所以 tag 和 Release 都放在这里。聚合仓库不打 tag，发版后照常更新 submodule 指针。
 
