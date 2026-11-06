@@ -2,7 +2,7 @@
 
 pigcode/pigcode（代码）、pigcode/monorepo（聚合仓库与 issue）、pigcode/docs 三个仓库都公开，都用 MIT 许可证。不另建只放安装包的发布仓库。版权方写 `Pigcode contributors`，这样不用在许可证里写个人姓名，以后有别人贡献代码也不用改。
 
-仓库现在还是私有的。这里定的是方向，什么时候转公开单独决定，因为转了之后，已有的提交历史就算撤回也可能已被别人保存。
+三个仓库已于 2026-11-06 转为公开，之前对完整历史（含 `archive/*` 分支）做过一遍密钥扫描，没有命中。
 
 ## Considered Options
 
@@ -13,5 +13,5 @@ pigcode/pigcode（代码）、pigcode/monorepo（聚合仓库与 issue）、pigc
 ## Consequences
 
 - MIT 只管我们自己写的代码，**不等于安装包里的所有东西都是 MIT**。`packages/agent-claude` 依赖的 `@anthropic-ai/claude-agent-sdk` 不是开源软件（`© Anthropic PBC. All rights reserved`，受 Anthropic 的条款约束），而且构建时被打进了 `out/host/plugins/agent-claude/index.mjs`，所以安装包会带上它。源码仓库只写了依赖版本，不受影响。发布安装包之前要确认 Anthropic 的条款是否允许这样分发；不允许就要改成不打包，由用户自己安装。
-- 安装包里还没有放 LICENSE 和第三方声明，架构文档 §15 要求保留 Cordis 和 dsh 的 MIT 声明。怎么收集和放在哪里，记在 #7 里。
-- 转公开之前要检查三个仓库的完整历史，包括 pigcode/pigcode 的 `archive/*` 分支。转公开之后，这些分支和提交都能被任何人读到。- 转公开之后，标准 runner 上的 Actions 不再收费，GitHub Release 也可以作为下载源和更新源。大陆访问是否稳定仍然要在 #14 里决定。
+- 安装包里的 LICENSE 和第三方声明由 `scripts/notices.ts` 生成（`pnpm notices`，打包脚本会自动跑），输出 `apps/desktop/build/THIRD_PARTY_NOTICES.txt`，作为 extraResources 进安装包。Cordis、dsh 和 Anthropic SDK 的声明都在里面。
+- 转公开之后，标准 runner 上的 Actions 不再收费，GitHub Release 同时是下载源和更新源。

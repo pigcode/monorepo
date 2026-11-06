@@ -10,5 +10,5 @@
 ## Consequences
 
 - 没有费用。下载页是 `https://github.com/pigcode/pigcode/releases/latest`，不需要域名。
-- 仓库要先转公开（ADR 0008）才能发布，私有仓库的 Release 匿名访问不到。
+- 仓库已转公开（ADR 0008），Release 可以匿名访问，应用里检查更新读的是 `/releases` 列表，不需要认证。
 - 大陆用户的实际下载情况没有测过，发布后要看反馈。如果确实下载不了，再做镜像：`latest*.yml` 里的文件地址是相对路径，同一套文件可以原样上传到别处，发布流程不用重做，只要在应用里加上换源。

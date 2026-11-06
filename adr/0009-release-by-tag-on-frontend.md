@@ -14,5 +14,5 @@
 
 ## Consequences
 
-- 没有 CI 额度就发不了版。私有仓库的 macOS runner 按 10 倍计费，转公开（ADR 0008）之后才不用担心这件事。
+- 仓库转公开（ADR 0008）之后，标准 runner 的 Actions 免费，发版不再受额度限制；私有仓库时期 macOS runner 按 10 倍计费的问题消失了。
 - 发版前要先改 `apps/desktop/package.json`，再打 tag。
