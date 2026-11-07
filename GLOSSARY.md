@@ -29,12 +29,30 @@ _Avoid_: 用 capability 指 Agent 功能
 **UI 插件**:
 只在窗口里增加界面的插件。
 
+**插件市场（Marketplace）**:
+一个列出插件的目录文件（`.pigcode-plugin/marketplace.json` 或 `marketplace.json`），放在 GitHub 仓库、git 仓库、网址或本地文件夹里。添加市场后可以在插件页浏览、安装和更新其中的插件。
+_Avoid_: 插件商店、插件源（指市场本身时）
+
+**市场源（Marketplace source）**:
+插件市场从哪里读：GitHub 仓库、git 仓库、网址、本地文件夹或文件。插件页的「市场源」里添加、启停、刷新和删除；停用的市场源不在插件市场里列出，从它装的插件照常可用。
+_Avoid_: 插件源
+
 **扩展点（Extension point）**:
 窗口里允许内置功能和插件登记内容的固定位置，共五个：Panel、Surface、设置页、Command、工具渲染器。内置功能和插件用同一套扩展点。
 _Avoid_: slot、hook
 
 **Contribution**:
 登记在某个扩展点上的一项内容，归属于一个插件或内置功能。插件停用时，它的 Contribution 一起移除。
+
+## 会话
+
+**新会话草稿（Draft）**:
+点「新会话」后还没发出第一条消息的会话。它只在窗口里，不在侧栏里，Host 上也没有记录；第一次发送，或者打开挂在会话上的右侧面板、终端时，才按草稿里选好的项目、agent、模型和权限建会话。
+_Avoid_: 空会话、临时会话
+
+**会话导航（Conversation navigator）**:
+会话区左边的一列短横线，每条对应用户在这个会话里发的一条消息，用来在长会话里预览并跳到某条消息。
+_Avoid_: 问题导航、minimap、目录
 
 ## 窗口
 
