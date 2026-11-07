@@ -13,6 +13,10 @@ agent 配置、`GLOSSARY.md` 和 ADR 描述的是整个 Pigcode，所以放在�
 
 `docs/superpowers/` 是切换到 Matt Pocock skills 之前的设计稿和计划，作为背景资料阅读，不再往里面加新文件。
 
+# 偏好
+
+与用户对话或者给用户所看文档必须使用中文
+
 ## Agent skills
 
 ### Issue tracker
