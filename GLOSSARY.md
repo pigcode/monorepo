@@ -12,6 +12,10 @@ _Avoid_: Provider、driver、backend
 某个 Agent 支持或不支持的一项功能，例如原生 fork、计划模式、回滚会话。界面按它隐藏 Agent 不支持的控件。
 _Avoid_: capability、能力
 
+**Agent 实例（Agent instance）**:
+一个 Agent 的一份具体配置：名字、启用开关和自己的一套设置值（API 地址、密钥、CLI 路径、启动参数、自定义模型）。同一个 Agent 可以有多个实例，会话绑定到某一个实例上。默认实例的 `instanceId` 就是 `agentId`，不可删除；用户新建的实例用 `inst_` 前缀。
+_Avoid_: provider、providerInstance、配置档案、profile
+
 ## 插件
 
 **插件（Plugin）**:
@@ -47,7 +51,7 @@ _Avoid_: slot、hook
 ## 会话
 
 **新会话草稿（Draft）**:
-点「新会话」后还没发出第一条消息的会话。它只在窗口里，不在侧栏里，Host 上也没有记录；第一次发送，或者打开挂在会话上的右侧面板、终端时，才按草稿里选好的项目、agent、模型和权限建会话。
+点「新会话」后还没发出第一条消息的会话。它只在窗口里，不在侧栏里，Host 上也没有记录；第一次发送，或者打开挂在会话上的右侧面板、终端时，才按草稿里选好的项目、Agent 实例、模型和权限建会话。
 _Avoid_: 空会话、临时会话
 
 **会话导航（Conversation navigator）**:
