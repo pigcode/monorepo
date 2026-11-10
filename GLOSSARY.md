@@ -63,8 +63,12 @@ _Avoid_: 问题导航、minimap、目录
 _Avoid_: 极速、turbo
 
 **Ultracode**:
-Claude Code 的一个会话设置：让主 agent 用工作流把任务拆给多个 agent 并行完成，和思考深度互不影响。打开时同时打开 Workflows。
+Claude Code 的一个会话设置：让主 agent 用工作流把任务拆给多个 agent 并行完成，和思考深度互不影响。打开时同时打开 Workflows。哪些模型能开记在开发者用 `pnpm gen:ultracode` 生成的表里，运行时不再逐个问 CLI。
 _Avoid_: 超级编码、ultra 思考
+
+**Agent 命令（Agent command）**:
+输入框 `/` 菜单里由 Agent 提供的一项：CLI 内置命令（标「内置」），或用户、项目、插件装的 skill 与自定义命令（标「Skill」）。选中后把它的文字插进输入框，随消息发给 CLI 展开：Claude 是 `/名字`，Codex 的 skill 是 `$名字`。和 Pigcode 自己的命令重名时，Pigcode 的优先。
+_Avoid_: slash command（指 Agent 提供的这一种时）、技能
 
 **工作流（Workflow）**:
 主 agent 用 Workflow 工具写的一段脚本，在后台按阶段派出一组 agent。它在时间线里是一张卡片，跑完以前所属的 run 不结束。
