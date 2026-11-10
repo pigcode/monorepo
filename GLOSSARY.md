@@ -58,6 +58,18 @@ _Avoid_: 空会话、临时会话
 会话区左边的一列短横线，每条对应用户在这个会话里发的一条消息，用来在长会话里预览并跳到某条消息。
 _Avoid_: 问题导航、minimap、目录
 
+**快速模式（Fast mode）**:
+按模型打开的一个开关：同一个模型输出更快、计费更高。Claude 是会话设置 `fastMode`，需要账号开启额外用量；Codex 是 `fast` 服务档。
+_Avoid_: 极速、turbo
+
+**Ultracode**:
+Claude Code 的一个会话设置：让主 agent 用工作流把任务拆给多个 agent 并行完成，和思考深度互不影响。打开时同时打开 Workflows。
+_Avoid_: 超级编码、ultra 思考
+
+**工作流（Workflow）**:
+主 agent 用 Workflow 工具写的一段脚本，在后台按阶段派出一组 agent。它在时间线里是一张卡片，跑完以前所属的 run 不结束。
+_Avoid_: 流水线、pipeline、task group
+
 ## 窗口
 
 **Panel**:
