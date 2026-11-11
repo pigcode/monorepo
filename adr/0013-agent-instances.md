@@ -2,7 +2,7 @@
 
 以前一个 Agent 只有一套设置：改 Claude Code 的 API 地址就等于改了所有 Claude Code 会话。参照 t3code 的 `providerInstance`，把「驱动」和「配置」拆开：`AgentDriver` 仍由 Agent 插件注册，id 是 `agentId`（`claude`、`codex`）；每次具体配置是一个 **Agent 实例**，有自己的 `instanceId`、名字、启用开关和设置值。一个 Agent 因此可以同时接两个 API 端点、两个 CLI 路径或两套模型清单。
 
-默认实例的 `instanceId` 就是 `agentId`，设置仍存在 `agents.<agentId>` 下，旧数据与旧调用方式不用迁移。用户新建的实例是 `inst_<uuid>`，存在 `agentInstances` 里，新建时从当前实例复制一份值。会话记住两个实例 id：`default_instance_id`（新 run 用它）和 `last_instance_id`（上次用的），`agent_sessions` 按 `(thread_id, agent_id, instance_id)` 存会话，所以同一个 Agent 的两个实例各有自己的上下文。
+默认实例的 `instanceId` 就是 `agentId`，设置仍存在 `agents.<agentId>` 下，旧数据与旧调用方式不用迁移。用户新建的实例是 `inst_<uuid>`，存在 `agentInstances` 里，新建时从当前实例复制一份值。会话记住两个实例 id：`default_instance_id`（新 run 用它）和 `last_instance_id`（上次用的），`agent_sessions` 按 `(thread_id, agent_id, instance_id)` 存会话，同一个 Agent 的两个实例在一个会话里各有自己的原生会话。（2026-11-11 修订：以前每次切换都把会话里所有原生会话停掉，「各有自己的上下文」只在不切换时成立；现在切走时原生会话停放着，切回来接着用，配置目录相同的两个实例还能接着用彼此的原生会话，见 ADR 0016。）
 
 界面上设置页改成主从两栏：左栏列出全部实例（按 Agent 分组、默认实例在前），右栏是选中实例的详情卡片；新建实例走「选 Agent → 起名字 → 初始设置」三步向导。非默认实例可以改名、停用、设为新会话默认、删除，默认实例不可改不可删。新建会话的模型选择器把所有启用实例的模型平铺在一起，选择结果带着 `instanceId`。
 
