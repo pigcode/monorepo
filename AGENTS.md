@@ -21,7 +21,7 @@ agent 配置、`GLOSSARY.md` 和 ADR 描述的是整个 Pigcode，所以放在�
 
 ### Issue tracker
 
-Issue 统一放在聚合仓库 pigcode/pigcode 的 GitHub Issues；在 `frontend/` 或 `docs/` 里操作时也必须带 `-R pigcode/pigcode`。See `agents/issue-tracker.md`.
+Issue 统一放在聚合仓库 pigcode/monorepo 的 GitHub Issues；在 `frontend/` 或 `docs/` 里操作时也必须带 `-R pigcode/monorepo`，否则 `gh` 会按当前目录落到子仓库。See `agents/issue-tracker.md`.
 
 ### Triage labels
 

@@ -19,7 +19,7 @@ If any of these files don't exist, **proceed silently**. Don't flag their absenc
 Single-context:
 
 ```
-pigcode/                 ← aggregate repo (pigcode/pigcode)
+pigcode/                 ← aggregate repo (pigcode/monorepo)
 ├── GLOSSARY.md
 ├── adr/
 │   ├── 0001-....md

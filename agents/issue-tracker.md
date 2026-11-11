@@ -14,7 +14,7 @@ Issues and specs for all of Pigcode (frontend and docs) live as GitHub issues on
 - **Apply / remove labels**: `gh issue edit -R pigcode/monorepo <number> --add-label "..."` / `--remove-label "..."`
 - **Close**: `gh issue close -R pigcode/monorepo <number> --comment "..."`
 
-Code changes land in the submodule repos, so PRs are opened on pigcode/monorepo or pigcode/docs. Reference the tracker issue from the PR body with the full form `pigcode/monorepo#<number>`; a bare `#<number>` would point at the submodule repo's own numbering.
+Code changes land in the submodule repos, so PRs are opened on pigcode/pigcode or pigcode/docs. Reference the tracker issue from the PR body with the full form `pigcode/monorepo#<number>`; a bare `#<number>` would point at the submodule repo's own numbering.
 
 ## Pull requests as a triage surface
 
