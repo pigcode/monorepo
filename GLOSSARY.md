@@ -9,7 +9,7 @@ Pigcode 驱动来完成工作的 coding CLI，例如 Claude Code、Codex。每�
 _Avoid_: Provider、driver、backend
 
 **Agent 功能（Agent feature）**:
-某个 Agent 支持或不支持的一项功能，例如原生 fork、计划模式、回滚会话。界面按它隐藏 Agent 不支持的控件。
+某个 Agent 支持或不支持的一项功能，例如原生 fork、计划进度、回滚会话。界面按它隐藏 Agent 不支持的控件。
 _Avoid_: capability、能力
 
 **Agent 实例（Agent instance）**:
@@ -73,6 +73,12 @@ _Avoid_: 用量（那是计费）、token 数
 **会话导航（Conversation navigator）**:
 会话区左边的一列短横线，每条对应用户在这个会话里发的一条消息，用来在长会话里预览并跳到某条消息。
 _Avoid_: 问题导航、minimap、目录
+
+**权限模式（Permission mode）**:
+平台统一提供的监督审批、接受编辑、自动审批、完全访问四档权限。各 Agent 负责映射到自己的原生执行范围与审批参数；权限属于会话，切换 Agent 时保持同一档。新会话默认完全访问，已有会话保留原实际权限。
+
+**计划模式（Plan mode）**:
+会话里的独立开关，让 Agent 使用自己的原生计划流程。它与权限选择分别保存；退出计划时恢复之前的权限。是否可用由插件的 `executionModes.plan` 声明，和输出计划进度事件的 `features.plan` 不同。
 
 **快速模式（Fast mode）**:
 按模型打开的一个开关：同一个模型输出更快、计费更高。Claude 是会话设置 `fastMode`，需要账号开启额外用量；Codex 是 `fast` 服务档。
