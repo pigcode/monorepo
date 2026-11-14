@@ -89,7 +89,7 @@ Claude Code 的一个会话设置：让主 agent 用工作流把任务拆给多�
 _Avoid_: 超级编码、ultra 思考
 
 **Agent 命令（Agent command）**:
-输入框 `/` 菜单里由 Agent 提供的一项：CLI 内置命令（标「内置」），或用户、项目、插件装的 skill 与自定义命令（标「Skill」）。选中后把它的文字插进输入框，随消息发给 CLI 展开：Claude 是 `/名字`，Codex 的 skill 是 `$名字`。和 Pigcode 自己的命令重名时，Pigcode 的优先。
+Agent 提供的输入框命令与 Skill 目录。`/` 菜单列 CLI 命令和自定义命令，同名时 Pigcode 的命令优先。`$` 菜单列当前 Agent 可用的 Skill，支持按名称、展示名、描述和作用域搜索，重新打开时刷新。Codex 通过 `skills/list` 列目录，按 `$名称` 调用。Claude 从本地配置、项目和启用的插件发现 Skill，输入框和历史显示 `$名称`，发送时由适配器以 `/名称` 或 `/插件:名称` 原生调用。单条 Claude 消息中，最后一个匹配的 Skill 原生展开，前面的请求文本一并发送。Claude 的本地 Skill 可在未登录时列出。
 _Avoid_: slash command（指 Agent 提供的这一种时）、技能
 
 **工作流（Workflow）**:
