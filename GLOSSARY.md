@@ -13,7 +13,7 @@ _Avoid_: Provider、driver、backend
 _Avoid_: capability、能力
 
 **Agent 实例（Agent instance）**:
-一个 Agent 的一份具体配置：名字、启用开关和自己的一套设置值（API 地址、密钥、CLI 路径、启动参数、自定义模型）。同一个 Agent 可以有多个实例，会话绑定到某一个实例上。默认实例的 `instanceId` 就是 `agentId`，不可删除；用户新建的实例用 `inst_` 前缀。
+一个 Agent 的一份具体配置：名字、启用开关和自己的一套设置值（API 地址、密钥、CLI 路径、启动参数、自定义模型）。同一个 Agent 可以有多个实例，会话绑定到某一个实例上。默认实例的 `instanceId` 就是 `agentId`，不可删除。自定义实例的 ID 在创建时可编辑。
 _Avoid_: provider、providerInstance、配置档案、profile
 
 ## 插件
