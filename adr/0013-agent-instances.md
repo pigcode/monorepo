@@ -14,6 +14,8 @@
 
 ## Consequences
 
+- Codex、Claude Code 和 Antigravity 提供默认实例。其他七款随桌面应用提供的专用 Agent 与通用 ACP 驱动在用户添加实例后才开始检测。添加页按驱动声明展示推荐卡片，并从 ACP Registry 搜索当前平台可运行的其他 Agent。同一 Agent 已有专用入口时，Registry 列表省略对应条目。
+- 自定义实例名可以留空，界面默认采用 Agent 名称。用户可给实例指定强调色。Codex 的 ChatGPT 登录和 Antigravity 的应用内登录按实例保存。敏感环境变量与密钥字段由 Host 单独保存并在调用驱动时解析，普通配置文件保存引用。
 - 支持应用内登录的 Agent 可以单独启停默认实例。Antigravity 的默认实例可沿用当前 CLI 登录，也可以在应用内连接其他账号。应用内的 Google 登录和原生会话目录归对应实例，托管 CLI 安装由同一用户目录下的实例共用。
 - 删除实例后线程里记着的 id 会失效：`resolveInstance` 找不到就退回该 Agent 的默认实例，会话照常继续。
 - 默认实例的「删除」是撤回自定义设置（`agents.<agentId>` 清空），不是真的删掉这个 Agent。
