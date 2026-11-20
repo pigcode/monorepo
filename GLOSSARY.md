@@ -13,13 +13,13 @@ _Avoid_: Provider、driver、backend
 _Avoid_: capability、能力
 
 **Agent 实例（Agent instance）**:
-一个 Agent 的一份具体配置：名字、启用开关和自己的一套设置值（API 地址、密钥、CLI 路径、启动参数、自定义模型）。同一个 Agent 可以有多个实例，会话绑定到某一个实例上。默认实例的 `instanceId` 就是 `agentId`，不可删除。自定义实例的 ID 在创建时可编辑。
+一个 Agent 的一份具体配置：名字、启用开关和自己的一套设置值（API 地址、密钥、CLI 路径、启动参数、自定义模型）。同一个 Agent 可以有多个实例，会话绑定到某一个实例上。支持应用内登录的 Agent 把登录绑定到实例，多个实例可以共用一份托管 CLI 安装。默认实例的 `instanceId` 就是 `agentId`，不可删除。自定义实例的 ID 在创建时可编辑。
 _Avoid_: provider、providerInstance、配置档案、profile
 
 ## 插件
 
 **插件（Plugin）**:
-可以安装、启用、停用的包，为 Pigcode 增加 Agent、Capability 或界面。Claude Code 和 Codex 也是插件，随应用内置。
+可以安装、启用、停用的包，为 Pigcode 增加 Agent、Capability 或界面。Claude Code、Codex 和 Antigravity 的 Agent 插件随应用内置。
 _Avoid_: extension、add-on
 
 **Agent 插件**:
