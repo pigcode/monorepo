@@ -14,7 +14,7 @@
 
 ## Consequences
 
-- 支持应用内登录的 Agent 可以单独启停默认实例。Antigravity 的 Google 登录和原生会话目录归各自的实例，托管 CLI 安装由同一用户目录下的实例共用。
+- 支持应用内登录的 Agent 可以单独启停默认实例。Antigravity 的默认实例可沿用当前 CLI 登录，也可以在应用内连接其他账号。应用内的 Google 登录和原生会话目录归对应实例，托管 CLI 安装由同一用户目录下的实例共用。
 - 删除实例后线程里记着的 id 会失效：`resolveInstance` 找不到就退回该 Agent 的默认实例，会话照常继续。
 - 默认实例的「删除」是撤回自定义设置（`agents.<agentId>` 清空），不是真的删掉这个 Agent。
 - 默认实例的 id 与 `agentId` 相同，所以 `instanceId` 在协议里全部可选：老的客户端只传 `agentId` 时行为与以前一致。
