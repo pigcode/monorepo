@@ -5,7 +5,7 @@ Pigcode 是一个本地桌面工作台：控制用户机器上已安装的 codin
 ## Agent
 
 **Agent**:
-Pigcode 驱动来完成工作的 coding CLI，例如 Claude Code、Codex。每个 Agent 由一个 Agent 插件接入。
+Pigcode 驱动来完成工作的 coding CLI，例如 Claude Code、Codex。Agent 由 Agent 插件接入，通用 ACP 插件可以通过本地命令或 ACP Registry 接入多个 Agent。
 _Avoid_: Provider、driver、backend
 
 **Agent 功能（Agent feature）**:
@@ -23,7 +23,7 @@ _Avoid_: provider、providerInstance、配置档案、profile
 _Avoid_: extension、add-on
 
 **Agent 插件**:
-接入一个 Agent 的插件。
+接入一种或多种 Agent 的插件。
 _Avoid_: provider 插件
 
 **Capability 插件**:
