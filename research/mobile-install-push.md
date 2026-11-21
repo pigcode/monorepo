@@ -152,9 +152,16 @@ Xcode 直接安装到真机需要在手机上打开开发者模式；App Store �
 - Android 的省电机制：设备进入 Doze 后挂起所有应用的网络访问、忽略 wake lock；Google 的建议是用 FCM，`RemoteNotification` 类型的消息在 Doze 下也会投递，并给应用临时联网的机会 [30]。不用 FCM 的应用可以请用户把它加入电池优化豁免名单，名单里的应用在 Doze 下能联网，但 Play 政策限制直接请求豁免 [30]。有前台服务的应用不会被判为 App Standby [30]。
 - 自建长连接要跑前台服务：Android 14 起前台服务必须声明类型，可选的有 `remoteMessaging`（设备之间传文字消息）、`dataSync`、`specialUse`（Play 上架时审核用途说明）等 [29]。自用侧载不经过 Play 审核（推断）。
 
-## 6. 大陆网络下的推送通道（部分待补）
+## 6. 大陆网络下的推送通道
 
-### 6.1 APNs（待补）
+### 6.1 APNs
+
+- Apple 的网络说明：设备要和 Apple 的服务器保持一条长连接，走 TCP 5223，连不上时退到 443（443 可以穿过不解密的代理）；发送端用 TCP 443 或 2197 把通知发给 APNs；服务器在 Apple 的 17.0.0.0/8 地址段内做负载均衡 [55]。这份说明没有提到中国大陆。
+- APNs 本身是尽力投递：它会根据设备电量、网络等情况立即投递、延后、多次重试或丢弃 [14]。
+- Apple 没有公开 APNs 在中国大陆的可用性或时延数据，「APNs 在大陆可靠」未经一手来源证实。
+- 间接证据：在 iOS 上，App 不在前台时能把它叫醒或弹出通知的只有 APNs [17]。国内的推送聚合服务在 iOS 上的离线推送也都走 APNs：极光要求在后台上传 APNs 证书或配置 token 认证 [56]，个推写明 iOS 要配置推送证书才能用离线推送 [63]。所以大陆所有需要离线通知的 iOS App 都依赖 APNs（推断）。
+- 发送端：Pigcode 跑在大陆网络下的 MacBook 上，直接连 `api.push.apple.com:443` 是否稳定，未经一手来源证实；付费后用 Apple 的命令行示例发一条测试推送即可验证 [14]。
+- 对设计的含义：通知只能当提醒用，不能当消息通道；手机端被点开后要自己从电脑补齐状态（推断）。
 
 ### 6.2 统一推送
 
@@ -169,12 +176,46 @@ Xcode 直接安装到真机需要在手机上打开开发者模式；App Store �
 | vivo | vivo 开放平台账号；个人开发者上架需本人持有软著、App 备案等资质 [36] | 正式推送要上架；未上架时推送权限「受限」，只能发测试消息（`pushMode=1`），每个应用每天 1,000 条；也可以走「非公开应用分发」申请 [33][34][35] | 正式推送见 vivo 的消息限制说明（本次未读） |
 | OPPO | 要注册并认证 OPPO 企业开发者账号 [37][38] | 通知栏推送要上架 OPPO 软件商店；测试权限每天 1,000 条 [37][38] | 基础服务免费；只支持通知栏消息，不支持透传 [38]。这两篇是 2020 年的官方帖子，现行规则未核实 |
 | 小米 | 小米开发者账号，审核 1–3 个工作日；启用推送时要创建通知类别，审核 3–5 个工作日 [39] | 官方启用指南没有提到上架要求 [39]；是否需要上架，未经一手来源证实 | 私信不限量；公信按「安装且通知开启数 × 2」限总量，每台设备每应用每天 5 条；不接入分类时走默认通道，每台设备每天 1 条 [40]。2026-07-01 起私信要用模板，2026-08-01 起按新分类申请 channel [40][41][42] |
-| 华为、荣耀 | 待补 | 待补 | 待补 |
+| 华为、荣耀 | 本次未读两家自己的文档 | 个推文档写华为、荣耀、魅族不要求上架 [64] | 未核实 |
 
 - 小米的私信类型包括「任务进程」「审核进度」「设备状态」「监控报警」「工作聊天」等 41 种 [41]。Pigcode 的「会话跑完」「等你处理」能不能归进私信，要等申请时由小米审核（推断）。
 - 这些规则都按「有很多用户的上架应用」设计。只给自己一台手机用时，测试推送的每天 1,000 条在数量上够用，但 vivo、OPPO 的测试推送要把手机登记为测试设备（推断，来自 vivo 文档里「测试设备」的说法 [35]）。
 
-### 6.4 聚合服务、UnifiedPush 和自建长连接（待补）
+- 个推文档还记录了两条针对侧载的规则：2024-07-29 起，不是从 OPPO 软件商店官方渠道下载的应用不再提供公信消息服务；2025-02-17 起，不是从 vivo 官方渠道下载安装的应用默认关闭接收运营消息的权限 [64]。这两条的原始公告是 OPPO、vivo 发布的，本次没有读到原文。侧载的 APK 在这两家手机上只剩私信类和测试消息（推断）。
+
+### 6.4 聚合服务、UnifiedPush 和自建长连接
+
+**极光（JPush）**
+
+- 免费版「永久免费」，最多 100 个应用；离线消息每台设备每天存 5 条、最长 3 天；免费版的下发策略只有「仅走极光通道」和「优先走极光，离线再走厂商」两种 [57]。
+- 支持极光通道、APNs、FCM、华为、小米、OPPO、vivo、魅族等通道 [57]；厂商通道仍要开发者到各厂商平台申请参数 [57]。
+- iOS 端要上传 APNs 证书或配置 token 认证 [56]，所以仍然需要付费 Apple 账号（推断）。
+- 注册要提供真实身份信息，企业用户要提供营业执照 [58][59]。
+- 极光自己的 FAQ 不建议把隐私内容明文放进通知，确有需要时由开发者自己做端到端加密 [60]。
+
+**个推（Getui）**
+
+- 免费接入、推送条数不限；厂商推送策略是 VIP 功能，VIP 按日联网设备数月峰值计费，1 万以内 3,000 元/月 [61][62]。
+- Android 只集成个推主包时只有「在线推送」；离线推送要集成多厂商包，并在各厂商平台开通推送、把参数配到个推后台 [63]。iOS 要配置推送证书才能离线推送 [63]。
+- 个推的说法是：华为、荣耀、魅族不要求上架应用商店，vivo、小米和 OPPO 的正式环境必须上架后才能用离线厂商推送 [63][64]。
+
+**聚合服务对 Pigcode 的含义**：它们统一了 SDK 和服务端 API，但不能免掉各厂商的注册、上架和消息分类，还多了一个能看到通知内容的第三方（推断）。只给自己一台手机用时没有必要。
+
+**UnifiedPush**
+
+- 开放、去中心化的推送标准：应用服务器把消息发给用户自选的「分发器」服务器，分发器的手机 App 再转交给目标应用；可选的分发器有 Sunup、ntfy、Conversations、NextPush、gCompat-UP 等，能在不带 Google 服务的 Android 上用 [65]。
+- 只有 Android 和 Linux，没有 iOS [65]。用户要另装一个分发器 App（推断），这对公开发布时的普通国内用户门槛太高。
+
+**自建长连接**
+
+- 在 Android 上，App 用前台服务保持到电脑或中转服务的连接，收到事件后自己发本地通知。前台服务要声明类型，并常驻一条通知 [29]；设备进入 Doze 后网络会被挂起，除非用户把 App 加入电池优化豁免 [30]。
+- 国产 ROM 在系统电池优化之外还有各自的后台管理，会不会杀掉前台服务，未经一手来源证实。
+- 模拟器上没有这些厂商限制，自建长连接和 FCM 都能验证（推断）。
+
+### 6.5 只给自己用时哪条最省事
+
+- **iPhone**：付费前用 Bark 这类现成 App（第 7 节）；付费后由电脑直接调用 APNs（第 2.3 节），不需要任何国内第三方。
+- **安卓**：开发者没有安卓手机，只在模拟器上验证。最省事的是 App 在前台或前台服务期间用自己的连接收事件、发本地通知，不需要注册任何推送平台；要验证真实推送链路再接 FCM（模拟器用 Google APIs 镜像，Mac 整机走 VPN）。国内厂商通道、极光或个推留到公开发布。
 
 ## 7. 不用自家 APNs 权限也能到达 iPhone 的通道
 
@@ -211,7 +252,7 @@ Xcode 直接安装到真机需要在手机上打开开发者模式；App Store �
 | | 企业微信群机器人 | 飞书自定义机器人 | 钉钉自定义机器人 |
 |---|---|---|---|
 | 频率限制 | 每个机器人 20 条/分钟 [49] | 单租户单机器人 100 次/分钟、5 次/秒；避开整点、半点 [50] | 每个机器人 20 条/分钟，超过限流 10 分钟 [51][52] |
-| 消息大小和格式 | text、markdown、markdown_v2、图片、图文、文件、语音、模板卡片；markdown 不超过 4096 字节 [49] | 文本、富文本、图片、群名片、消息卡片；请求体不超过 20 KB [50] | text、link、markdown、actionCard、feedCard 等 [51] |
+| 消息大小和格式 | text、markdown、markdown_v2、图片、图文、文件、语音、模板卡片；markdown 不超过 4096 字节 [49] | 文本、富文本、图片、群名片、消息卡片；请求体不超过 20 KB [50] | text、link、markdown 等 [51][52] |
 | 安全设置 | webhook 地址本身就是凭据，文档要求不要泄露 [49] | 自定义关键词、IP 白名单（最多 10 个）、签名校验 [50] | 自定义关键词（最多 10 个）、加签、IP 白名单 [53] |
 
 - 三者都只能往群里发：开发者要建一个只有自己的群（或企业/租户），机器人消息作为群消息出现，由各自 App 的推送送到手机（推断）。
@@ -287,9 +328,20 @@ Xcode 直接安装到真机需要在手机上打开开发者模式；App Store �
 46. Bark 文档，推送参数: https://github.com/Finb/Bark/blob/master/docs/params.md
 47. bark-server 源码: https://github.com/Finb/bark-server/blob/master/apns/apns.go ，https://github.com/Finb/bark-server/blob/master/apns/apns_certs.go
 48. ntfy 文档，Configuring the ntfy server: iOS instant notifications: https://docs.ntfy.sh/config/#ios-instant-notifications （源文件 https://github.com/binwiederhier/ntfy/blob/main/docs/config.md ）
-49. 企业微信开发者中心，群机器人配置说明（消息推送）: https://developer.work.weixin.qq.com/document/path/91770
+49. 企业微信开发者中心，消息推送配置说明（群机器人 webhook）: https://developer.work.weixin.qq.com/document/path/91770
 50. 飞书开放平台，自定义机器人使用指南: https://open.feishu.cn/document/client-docs/bot-v3/add-custom-bot
 51. 钉钉开放平台，自定义机器人发送群消息: https://open.dingtalk.com/document/orgapp/custom-robots-send-group-messages
 52. 钉钉开放平台，自定义机器人接入: https://open.dingtalk.com/document/group/custom-robot-access
 53. 钉钉开放平台，自定义机器人安全设置: https://open.dingtalk.com/document/orgapp/customize-robot-security-settings
 54. Telegram, Bots FAQ（My bot is hitting limits）: https://core.telegram.org/bots/faq
+55. Apple Support, If your Apple devices aren't getting Apple push notifications（2023-08-22）: https://support.apple.com/en-us/102266
+56. 极光文档，iOS SDK 集成指南（2026-08-31 更新）: https://docs.jiguang.cn/jpush/client/iOS/ios_guide_new
+57. 极光推送产品页（含免费版与高级版对比）: https://www.jiguang.cn/push
+58. 极光用户服务协议: https://www.jiguang.cn/license
+59. 极光隐私政策（2026-01-27 更新）: https://www.jiguang.cn/license/privacy
+60. 极光文档，产品与场景 FAQ（2026-07-28 更新）: https://docs.jiguang.cn/jpush/faq/prod_faq
+61. 个推消息推送产品页（含免费版、VIP 功能对比）: https://www.getui.com/notification-push
+62. 个推文档，消息推送计费说明: https://docs.getui.com/getui/billing/rules/
+63. 个推文档，快速接入指南: https://docs.getui.com/getui/start/accessGuide/
+64. 个推文档，推送需要什么条件: https://docs.getui.com/getui/scene/pushCondition/
+65. UnifiedPush 官网: https://unifiedpush.org/
