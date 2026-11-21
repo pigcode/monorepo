@@ -272,7 +272,33 @@ Xcode 直接安装到真机需要在手机上打开开发者模式；App Store �
 - 企业微信、飞书、钉钉在大陆最稳，但正文明文经过平台，适合只发摘要。
 - 这些通道都只是过渡：付费后改成手机端自己收 APNs（第 2.3 节）。Host 里把它们做成可替换的「通知通道」，以后不需要改通知的触发逻辑（推断）。
 
-## 8. Expo（待补）
+## 8. Expo
+
+Expo 文档现在把 EAS Build 称为 Expo Build [71][73]，下文沿用 EAS Build。
+
+### 8.1 Expo Go
+
+- Expo Go 能在 App Store 中国区下载：2026-11-21 查到的是 58.0.5（2026-10-22 发布，要求 iOS 16.4 以上），中国区和美国区版本相同 [44]。
+- Expo Go 本身是从 App Store 安装的 App，用它运行项目不需要任何 Apple 账号，也不受 Personal Team 的 7 天期限约束（推断，依据 [2]）。
+- 限制：Expo 把它定位为给学习者用的「playground」，不能加自定义原生模块 [75]；推送能力没有内置在 Expo Go 里，要用推送必须用开发构建 [67]；安卓上从 SDK 53 起 Expo Go 不再支持远程推送，本地通知仍然可用 [66]。
+- 对 Pigcode：Expo Go 只适合在免费阶段快速试界面和到电脑的连接；推送、分享扩展、实时活动都要开发构建（推断，依据 [67][75] 和第 2.4、2.5 节）。
+
+### 8.2 开发构建（development build）
+
+- **在 Mac 上本地构建**：`npx expo run:ios --device` 由 Xcode 编译、签名并装到手机，签名可以用免费 Apple 账户的 Personal Team [74]。它受免费账号的全部限制：7 天过期、每台设备 3 个 App、只能装到自己的设备、带推送等付费能力的构建签不了 [2][74]。
+- **EAS Build 云构建**：给真机用的 iOS 构建要用分发证书加 Ad hoc 描述文件签名 [73][76]；生成这些凭据（以及推送密钥）要登录 Apple Developer Program 会员账号 [72]；Ad hoc 内部分发每年最多 100 台 iPhone [71]。所以没有付费账号时，EAS Build 做不出能装到 iPhone 上的构建。
+- EAS Build 给 iOS 模拟器的构建不需要 Apple 账号 [74]。
+- 开发构建装到真机前要打开开发者模式 [8][76]。
+
+### 8.3 Expo 推送服务
+
+- 它是 Expo 运营的中转：服务端把消息 POST 到 `https://exp.host/--/api/v2/push/send`，Expo 再转给 APNs 或 FCM [68][69]。默认不需要鉴权，可以在控制台打开 access token；每次请求最多 100 条，每个项目每秒最多 600 条 [69]。
+- 手机端调用 `getExpoPushTokenAsync` 时，会向 `https://exp.host/--/api/v2/push/getExpoPushToken` 请求令牌 [70]。所以手机和发送端都要能连到 `exp.host`。
+- iOS 推送凭据要付费 Apple 账号才能生成；安卓要配置 FCM V1 凭据 [68]。安卓消息走 FCM，不带 Google 服务的国行手机收不到（推断，依据 [27][68]）。
+- 消息的标题、正文和 data 都放在发给 Expo 的请求体里（推断，依据 [69]），Expo 能看到明文，除非应用自己先加密。
+- `exp.host` 在中国大陆能否稳定访问，Expo 文档没有提到，未经一手来源证实。
+- Expo 推送服务是可选的：`expo-notifications` 能取得原生设备推送令牌 [66]，Expo 文档也说明可以不用 Expo 的服务、直接对接 FCM 和 APNs [68]。
+- 对 Pigcode：自用阶段由电脑直接调 APNs 更简单，不需要 Expo 中转；公开发布时，Expo 推送服务可以算作「推送中转」的一个现成选项，但它解决不了国内安卓（推断）。
 
 ## 9. 对「手机端技术栈」和「通知怎么送到手机」的含义（待补）
 
@@ -345,3 +371,14 @@ Xcode 直接安装到真机需要在手机上打开开发者模式；App Store �
 63. 个推文档，快速接入指南: https://docs.getui.com/getui/start/accessGuide/
 64. 个推文档，推送需要什么条件: https://docs.getui.com/getui/scene/pushCondition/
 65. UnifiedPush 官网: https://unifiedpush.org/
+66. Expo, Notifications（expo-notifications）: https://docs.expo.dev/versions/latest/sdk/notifications/
+67. Expo, What you need to know about notifications: https://docs.expo.dev/push-notifications/what-you-need-to-know/
+68. Expo, Push notifications setup: https://docs.expo.dev/push-notifications/push-notifications-setup/
+69. Expo, Send notifications with the Expo push service: https://docs.expo.dev/push-notifications/sending-notifications/
+70. expo-notifications 源码 `getExpoPushTokenAsync.ts`（main 分支）: https://github.com/expo/expo/blob/main/packages/expo-notifications/src/getExpoPushTokenAsync.ts
+71. Expo, Internal distribution: https://docs.expo.dev/build/internal-distribution/
+72. Expo, Using automatically managed credentials: https://docs.expo.dev/app-signing/managed-credentials/
+73. Expo, Apple Developer Program roles and permissions for Expo Build: https://docs.expo.dev/app-signing/apple-developer-program-roles-and-permissions/
+74. Expo Blog, Apple Developer Program explained: free vs paid: https://expo.dev/blog/apple-developer-program-explained-free-vs-paid
+75. Expo, Expo Go: https://docs.expo.dev/get-started/expo-go/
+76. Expo, Create and run a cloud build for iOS device: https://docs.expo.dev/tutorial/eas/ios-development-build-for-devices/
