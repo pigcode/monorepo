@@ -131,3 +131,13 @@ _Avoid_: action、slash command
 
 **工具渲染器（Tool renderer）**:
 决定一类工具调用在对话时间线里怎么显示的 Contribution。
+
+## 手机端
+
+**手机端（Mobile app）**:
+装在用户手机上、连到用户自己电脑上 Pigcode 的那一端。Agent、项目文件和 CLI 的登录凭据都留在电脑上，手机端只查看和操作那里的会话。
+_Avoid_: 移动端、App、远程客户端
+
+**电脑（Computer）**:
+运行着 Pigcode、Agent 实际在上面工作的机器，也是手机端配对和连接的对象。一份 Pigcode 用户数据算一台：同一台机器上用另一个用户数据目录运行的 Pigcode 是另一台电脑。
+_Avoid_: 主机、桌面端、服务器、Host（指机器时）
