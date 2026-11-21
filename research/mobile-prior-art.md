@@ -2,7 +2,7 @@
 
 调研日期 2026-11-21，下文所有来源的访问日期都是 2026-11-21。源码结论基于文中注明的提交。方括号里的数字对应「参考来源」的编号。标注「未经一手来源证实」的内容没有找到官方页面或源码支持。
 
-> 状态：调研进行中。已写完 Happy、Claude Code、Codex；Omnara、T3 Code、OpenCode、ZCode、Cursor、VS Code Remote Tunnels 待补。
+> 状态：调研进行中。已写完 Happy、Claude Code、Codex、Omnara；T3 Code、OpenCode、ZCode、Cursor、VS Code Remote Tunnels 待补。
 
 ## 问题
 
@@ -35,6 +35,11 @@
 
 - 仓库包含 iOS（原生 Swift/UIKit）、Android（原生 Kotlin/Jetpack Compose）、原始 CLI（npm 包 `happy`）、中继服务器 `happy-server`、推送服务 `happy-push-server`，另有 Rust 版服务器和自托管包 [1]。桌面端在 slopus/happy-desktop，Agent 运行时在 slopus/happy-agent [1]。
 - CLI 在用户电脑的终端里包装 Claude Code 和 Codex（`happy claude`、`happy codex`），让用户从手机接着操作 [1]。Agent 和项目文件在用户电脑上。
+- 手机端技术栈换过一次：
+  - 早期是 React Native 应用，最后一版是 1.8.0（build 154）。之后的 2.0.0 起换成原生 iOS 应用，沿用同一个 App Store 条目，要求 iOS 26 和 Swift 6.2，本地存储用 GRDB（SQLite）[24]；
+  - Android 改成 Kotlin 加 Jetpack Compose，仓库写明「The React Native app has been removed」[25]；
+  - 换栈时保留了原来的签名团队和钥匙串访问组，让 React Native 版存下的凭据在原地升级后还能读到 [24]。
+- 自托管：`npm install -g happy happy-server-self-host` 后运行 `happy server`，内嵌 PGlite 和本地文件存储，不需要 Postgres、Redis 或 S3，并把 CLI 和守护进程的 `serverUrl` 指向本机服务器 [26]。
 
 ### 1.2 连接方式：中继
 
@@ -48,7 +53,9 @@
   - `ephemeral`：在线状态和用量，不落库，例如 `activity`（会话是否活跃、是否在思考）、`machine-status`（机器是否在线）、`usage`。
 - 写入有版本号：会话元数据、Agent 状态、守护进程状态等字段要带 `expectedVersion`，冲突时返回当前版本和数据，由客户端解决 [3]。
 - 点对点控制走 RPC：电脑上的进程 `rpc-register` 一个方法名，服务器按房间 `rpc:<userId>:<method>` 找到目标 socket，用 `rpc-request` 转发并等确认。目标不在时短暂等待重连再失败，调用中途目标掉线就立即失败 [5]。
-- 断线补齐：文档只写「重连后客户端可以重新拉取离线期间错过的状态」[5]。会话列表支持 `changedSince` 增量查询（`GET /v2/sessions?cursor=…&changedSince=…`）[4]。
+- 断线补齐：文档只写「重连后客户端可以重新拉取离线期间错过的状态」[5]。原生 iOS 端的做法是 [4][27]：
+  - 会话列表用 `GET /v2/sessions?cursor=…&limit=…&changedSince=…` 增量拉取；
+  - 每个会话的消息有自己的 `seq`，历史用 `GET /v3/sessions/:id/messages?after_seq=…`（往后）或 `?before_seq=…`（往前翻页）分页拉取。
 - 多副本部署时用 Redis streams 适配器在副本间转发 [5]。官方托管服务器的地址是 `api.cluster-fluster.com`（CLI 推送客户端的默认地址）[8]。
 
 ### 1.3 加密：中继看不到内容
@@ -57,7 +64,8 @@
   - legacy：`tweetnacl.secretbox`（XSalsa20-Poly1305），32 字节共享密钥，布局 `[nonce 24 | 密文+MAC]`；
   - dataKey：每个会话、每台机器一把 AES-256-GCM 数据密钥，布局 `[版本 1 | nonce 12 | 密文 | tag 16]`。数据密钥用 `tweetnacl.box` 和一对临时密钥加密给账号公钥，结果放在 `dataEncryptionKey` 字段里。
 - 客户端加密的字段：会话元数据（路径、主机名、摘要、Claude 会话 ID 等）、Agent 状态（待审批请求和结果）、会话消息、机器元数据、守护进程状态、artifact、KV 和 access key [2]。
-- 中继能看到的明文：各种 ID、时间戳、版本号、`seq`，以及 `ephemeral` 里的在线状态、是否在思考和用量 [2][3]。GitHub OAuth token 和用户登记的 AI 厂商 token 由服务器用自己的主密钥加密保存，不是端到端加密 [2]。
+- RPC 的参数和返回值也用会话或机器的密钥加密，方法名（带会话或机器 ID 前缀）是明文 [28]。
+- 中继能看到的明文：各种 ID、时间戳、版本号、`seq`、RPC 方法名，以及 `ephemeral` 里的在线状态、是否在思考和用量 [2][3][28]。GitHub OAuth token 和用户登记的 AI 厂商 token 由服务器用自己的主密钥加密保存，不是端到端加密 [2]。
 
 ### 1.4 配对和设备身份
 
@@ -69,7 +77,7 @@
   4. CLI 每秒轮询 `/v1/auth/request`，状态变为 `authorized` 后拿到 token 和密文响应，用临时私钥解开。解出 32 字节就是 legacy 共享密钥；第一个字节是 0 时，后面 32 字节是账号公钥，CLI 再自己生成一把随机的 `machineKey`；
   5. CLI 写入凭据，并生成随机 UUID 作为 `machineId`。
 - 所以中继只转交密文，看不到账号密钥。二维码里只有公钥，被别人看到也拿不到密钥；但谁先用已登录的 Happy 手机扫到这个码，谁就把这台电脑登进了自己的账号。
-- 身份模型是「一个账号的所有设备共享同一把账号密钥」，没有逐台设备的密钥和撤销。手机丢失后怎么撤销单台设备，文档和本次读到的代码里没有找到，未经一手来源证实。
+- 身份模型是「一个账号的所有设备共享同一把账号密钥」，没有逐台设备的密钥。服务器有 `DELETE /v1/machines/:id` [30]，但删掉机器记录不会让那台设备手里的账号密钥失效（这是根据共享密钥模型的推论）。手机丢失后怎么撤销，文档里没有写，未经一手来源证实。
 
 ### 1.5 推送通知
 
@@ -89,7 +97,12 @@
 ### 1.6 手机上能做什么
 
 - README 写的是手机上能接着操作同一批会话，并能邀请别人进同一个会话一起看和操作 [1]。审批结果、权限模式写在加密的 Agent 状态里 [2]。
-- 只能在电脑上做的事：未查完，待补。
+- 电脑上的 CLI 和守护进程给手机注册的 RPC 方法决定了手机能做什么 [29]：
+  - 会话控制：`abort`、`permission`（回复审批）、`switch`、`stop-session`、`killSession`；
+  - 在电脑上新建和恢复会话：`spawn-happy-session`、`resume-happy-session`，以及 Claude、Codex 会话的 fork、复制和回退点；
+  - 文件和命令：`bash`、`readFile`、`writeFile`、`listDirectory`、`getDirectoryTree`、`ripgrep`、`difftastic`；
+  - 守护进程：`stop-daemon`。
+- 所以持有账号密钥的手机可以在电脑上直接执行 shell 命令、读写文件，不只是和 Agent 对话。登录 Claude、Codex 等 CLI 本身仍在电脑上完成。
 
 ## 2. Claude Code（Anthropic）
 
@@ -170,6 +183,34 @@ OpenAI 2026-05-14 宣布把 Codex 放进 ChatGPT 手机 App（预览），iOS �
 - 推送经 ChatGPT App 送达，通道细节未公开，未经一手来源证实。
 - 手机端是闭源的 ChatGPT App，技术栈未公开，未经一手来源证实。
 
+## 4. Omnara
+
+Omnara 前后是两个产品。旧版（2025）和 Pigcode 一样遥控用户电脑上的 CLI，已经弃用；新版（2026-08 起）是托管 Agent 平台，没有手机 App。
+
+### 4.1 旧版：包装 Claude Code CLI 的「Mission Control」（已弃用）
+
+源码：omnara-ai/omnara 提交 `70b298d`（2025-11-09，加弃用通知的那次提交）[31]。
+
+- Agent 跑在用户电脑上：Python CLI `omnara` 启动 Claude Code 或 Codex CLI，终端、网页和手机三处同步；`omnara serve` 在电脑上开一个端点，让手机远程启动新的 Claude Code 实例 [31]。
+- 连接方式是 Omnara 自己运营的中继 [31][32][33]：
+  - 架构图里 Agent 把更新发给 Omnara 的 API 服务器，存进 PostgreSQL，再实时同步到手机和网页；用户的回复经 API 服务器交回 Agent；
+  - 另有一个终端中继 `relay_server`，转发终端原始字节，帧格式是 1 字节类型加 4 字节长度，类型有输出、输入、窗口大小和元数据；
+  - 中继用 Omnara API key 认证（请求头，或 WebSocket 子协议 `omnara-key.<key>`）。本次读到的中继代码里没有内容加密，只有传输层 TLS。
+- 手机端：Expo 54、React Native 0.81.4、`expo-notifications`，实时更新用 SSE；网页和手机端在弃用时以 Apache 2.0 开源 [31][34]。
+- 推送：后端注册 Expo 推送 token，用 Expo Push API 发送，提问时标题是「<Agent 名> needs your input」；另有基于 Twilio 的短信 [31][35][36]。
+- 弃用原因：通知原文是「This version was built as a wrapper around the Claude Code CLI, which became unfeasible to maintain with Claude Code's constant updates」。旧网页端只维护到 2025 年底，手机 App 自动更新到 1.5.0 后就是新平台 [31]。
+
+### 4.2 新版：开源托管 Agent 平台
+
+源码：omnara-ai/omnara 提交 `313ac70`（2026-11-19）[37]。2026-08-05 的提交 #293 把仓库重做为「open-source agent control plane」[38]。
+
+- 定位是 Claude Managed Agents 和 OpenAI Agents API 的开源、可自托管替代品，Apache 2.0 [37]。当前前端只有网页（`frontend/apps/web`），文档没有提到手机 App [37]。应用商店里的 Omnara App 现在是什么状态，本次没有核实，未经一手来源证实。
+- Agent 的循环跑在 Omnara 的控制面（Omnara Cloud 或自托管）里，模型走配置的模型供应商；「机器」只负责执行工具调用，可以是托管沙箱，也可以是用户自己的电脑 [37][39]。
+- 自带电脑的接入方式 [39][40]：
+  - 先在控制面建机器记录，拿到只显示一次的机器 token；
+  - 在电脑上装守护进程 `omnarad`，它注册成 launchd 或 systemd 用户服务，主动连出到控制面，不开入站端口、不需要 SSH 密钥；
+  - 机器有 `online`、`asleep`、`offline` 三种连接状态。合盖后机器离线，新命令返回可重试的错误；宽限期过后，等着这台机器的工具调用返回 `machine_unreachable` [39]。
+
 ## 参考来源
 
 所有来源的访问日期都是 2026-11-21。
@@ -197,3 +238,20 @@ OpenAI 2026-05-14 宣布把 Codex 放进 ChatGPT 手机 App（预览），iOS �
 21. openai/codex `codex-rs/cli/src/remote_control_cmd.rs`: https://github.com/openai/codex/blob/1145028ae47e8119955323d38ce34122d418f951/codex-rs/cli/src/remote_control_cmd.rs
 22. openai/codex `codex-rs/app-server-daemon/README.md`: https://github.com/openai/codex/blob/1145028ae47e8119955323d38ce34122d418f951/codex-rs/app-server-daemon/README.md
 23. openai/codex `codex-rs/app-server/README.md`（User verification 一节）: https://github.com/openai/codex/blob/1145028ae47e8119955323d38ce34122d418f951/codex-rs/app-server/README.md
+24. slopus/happy `packages/happy-ios/README.md`: https://github.com/slopus/happy/blob/42d90b4c786b3bcff6111b363ff8fe3fbc42b4f2/packages/happy-ios/README.md
+25. slopus/happy `packages/happy-android/AGENTS.md`: https://github.com/slopus/happy/blob/42d90b4c786b3bcff6111b363ff8fe3fbc42b4f2/packages/happy-android/AGENTS.md
+26. slopus/happy `packages/happy-server-self-host/README.md`: https://github.com/slopus/happy/blob/42d90b4c786b3bcff6111b363ff8fe3fbc42b4f2/packages/happy-server-self-host/README.md
+27. slopus/happy `packages/happy-ios/Sources/HappyWire/API.swift`: https://github.com/slopus/happy/blob/42d90b4c786b3bcff6111b363ff8fe3fbc42b4f2/packages/happy-ios/Sources/HappyWire/API.swift
+28. slopus/happy `packages/happy-cli/src/api/rpc/RpcHandlerManager.ts`: https://github.com/slopus/happy/blob/42d90b4c786b3bcff6111b363ff8fe3fbc42b4f2/packages/happy-cli/src/api/rpc/RpcHandlerManager.ts
+29. slopus/happy `packages/happy-cli/src`（对 `registerHandler(` 的全部调用）: https://github.com/slopus/happy/tree/42d90b4c786b3bcff6111b363ff8fe3fbc42b4f2/packages/happy-cli/src
+30. slopus/happy `packages/happy-server/sources/app/api/routes/machinesRoutes.ts`: https://github.com/slopus/happy/blob/42d90b4c786b3bcff6111b363ff8fe3fbc42b4f2/packages/happy-server/sources/app/api/routes/machinesRoutes.ts
+31. omnara-ai/omnara README（提交 70b298d，弃用通知）: https://github.com/omnara-ai/omnara/blob/70b298d91/README.md
+32. omnara-ai/omnara `src/relay_server/protocol.py`（提交 70b298d）: https://github.com/omnara-ai/omnara/blob/70b298d91/src/relay_server/protocol.py
+33. omnara-ai/omnara `src/relay_server/websocket.py`（提交 70b298d）: https://github.com/omnara-ai/omnara/blob/70b298d91/src/relay_server/websocket.py
+34. omnara-ai/omnara `apps/mobile/package.json`（提交 70b298d）: https://github.com/omnara-ai/omnara/blob/70b298d91/apps/mobile/package.json
+35. omnara-ai/omnara `src/servers/shared/notifications.py`（提交 70b298d）: https://github.com/omnara-ai/omnara/blob/70b298d91/src/servers/shared/notifications.py
+36. omnara-ai/omnara `src/backend/api/push_notifications.py`（提交 70b298d）: https://github.com/omnara-ai/omnara/blob/70b298d91/src/backend/api/push_notifications.py
+37. omnara-ai/omnara README（提交 313ac70）: https://github.com/omnara-ai/omnara/blob/313ac70cc1991e013c6fc54813cb13eae6be6992/README.md
+38. omnara-ai/omnara 提交 0f96db6「feat: relaunch Omnara as an open-source agent control plane (#293)」（2026-08-05）: https://github.com/omnara-ai/omnara/commit/0f96db663
+39. Omnara Docs, Machines overview（源文件 `docs/machines/overview.mdx`）: https://docs.omnara.com/machines/overview
+40. Omnara Docs, Connect a machine（源文件 `docs/machines/connect.mdx`）: https://docs.omnara.com/machines/connect
