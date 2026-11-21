@@ -2,7 +2,7 @@
 
 调研日期 2026-11-21，下文所有来源的访问日期都是 2026-11-21。源码结论基于文中注明的提交。方括号里的数字对应「参考来源」的编号。标注「未经一手来源证实」的内容没有找到官方页面或源码支持。
 
-> 状态：调研进行中。已写完 Happy、Claude Code、Codex、Omnara；T3 Code、OpenCode、ZCode、Cursor、VS Code Remote Tunnels 待补。
+> 状态：调研进行中。已写完 Happy、Claude Code、Codex、Omnara、T3 Code；OpenCode、ZCode、Cursor、VS Code Remote Tunnels 待补。
 
 ## 问题
 
@@ -211,6 +211,61 @@ Omnara 前后是两个产品。旧版（2025）和 Pigcode 一样遥控用户电
   - 在电脑上装守护进程 `omnarad`，它注册成 launchd 或 systemd 用户服务，主动连出到控制面，不开入站端口、不需要 SSH 密钥；
   - 机器有 `online`、`asleep`、`offline` 三种连接状态。合盖后机器离线，新命令返回可重试的错误；宽限期过后，等着这台机器的工具调用返回 `machine_unreachable` [39]。
 
+## 5. T3 Code
+
+源码：pingdotgg/t3code，提交 `0fd4822`（2026-11-21），MIT 许可证 [41]。它和 Pigcode 的结构最接近：同样有私有的 `contracts` 和 `client-runtime` 包，手机端直接复用它们 [48]。
+
+### 5.1 Agent 跑在哪
+
+- 每个连接把一个客户端接到一个「环境」（environment）。环境就是运行在某台机器上的 T3 Code 服务器，负责 Agent、执行、文件和持久状态；直连、Tailscale、SSH 和 T3 Connect 只是改变客户端怎么到达它 [43]。
+- 环境可以是桌面 App 里的本地环境（关掉最后一个窗口就停），也可以是 `t3 up` 装的后台服务 [44][49]。
+
+### 5.2 连接方式：多条路线，中继不在热路径上
+
+- 支持四种路线 [43][44]：
+  - 局域网或私有网络直连：`t3 up --lan` 或 `t3 serve --lan`，用一次性配对链接或二维码配对；
+  - Tailscale：服务器报告自己的 tailnet 地址，也支持 Tailscale HTTPS；
+  - 桌面 App 管理的 SSH；
+  - T3 Connect：T3 托管的中继加 Cloudflare Tunnel，不需要路由器端口转发。
+- 客户端为每个环境保存一个有序的路线列表，按顺序连第一个能用的；连在靠后的路线上时，后台会预检靠前的路线，能连上就切过去，失败的路线冷却一段时间，避免网络抖动来回切。服务器会报告自己绑定的局域网和 tailnet 地址，客户端记为「学到的路线」，地址变了就替换 [43]。
+- 没有指定监听地址的后台服务监听所有 IPv4 接口，但只接受对端地址是 loopback、私有网段或 tailnet 的连接，云服务器的公网地址因此不会暴露 [43]。
+- T3 Connect 的中继是 Cloudflare Worker，身份用 Clerk [41][42]：
+  - 中继负责把环境关联到云账号、分配和回收托管的 Cloudflare 隧道、签发连接用的短期凭据、登记手机推送 token、接收 Agent 活动并推送；
+  - 客户端拿到凭据后，HTTP 和 WebSocket 直接走环境的隧道域名，中继 Worker 不代理这些流量（自动化 webhook 除外）[41][42]；
+  - 电脑上运行一个版本固定的 `cloudflared` 连接器，升级时先起新连接器、注册成功后再停旧的 [41]。
+- 加密：T3 Code 文档没有提到应用层的端到端加密，流量的保护是 HTTPS 加 Cloudflare 隧道。Cloudflare 边缘能否看到明文，T3 Code 文档没有写，属于 #89 要查的 Cloudflare Tunnel 机制，这里未经一手来源证实。
+
+### 5.3 配对和设备身份
+
+- 局域网配对 [44]：
+  - 电脑上 `t3 pair` 生成一次性的配对链接和二维码，手机在「Add environment」里扫码或粘贴；
+  - 配对后设备拿到一个 bearer 会话，之后重连不再需要原来的链接；30 天不用就要重新配对；
+  - 在电脑的「Sharing & access」里逐个撤销设备会话；撤销没用过的链接只能阻止新的配对。
+- 权限范围：配对时可以用 `--scope` 指定权限，例如 `orchestration:read`、`relay:read`；默认权限包括管理访问。`terminal:operate` 和 `orchestration:operate` 分开授予，因为能开终端或驱动全权限 Agent 的客户端也就能绕过其他限制 [44]。
+- T3 Connect 的凭据 [41]：
+  - 中继请环境签发一个一次性的引导凭据，绑定到客户端的 DPoP 密钥；客户端直接拿它去环境换「环境会话」，中继拿不到这个会话 token；没有客户端私钥，单有引导凭据也换不到会话；
+  - 中继和环境互相验证：环境只接受有边界、防重放的中继证明，签名的响应绑定请求的 nonce；
+  - 文档明确写了信任假设：中继持有签发请求的签名权，中继签名密钥泄露不是无害的。
+- 新设备审批（默认关闭）：打开 `requireConnectDeviceApproval` 后，环境只信任设备密钥（DPoP 指纹），不再信任中继。新设备显示一个由指纹派生的短码（如 `K7QM-2XFD`），要在已连接的设备上或用 `t3 auth connect-device approve` 批准；请求 10 分钟过期；审批不过期，直到撤销该密钥 [41][44]。
+
+### 5.4 睡眠和退出
+
+- macOS 的后台服务在登录时启动、登出时停止，文档要求「Keep the Mac logged in and awake for unattended remote access」[49]。没有看到自己阻止睡眠的功能。
+- Cloudflare 按隧道计费，笔记本睡眠会留下空闲隧道。中继每 5 分钟检查一次，回收断开超过 5 分钟的隧道；电脑醒来后请求替换，主机名和 DNS 不变，客户端的绑定继续有效 [41]。
+
+### 5.5 推送通知
+
+- 推送必须开 T3 Connect：「Background delivery requires T3 Connect; a direct or Tailscale connection alone does not enable push notifications」。手机不需要和电脑保持连接 [45]。
+- 事件：Agent 完成、失败、需要审批、需要回答；点通知打开对应会话。iOS 还有实时活动和锁屏小组件，Android 16 以上有 Live Updates，完成的结果最多保留 15 分钟 [45]。
+- 抑制规则：手机 App 在前台时普通提醒静音；在另一台设备上看着这个会话不会让手机静音 [45]。
+- 路径：电脑把 Agent 活动发布给中继，中继拼通知文字后直连 APNs 和 FCM HTTP v1，不经 Expo 推送服务 [42][46]。通知标题是会话标题，正文是「状态: 项目名」，每个字段截断到 120 字符 [47]。所以会话标题和项目名以明文经过 T3 的中继。
+- Android 推送要求 Android 7.0 以上和 Google Play 服务 [45][46]。
+
+### 5.6 手机端技术栈和能做的事
+
+- Expo 58.0.23、React Native 0.88.1、`expo-notifications`；复用工作区里的 `@t3tools/contracts`、`@t3tools/client-runtime`、`@t3tools/shared`；代码高亮、审阅 diff、源码文本和终端各自做成原生模块，没有用 Expo 的 DOM 组件（`'use dom'`）[48]。
+- 手机能做什么由配对时的权限范围决定；带 `terminal:operate` 的设备可以操作电脑上的终端 [44][48]。
+
 ## 参考来源
 
 所有来源的访问日期都是 2026-11-21。
@@ -255,3 +310,12 @@ Omnara 前后是两个产品。旧版（2025）和 Pigcode 一样遥控用户电
 38. omnara-ai/omnara 提交 0f96db6「feat: relaunch Omnara as an open-source agent control plane (#293)」（2026-08-05）: https://github.com/omnara-ai/omnara/commit/0f96db663
 39. Omnara Docs, Machines overview（源文件 `docs/machines/overview.mdx`）: https://docs.omnara.com/machines/overview
 40. Omnara Docs, Connect a machine（源文件 `docs/machines/connect.mdx`）: https://docs.omnara.com/machines/connect
+41. pingdotgg/t3code `docs/internals/t3-connect.md`（提交 0fd4822）: https://github.com/pingdotgg/t3code/blob/0fd48228874d5dc884e67e378526ee6279138ed0/docs/internals/t3-connect.md ；许可证: https://github.com/pingdotgg/t3code/blob/0fd48228874d5dc884e67e378526ee6279138ed0/LICENSE
+42. pingdotgg/t3code `infra/relay/README.md`: https://github.com/pingdotgg/t3code/blob/0fd48228874d5dc884e67e378526ee6279138ed0/infra/relay/README.md
+43. pingdotgg/t3code `docs/internals/remote.md`: https://github.com/pingdotgg/t3code/blob/0fd48228874d5dc884e67e378526ee6279138ed0/docs/internals/remote.md
+44. pingdotgg/t3code `docs/user/remote-access.md`: https://github.com/pingdotgg/t3code/blob/0fd48228874d5dc884e67e378526ee6279138ed0/docs/user/remote-access.md
+45. pingdotgg/t3code `docs/user/mobile-notifications.md`: https://github.com/pingdotgg/t3code/blob/0fd48228874d5dc884e67e378526ee6279138ed0/docs/user/mobile-notifications.md
+46. pingdotgg/t3code `docs/operations/android-notifications.md`: https://github.com/pingdotgg/t3code/blob/0fd48228874d5dc884e67e378526ee6279138ed0/docs/operations/android-notifications.md
+47. pingdotgg/t3code `infra/relay/src/agentActivity/agentActivityAlerts.ts`、`agentActivityPayloads.ts`: https://github.com/pingdotgg/t3code/tree/0fd48228874d5dc884e67e378526ee6279138ed0/infra/relay/src/agentActivity
+48. pingdotgg/t3code `apps/mobile/package.json`: https://github.com/pingdotgg/t3code/blob/0fd48228874d5dc884e67e378526ee6279138ed0/apps/mobile/package.json
+49. pingdotgg/t3code `docs/user/background-service.md`: https://github.com/pingdotgg/t3code/blob/0fd48228874d5dc884e67e378526ee6279138ed0/docs/user/background-service.md
