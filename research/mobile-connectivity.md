@@ -237,9 +237,36 @@
 
 ## 7. 电脑睡眠、合盖、Pigcode 退出、换网络
 
-（待补：Wake for network access、Bonjour Sleep Proxy、合盖模式、`pmset`、Electron `powerSaveBlocker`。）
+### 7.1 MacBook 睡着以后
 
-- 已知：Pigcode 现有的「保持唤醒」用 `powerSaveBlocker("prevent-app-suspension")`，挡不住合盖睡眠（#86 开始时的现状）。Claude Code Remote Control 在电脑睡眠或断网后，机器恢复在线时自动重连 [35]。
+- **合盖就睡。** Apple 只描述了一种合盖继续运行的用法：先允许外接显示器、鼠标和键盘连接，再合盖使用 [67]。外接显示器的排障文档要求合盖时「make sure that the Mac is connected to power and using an external keyboard and mouse」[67]。带着 MacBook 出门时，这些条件都不满足（推论）。
+- **Pigcode 现有的「保持唤醒」挡不住合盖。** 它用的是 Electron 的 `prevent-app-suspension`，文档说明是「Keeps system active but allows screen to be turned off」[70]。Chromium 在 macOS 上把它实现为 `kIOPMAssertionTypeNoIdleSleep` 断言 [71]。IOKit 头文件说这个类型已由 `kIOPMAssertPreventUserIdleSystemSleep` 取代，后者「The system may still sleep for lid close, Apple menu, low battery, or other sleep reasons」[69]。所以这个开关只能阻止空闲睡眠。
+- **系统设置能做到的**：笔记本 Battery 设置里的「Prevent automatic sleeping on power adapter when the display is off」只在插电时阻止自动睡眠 [64]。文档没说它能阻止合盖睡眠（推论：不能）。
+- **「唤醒以供网络访问」只管局域网上的共享资源**：
+  - `pmset` 的 `womp` 就是系统设置里的「Wake for network access」[68]，笔记本上可以选总是、仅接电源时、从不 [64]。
+  - Apple 的说明是「wake your Mac to provide access to shared resources, such as shared printers or Music playlists」。别的电脑访问共享资源时会唤醒，另外会定期醒来向网络通告这些资源 [64][65]；这需要一台支持 802.11n 的 Apple 无线设备 [65]。
+  - 这套机制最早叫 Wake on Demand：Mac 睡前把共享服务登记到基站上的 Bonjour Sleep Proxy，有人访问时由代理请 Mac 醒来 [66]。
+  - 能唤醒 Mac 的是同一局域网里的访问，手机在蜂窝网络上连不到睡着的 Mac（推论）。Pigcode 自己注册的 Bonjour 服务能不能让睡眠代理唤醒 Mac，现行文档没写（未经一手来源证实）。
+  - `networkoversleep` 影响睡眠期间如何呈现共享网络服务，但「changing its value is unsupported」[68]。
+- **手机这边**：iOS App 进后台后很快被挂起；没有让 App 在后台常驻、或被网络请求唤醒的通用办法，能在后台拉起 App 的是静默推送这类专门机制 [55]。所以手机端的长连接只在前台存在。
+
+### 7.2 各方案在这些情况下的表现
+
+| 方案 | 电脑睡眠或合盖 | Pigcode 退出或 Host 重启 | 电脑换网络 | 手机换网络或回到前台 |
+|---|---|---|---|---|
+| 局域网直连 | 连接断开或超时，手机分不清是睡眠还是离开了网络（推论） | 端口关闭，连接被拒（推论） | 电脑的局域网地址变了，要重新发现或扫码（推论） | 离开这个 Wi-Fi 就不能用 |
+| Tailscale、ZeroTier、WireGuard | 节点离线，对端等到超时；醒来后自动恢复 [16][21][60] | tailnet 还在，端口没人监听，连接被拒（推论） | 组网自己重新打洞或走中继 [16][60] | 同左 |
+| frp | frpc 断开，frps 端口没有后端（推论） | 同左 | frpc 重新登录 frps（推论） | 手机重连 frps |
+| Cloudflare Tunnel、ngrok | 连接器断开，边缘请求失败（推论） | 同左 | 连接器重新连出（推论） | 手机重连边缘节点 |
+| 自建中继 | 中继发现 Host 断开或心跳超时，能告诉手机「电脑离线」和最后在线时间（推论） | Host 退出前可以先通知中继，和睡眠区分开（推论） | Host 重新连出，中继地址不变（推论） | 手机重连中继，中继地址不变 |
+| WebRTC | ICE 连接断开，醒来后要经信令重新建立（推论） | 同左 | 同左 | 同左 |
+
+Claude Code Remote Control 用的就是中继这一行的做法：电脑睡眠或断网后，「Claude Code reconnects automatically when your machine comes back online」[35]。
+
+### 7.3 对产品的含义
+
+- 合盖后，从外网没有办法唤醒 MacBook。能做的只有三件：中继告诉手机「电脑离线，最后在线于某时」；有 run 在跑且插着电源时阻止空闲睡眠，这是现有开关的能力范围；在电脑上提醒用户合盖会断开（推论）。
+- 手机端每次回到前台都要重连，并补齐断线期间的变化，这属于[弱网下怎么同步](https://github.com/pigcode/monorepo/issues/92)；后台提醒走推送，不在本文范围。
 
 ## 8. 对比表
 
@@ -326,3 +353,11 @@
 61. Tailscale, What firewall ports should I open to use Tailscale?（Last validated Feb 2, 2026）: https://tailscale.com/docs/reference/faq/firewall-ports ；tailscale/tailscale#1263 中 Brad Fitzpatrick 的回复（2021-02-04）: https://github.com/tailscale/tailscale/issues/1263
 62. GreatFire（第三方审查探测），controlplane.tailscale.com 测试页（最近一次测试 2026-11-07）: https://en.greatfire.org/controlplane.tailscale.com
 63. GitHub API 仓库许可证字段，本次读取：fatedier/frp 和 cloudflare/cloudflared 都是 Apache-2.0。https://github.com/fatedier/frp ，https://github.com/cloudflare/cloudflared
+64. Apple, Change Battery settings on a Mac laptop: https://support.apple.com/guide/mac-help/change-battery-settings-mchlfc3b7879/mac ；Set sleep and wake settings for your Mac: https://support.apple.com/guide/mac-help/set-sleep-and-wake-settings-mchle41a6ccd/mac
+65. Apple, Share your Mac resources when it's in sleep: https://support.apple.com/guide/mac-help/share-your-mac-resources-when-its-in-sleep-mh27905/mac
+66. Apple, Mac OS X v10.6: About Wake on Demand（HT3774，2009-08-27，原页已下线，archive.org 存档）: https://web.archive.org/web/20090831113247/http://support.apple.com/kb/HT3774
+67. Apple, Allow USB and other accessories to connect to your Mac（2026-04-30）: https://support.apple.com/en-us/102282 ；If your external display is dark or low resolution（2026-04-06）: https://support.apple.com/en-us/102501
+68. macOS `pmset(1)` 手册页（本机 macOS 15.6.1，`man pmset`）：`womp`、`networkoversleep` 两项
+69. Apple IOKit `IOPMLib.h`（Xcode 16.4 的 macOS SDK）：`kIOPMAssertPreventUserIdleSystemSleep`、`kIOPMAssertionTypeNoIdleSleep` 的注释
+70. Electron, powerSaveBlocker: https://github.com/electron/electron/blob/main/docs/api/power-save-blocker.md
+71. Chromium 源码 `services/device/wake_lock/power_save_blocker/power_save_blocker_mac.cc`（main 分支）: https://chromium.googlesource.com/chromium/src/+/refs/heads/main/services/device/wake_lock/power_save_blocker/power_save_blocker_mac.cc
