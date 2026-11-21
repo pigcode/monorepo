@@ -2,7 +2,7 @@
 
 调研日期 2026-11-21，下文所有来源的访问日期都是 2026-11-21。源码结论基于文中注明的提交。方括号里的数字对应「参考来源」的编号。标注「未经一手来源证实」的内容没有找到官方页面或源码支持。
 
-> 状态：调研进行中。已写完 Happy、Claude Code、Codex、Omnara、T3 Code；OpenCode、ZCode、Cursor、VS Code Remote Tunnels 待补。
+> 状态：调研进行中。各产品已写完；对比表和对 Pigcode 的启示待补。
 
 ## 问题
 
@@ -266,6 +266,45 @@ Omnara 前后是两个产品。旧版（2025）和 Pigcode 一样遥控用户电
 - Expo 58.0.23、React Native 0.88.1、`expo-notifications`；复用工作区里的 `@t3tools/contracts`、`@t3tools/client-runtime`、`@t3tools/shared`；代码高亮、审阅 diff、源码文本和终端各自做成原生模块，没有用 Expo 的 DOM 组件（`'use dom'`）[48]。
 - 手机能做什么由配对时的权限范围决定；带 `terminal:operate` 的设备可以操作电脑上的终端 [44][48]。
 
+## 6. OpenCode
+
+依据：OpenCode 官方文档的 Web 页（源文件在 anomalyco/opencode dev 分支提交 `32ae019`）[50]，以及 2026-10-11 合并的 PR #54561 [51]。
+
+- Agent 跑在用户电脑上：OpenCode 服务器以共享后台服务（`opencode service start`）或前台的 `opencode serve` 运行，网页界面由同一个服务器提供 [50]。
+- 配对 [50][51]：
+  - `opencode pair` 打印一次性链接和二维码（形如 `http://127.0.0.1:49374/auth/connect/…`），链接只能用一次，5 分钟过期；
+  - 浏览器打开链接后用会话 cookie 登录；OpenCode 的 App 扫码或粘贴链接也一样；会话 30 天有效，改服务器密码会让所有会话失效；
+  - 除了兑换一次性配对码，每个请求都要带服务器密码（默认随机生成）或用它签名的会话 token。其他 HTTP 客户端用 Basic auth，用户名固定为 `opencode`。
+- 外网：`opencode pair --remote` 经 OpenTunnel 暴露服务器，第一次会提示「Traffic is end-to-end encrypted, and access requires your server password」并要求确认 [50][51]。
+- OpenTunnel 是 OpenCode 同一组织（anomalyco）做的隧道服务，工作方式 [51][52]：
+  - 第一次使用时生成随机主机名，私钥在本机生成、不离开本机；为这个主机名申请通配符证书，中继只见到公钥那一半；
+  - 本机后台服务保持一条到中继的加密通道；访问者连公网地址时，中继只读 TLS 握手里的主机名（SNI），把加密字节原样转发；
+  - TLS 在 OpenCode 进程里终止，所以中继看不到明文，这是 OpenCode 称「端到端加密」的依据；
+  - 代价：证书进入证书透明度日志，主机名是公开的；服务本身必须自己做认证。
+- 手机端：官方仓库的包列表里没有原生手机 App，官方网页界面做了手机布局（`packages/app` 里有手机布局的回归测试）[53]。原生手机 App 来自第三方，例如 OpenCode Mobile（getopencode.app），它支持局域网、Tailscale、Cloudflare Tunnel、反向代理、SSH 转发等连接方式，把密码存在 Keychain/Keystore 里 [54]。
+- 推送：官方文档没有提到推送通知。
+
+## 7. ZCode（智谱）
+
+依据：ZCode 官方中文文档 [55][56][57]。
+
+- Agent 跑在桌面端工作区连着的机器上：本地工作区是这台电脑，SSH 工作区是远程主机，也可以是 WSL 或 Docker 容器 [55][57]。
+- 手机端是网页，不是 App：在桌面端左下角点手机图标，弹窗给出二维码和连接地址，手机扫码或在手机浏览器里打开链接 [55]。
+- 授权就是这个地址：「连接地址本身就带远控授权，拿到它就能操作你的窗口」。刷新二维码让旧地址立即失效；关掉弹窗不会停止，要点「停止」；同一时间只允许一个手机页面连接；桌面端断网或关窗口后手机就不能用 [55]。
+- 这条「Web 远程控制通道」不走设置里的 HTTP 代理 [57]。它经过谁的服务器、是否加密，文档没有写，未经一手来源证实。
+- 手机上能做：按工作区或时间线看任务、刷新、在已有工作区里新建任务、给 Agent 追加指令、分叉会话、重连已登记但断开的远程工作区。不能做：新建 SSH、WSL、Docker 连接，打开桌面端没开过的项目，浏览任意目录 [55]。
+- 通知走聊天工具：Bot Channel 把 Agent 接进微信（扫码登录自动绑定）和飞书（扫码建应用，再在飞书里发限时有效的 `/bind` 命令绑定）。飞书里 Agent 的输出在一张卡片里流式更新；需要用户选方案、授权操作或确认计划时，单独发一张卡片等用户回答。每个机器人可以限制能打开的工作区 [56]。文档没有提到 APNs/FCM 推送。
+
+## 8. Cursor
+
+依据：Cursor 官方文档、博客和 Cloud Agents 发布说明 [58][59][60][61]。
+
+- 手机端：Cursor for iOS 是原生 App，2026-06-29 公开测试，要求 iOS 26；Android 还在计划中，Android 用户在 Chrome 里把 cursor.com/agents 装成 PWA [58][59][60]。技术栈和是否开源文档没有写，App 未开源。
+- Agent 跑在哪：主要是 Cursor 云端隔离虚拟机里的 Cloud Agents；每次运行可以选云端机器、团队机器池，或「My Machines」里自己的电脑 [58][59]。博客写的是「control agents running on your computer from your phone」[60]。发布说明把它叫作 Cloud Agents on Self-Hosted Machines：自己的机器离线时，Agent 等同一台机器回来再继续；给离线的 My Machine 发消息约 15 秒后提示机器离线 [61]。用自己电脑时 Agent 循环在云端还是本机，官方页面没有说清，未经一手来源证实。
+- 连接和身份：手机 App 和 cursor.com/agents、桌面 Agents 窗口用同一个后端，用 Cursor 账号（可走 SSO）登录，没有设备配对。App 先读本地缓存，网络恢复后再同步 [58]。内容由 Cursor 后端处理，不是端到端加密。
+- 推送：iOS 文档写「Agent 跑完一轮时推送」，并在锁屏和灵动岛用实时活动同时跟踪最多 8 个 Agent [58]；但 2026-08-31 那周的发布说明写明不再推送「一轮结束」，只在 Agent 提问或需要审批时推送 [61]。两处不一致，以发布说明为准。
+- 手机上能做：启动 Agent、实时看输出、追加指令、看子代理记录、完整审阅 diff 并合并 PR、用斜杠命令和 skill、语音输入和语音对话、按次选择 MCP 服务器。只能在网页上做：编辑器、终端和文件浏览器，密钥和环境配置，MCP 服务器管理，源码托管接入，自动化和规则配置，管理和计费 [58]。
+
 ## 参考来源
 
 所有来源的访问日期都是 2026-11-21。
@@ -319,3 +358,15 @@ Omnara 前后是两个产品。旧版（2025）和 Pigcode 一样遥控用户电
 47. pingdotgg/t3code `infra/relay/src/agentActivity/agentActivityAlerts.ts`、`agentActivityPayloads.ts`: https://github.com/pingdotgg/t3code/tree/0fd48228874d5dc884e67e378526ee6279138ed0/infra/relay/src/agentActivity
 48. pingdotgg/t3code `apps/mobile/package.json`: https://github.com/pingdotgg/t3code/blob/0fd48228874d5dc884e67e378526ee6279138ed0/apps/mobile/package.json
 49. pingdotgg/t3code `docs/user/background-service.md`: https://github.com/pingdotgg/t3code/blob/0fd48228874d5dc884e67e378526ee6279138ed0/docs/user/background-service.md
+50. OpenCode Docs, Web: https://opencode.ai/docs/cli/web/ ；源文件（dev 分支提交 32ae019）: https://github.com/anomalyco/opencode/blob/32ae0197715f822fb1247504f81e3eefc7d3c8fb/services/site/src/docs/content/cli/web.mdx
+51. anomalyco/opencode PR #54561「feat(cli): ask before pair --remote first exposes the server」（2026-10-11 合并）: https://github.com/anomalyco/opencode/pull/54561
+52. OpenTunnel 官网「how it works」「privacy」: https://opentunnel.xyz/ ；仓库: https://github.com/anomalyco/opentunnel
+53. anomalyco/opencode `packages/`（提交 32ae019）: https://github.com/anomalyco/opencode/tree/32ae0197715f822fb1247504f81e3eefc7d3c8fb/packages
+54. OpenCode Mobile（第三方）, Remote access（2026-11-06 更新）: https://getopencode.app/docs/remote-access/
+55. ZCode Docs, Remote Control: https://zcode.z.ai/cn/docs/remote-control
+56. ZCode Docs, Bot Channel: https://zcode.z.ai/cn/docs/bot-channel
+57. ZCode Docs, 远程开发: https://zcode.z.ai/cn/docs/remote-development
+58. Cursor Docs, Cursor for iOS: https://cursor.com/docs/cloud-agent/mobile
+59. Cursor Docs, Cloud Agents: https://cursor.com/docs/cloud-agent
+60. Cursor Blog, Build from anywhere with Cursor for iOS（2026-06-29）: https://cursor.com/blog/ios-mobile-app
+61. Cursor Docs, Cloud Agents release notes（Week of Aug 31, 2026 等）: https://cursor.com/docs/release-notes/cloud-agents
