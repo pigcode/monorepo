@@ -59,7 +59,13 @@
 - 由 launchd 启动的守护进程、root 进程、从终端或 SSH 运行的命令行工具自动有权限，开发时从终端跑 Host 看不到这个弹框，正式包才会弹 [1]。
 - 26.2 以前的 macOS 没法在系统设置里重置这项权限 [1]。
 
-### 1.4 各维度
+### 1.4 安卓和安卓模拟器
+
+- Android 17 起，targetSdk 37 以上的 App 默认不能访问局域网，要声明并在运行时申请 `ACCESS_LOCAL_NETWORK`。和 iOS 不同，**接受入站 TCP 连接也要这个权限**；mDNS 和 `NsdManager` 都受影响，也可以改用系统的服务选择器，免去这个权限 [56]。Android 16 上这只是可选启用 [56]。
+- Android 9（API 28）起默认禁止明文流量，局域网上用 `ws://` 要在网络安全配置里放行 [57]。
+- 模拟器在自己的虚拟路由器后面，地址段是 `10.0.2/24`，`10.0.2.2` 是开发机 127.0.0.1 的别名。36.5 以前的模拟器「can't detect your development machine or other emulator instances on the network」[58]。所以在模拟器上测不了 Bonjour 发现，只能直接连 `10.0.2.2:<端口>`，而且 Host 要监听在开发机的回环地址上（推论）。开发者没有安卓真机，安卓的局域网路线和本地网络权限要等有真机才能测。
+
+### 1.5 各维度
 
 - **大陆可用性和延迟**：不经过公网，不受跨境和防火长城影响。只在手机和电脑在同一个 Wi-Fi 时可用，蜂窝网络下不可用。
 - **iPhone 要装什么**：不用另装 App，手机端自己做。
@@ -67,7 +73,6 @@
 - **谁能看到流量**：同一局域网上的设备（明文时）。
 - **公开发布**：能用，但只是「在家」的优化路线。
 - **睡眠和换网**：见第 7 节。
-- **安卓模拟器**：待补。
 
 ## 2. 组网：Tailscale、Headscale、ZeroTier、自建 WireGuard
 
@@ -84,12 +89,17 @@
   
   在没有备案的大陆服务器上，DERP 用的 HTTP 80 加域名正好落在第 6 节的拦截规则里（推论）。
 - **对等中继（Peer Relays）**更适合「用自己的云服务器做中转」：任何非 iOS、非安卓的设备装 Tailscale 1.86 以上，`tailscale set --relay-server-port=<UDP 端口>` 就能当中继，iOS 可以使用它；需要在策略里用 `tailscale.com/cap/relay` 授权 [12]。官方说它比 DERP 延迟低、吞吐高 [9][12]。它只用一个 UDP 端口，不需要域名和 TLS，不碰第 6 节的域名拦截（推论）。
-- **大陆可用性和延迟**：协调服务器和 DERP 都在境外；从大陆连 Tailscale 协调服务器、登录用的身份提供商稳不稳定，没有一手资料（未经一手来源证实）。直连成功时延迟就是两端之间的公网延迟；走香港 DERP 时多一段跨境（推论）。
+- **大陆可用性和延迟**：
+  - 协调服务器和 DERP 都在境外，都走 TCP 443；`login.tailscale.com` 和 `controlplane.tailscale.com` 从 2025 年 7 月起解析到 `192.200.0.0/24` [61]。
+  - GreatFire 的第三方探测显示，截至 2026-11-07，`controlplane.tailscale.com` 在大陆可以访问 [62]。这不是 Tailscale 的说法，也不能说明 DERP 和登录用的身份提供商都能用（未经一手来源证实）。
+  - Tailscale 联合创始人 2021 年在官方仓库回复，防火长城「is an enormously large and never-ending problem, and is not our focus」[61]。
+  - 直连成功时延迟就是两端之间的公网延迟；走香港 DERP 时多一段跨境（推论）。
 - **iPhone 要装什么**：Tailscale App。中国区 App Store 没有 [6]，要用非中国大陆区的 Apple 账户下载（推论）。
 - **集成进手机端**：可以用 TailscaleKit 内嵌：提供类似 `NWConnection` 的 listen/dial 接口和走 tailnet 的 `URLSession` 扩展；节点要用 auth key 或交互式网页登录授权；`controlURL` 可配，因此也能指向 Headscale [14]。tsnet 用的是用户态 TCP/IP 栈 [13]。没有找到官方的 React Native 或安卓封装（未经一手来源证实）。
 - **谁能看到流量**：只有两端能解密；DERP 和对等中继看到的是 WireGuard 密文和 IP、时间、流量大小这些元数据 [9]（对等中继这一点是推论）。
 - **公开发布**：每个用户都要有 Tailscale 账号并装 App，或者由 Pigcode 内嵌 TailscaleKit、让用户登录自己的 tailnet。Personal 计划免费、最多 6 个用户、用户设备不限，但只能非商业使用 [15]。中国区 App Store 没有 Tailscale [6]，大陆 iPhone 用户走不了「另装 App」这条路。适合作为高级用户的可选路线。
-- **睡眠和换网**：见第 7 节。
+- **iPhone 上的其他限制**：Tailscale 的 iOS App 是 Packet Tunnel 类 VPN，而 iOS「Only one enterprise VPN configuration can be enabled on the system at a time」[54]。手机上已经开着另一个这类 VPN 或代理 App 时，两者不能同时用（推论）。
+- **睡眠和换网**：电脑睡眠后 tailscaled 不运行，手机只会等到连接超时，Tailscale 不会唤醒电脑（推论）。Tailscale 的设计默认设备会「moving around the internet with some regularity」，换网后自己重新打洞或改走中继 [16]。手机端 App 进后台后很快会被挂起 [55]，内嵌的 TailscaleKit 节点跟着 App 一起停；独立 Tailscale App 的 VPN 扩展不受影响，但 Pigcode 自己的连接仍在被挂起的 App 里（推论）。
 
 ### 2.2 Headscale
 
@@ -104,7 +114,10 @@
 - 免费计划：个人非商业使用，10 台设备、1 个网络 [19]。
 - iPhone 要装 ZeroTier One，中国区没有 [6]。
 - 集成：libzt 可以 `./build.sh iphoneos-framework` 编出 iOS framework，也能编安卓 AAR；它的 Objective-C、Swift 示例放在 `attic/` 目录下 [20]。许可证是 BSL 1.1，Change Date 2026-01-01 后转 Apache 2.0；ZeroTierOne 主体是 MPL-2.0，`nonfree/` 目录除外 [20]。
-- 谁能看到流量、睡眠行为：待补。
+- **谁能看到流量**：所有 VL1 包都用 Salsa20/Poly1305 端到端加密，根服务器读不到。目前没有前向保密，官方建议需要时在上面再跑 SSL 或 SSH [60]。直连不成时由根服务器免费中转（「free (but slow)」），全球共有四台根服务器 [60]。
+- **大陆可用性**：没有一手资料（未经一手来源证实）。
+- **睡眠和换网**：节点离线后对端只能等超时；VL1「never gives up」，会一直定期尝试直连 [60]。设备 60 天不活动，根服务器上的身份就会过期 [60]。
+- **公开发布**：免费计划只允许个人非商业使用，商业计划按设备收费 [19]；iOS App 中国区没有 [6]。不适合作为默认路线（推论）。
 
 ### 2.4 自建 WireGuard
 
@@ -112,7 +125,8 @@
 - 手机在 CGNAT 后面、电脑也在 NAT 后面时，两端没法直接互连，只能做星型：电脑和 iPhone 都连开发者的云服务器，由服务器转发（推论）。这时服务器解开两条隧道，**能看到内层的 IP 包**；Pigcode 自己的协议如果不再加密，服务器就能看到内容（推论）。
 - iPhone 要装 WireGuard App（中国区没有 [6]），或者用 WireGuardKit 把隧道做进自己的 App。WireGuardKit 要在 Network Extension 目标里链接 [23]，这需要付费账号 [8]，上架又只能用组织账号 [7]。
 - WireGuard 只用 UDP 和 IP，不涉及域名和 HTTP，第 6 节的域名拦截管不到（推论）。防火长城对 WireGuard 的干扰没有一手资料（未经一手来源证实）。
-- 公开发布：要给每个用户开 VPN，不可行（推论）。
+- **睡眠和换网**：WireGuard 按计时器自动重新握手，「You don't need to worry about asking it to reconnect or disconnect or reinitialize」[21]；电脑醒来后靠 PersistentKeepalive 重新打开 NAT 映射 [22]。睡眠期间对端只能等超时（推论）。
+- **公开发布**：要给每个用户开 VPN，不可行（推论）。
 
 ## 3. 内网穿透和隧道
 
@@ -124,6 +138,7 @@
 - **iPhone 要装什么**：TCP 端口模式不用装，手机直接连 `云服务器IP:端口`。STCP/XTCP 要访问端也跑 frpc，等于要把 frp 的 Go 客户端编进手机端；没有找到官方移动端 SDK（未经一手来源证实）。
 - **大陆服务器**：HTTP 虚拟主机要域名，未备案会被拦；阿里云明确把内网穿透算进去 [47]。只用 IP 加端口的 TCP 代理不经过域名拦截 [50]，但见第 6 节的规章问题。
 - **安全**：frps 上的端口对全网开放，任何人都能连，Pigcode 要自己做认证（推论）。
+- **睡眠和换网**：电脑睡眠或换网时 frpc 断开，frps 上的端口没有后端，手机连上也收不到数据；frpc 恢复后重新登录 frps（推论）。frp 是 Apache-2.0 [63]，frpc 可以随 Pigcode 分发（推论）。
 - **公开发布**：要么每个用户自建 frps，要么 Pigcode 运营 frps，后者就是一个不加密的中继，不如第 4 节的自建中继（推论）。
 
 ### 3.2 Cloudflare Tunnel
@@ -132,7 +147,13 @@
 - 正式隧道要求域名托管在 Cloudflare。临时的 Quick Tunnel 不要账号，给一个随机 `trycloudflare.com` 地址，但没有可用性保证、最多 200 个并发请求、不支持 SSE，每次启动地址都变 [28]。
 - WebSocket 在所有套餐都支持；Cloudflare 发布新代码时会重启服务器并断开 WebSocket；空闲一段时间会被关闭，要自己做心跳 [29]。
 - **大陆可用性**：Cloudflare 的大陆节点（China Network，京东云机房）只对 Enterprise 客户单独开通，每个根域名都要 ICP 备案或许可证 [30]。没有它，大陆用户走境外节点，Cloudflare 自己写「Traffic routed through servers outside the country faces significant latency and reliability issues」[30]。电脑和手机两端都要跨境（推论）。
-- **谁能看到流量**：待补（Cloudflare 是否在边缘解开 TLS）。
+- **谁能看到流量：Cloudflare 能看到明文。**
+  - Cloudflare 的 SSL 文档说一条连接上有两张证书：边缘证书是 Cloudflare 出示给访问者的，源站证书保护 Cloudflare 到源站那一段 [59]。
+  - Tunnel 的路由文档说，公开主机名上的请求先由 Cloudflare 做 CDN 缓存、WAF 和 DDoS 防护，再转给 `cloudflared` 后面的服务 [59]。
+  - 所以手机到 Cloudflare 的 TLS 在 Cloudflare 边缘结束，HTTP 头和 WebSocket 帧在 Cloudflare 那里是明文（推论，文档没有直接用「明文」这个词）。
+  - Tunnel 也能转发任意 TCP，但访问端要运行 `cloudflared access tcp` [59]，手机端做不到（推论）。
+  - 内容保密只能靠应用层端到端加密。`cloudflared` 是 Apache-2.0 [63]。
+- **睡眠和换网**：电脑睡眠时 `cloudflared` 断开，公开主机名后面没有可用的连接器，请求失败；恢复后 `cloudflared` 重新连出（推论）。
 - **iPhone 要装什么**：不用装，手机端直接连 `wss://` 域名（推论）。
 - **公开发布**：每个用户要有自己的 Cloudflare 账号和域名，不现实；Quick Tunnel 不适合正式使用 [28]（推论）。
 
@@ -142,6 +163,7 @@
 - 免费版：每月出站流量 1 GB、HTTP 请求 2 万次、TCP 连接 5000 次，最多 3 个在线端点，1 个分配的开发域名；浏览器访问 HTML 时有拦截页，程序访问不受影响；免费版不提供自己终结 TLS 的「TLS endpoints」[32]。
 - **谁能看到流量**：免费版只有 HTTPS 端点，TLS 在 ngrok 解开，ngrok 能看到明文（推论）。
 - 大陆访问 ngrok 的质量没有一手资料（未经一手来源证实）。
+- **睡眠和换网**：和 Cloudflare Tunnel 一样，agent 断开后端点失效，恢复后重新连出（推论）。
 - **公开发布**：每个用户要有 ngrok 账号，不现实（推论）。
 
 ## 4. 自建中继：两端都连出，中继只看密文
@@ -294,3 +316,13 @@
 51. 腾讯云轻量应用服务器，地域与网络连通性（2026-09-23 更新）: https://cloud.tencent.com/document/product/1207/50103 ；优选流量包产品概述（2026-10-14 更新）: https://cloud.tencent.com/document/product/1207/104332 ；价格总览（香港入门型说明）: https://cloud.tencent.com/document/product/1207/73452
 52. M. Wu et al., How the Great Firewall of China Detects and Blocks Fully Encrypted Traffic, USENIX Security 2023: https://gfw.report/publications/usenixsecurity23/en/
 53. Let's Encrypt, 6-day and IP Address Certificates are Generally Available（2026-01-15）: https://letsencrypt.org/2026/01/15/6day-and-ip-general-availability ；RFC 8738: https://www.rfc-editor.org/rfc/rfc8738.html
+54. Apple, NETunnelProviderManager（Configuration Model 一节）: https://developer.apple.com/documentation/networkextension/netunnelprovidermanager
+55. Apple Developer Forums，DTS 工程师 Quinn 的 iOS Background Execution Limits（修订到 2026-01-09）: https://developer.apple.com/forums/thread/685525
+56. Android Developers, Local network permission: https://developer.android.com/privacy-and-security/local-network-permission ；Behavior changes: Apps targeting Android 17 or higher: https://developer.android.com/about/versions/17/behavior-changes-17
+57. Android Developers, Network security configuration（cleartext 默认值）: https://developer.android.com/privacy-and-security/security-config
+58. Android Developers, Network address space（模拟器，2026-11-12 更新）: https://developer.android.com/studio/run/emulator-networking-address
+59. Cloudflare, SSL/TLS concepts（Edge certificate、Origin certificate）: https://developers.cloudflare.com/ssl/concepts/ ；Cloudflare Tunnel, Routing: https://developers.cloudflare.com/tunnel/concepts/routing/
+60. ZeroTier, The Protocol: https://docs.zerotier.com/protocol/
+61. Tailscale, What firewall ports should I open to use Tailscale?（Last validated Feb 2, 2026）: https://tailscale.com/docs/reference/faq/firewall-ports ；tailscale/tailscale#1263 中 Brad Fitzpatrick 的回复（2021-02-04）: https://github.com/tailscale/tailscale/issues/1263
+62. GreatFire（第三方审查探测），controlplane.tailscale.com 测试页（最近一次测试 2026-11-07）: https://en.greatfire.org/controlplane.tailscale.com
+63. GitHub API 仓库许可证字段，本次读取：fatedier/frp 和 cloudflare/cloudflared 都是 Apache-2.0。https://github.com/fatedier/frp ，https://github.com/cloudflare/cloudflared
