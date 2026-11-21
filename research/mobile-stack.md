@@ -26,7 +26,7 @@
 - **加密：各栈都有 X25519、ChaCha20-Poly1305 和 HKDF；推送在原生扩展里解密，所以套件要选 CryptoKit 也有的。** Hermes 上可以用纯 JS 的 noble（经 Cure53 等审计，只需补 `getRandomValues`）[52]，或原生加速的 react-native-quick-crypto 1.1（X25519、Ed25519、HKDF、XChaCha20-Poly1305，`subtle` 里有 ChaCha20-Poly1305）[50]、react-native-libsodium（libsodium-wrappers 的子集）[51]。WebView 里 WebCrypto 的 X25519 和 Ed25519 自 iOS 17 起可用，Android WebView 分别从 133、137 起；WebCrypto 没有 ChaCha20-Poly1305 [26]。CryptoKit 有 Curve25519、ChaChaPoly、AES-GCM、HKDF、HPKE，没有 BLAKE2 [53]。现成的 JS Noise 库都不适合直接搬到 Hermes：`noise-handshake` 依赖 `sodium-universal`，ChainSafe 的实现绑在 libp2p 的接口上 [14]；react-native-libsodium 的 README 里没有原始 X25519（`crypto_scalarmult`）和 IETF 版 ChaCha20-Poly1305 [51]。Noise 规范只要求一组 DH、对称加密和哈希函数 [67]，所以更稳的做法是用 noble 写一份 TS 的 Noise 握手，Host（Node）和手机端（Hermes）共用（推论）。iOS 的 Notification Service Extension 是独立的原生进程，不跑应用的 JS（推论），所以套件选 `25519_ChaChaPoly_SHA256`，能让 TS 与 Swift 的 CryptoKit 共用同一组原语（推论）。原生栈可以用 Rust 的 `snow` [69]。
 - **免费 Apple ID 阶段只能在 Mac 上本地签名安装，每 7 天重装一次。** 个人团队最多 10 个 App ID、3 台设备、每台 3 个应用，描述文件 7 天过期 [28]。Expo 用 `npx expo run:ios --device`，Capacitor 用 `npx cap run ios`，都在本机用 Xcode 构建 [64]；Expo Build（原 EAS Build）打 iOS 真机包要付费会员，模拟器包不需要 [29][30]。Expo Go 不能用：键盘、Markdown、加密这些库都含原生代码，keyboard-controller 的文档写明它不在 Expo Go 里 [19]。OTA：expo-updates 的协议是公开规范，可以在自己的服务器上实现并启用代码签名 [33]；托管的 Expo Update 免费档 1,000 MAU，但代码签名只在 Production（199 美元/月）及以上 [31][32]。OTA 不能延长 7 天的描述文件期限（推论）。
 - **上架的主要风险不在技术栈，而在审核如何认定「远程客户端」和演示环境。** 审核指南 4.2.7 要求「镜像特定软件」的远程桌面客户端只能在局域网内连用户自己的电脑 [45]。手机端用原生界面调用电脑上的服务、不传屏幕画面，与镜像不同，但审核可能这样归类。App Store 上已有同类先例：Happy（2025-07-21 上架，扫码与桌面端配对，经中继端到端加密）和 Vicoa [62][63]。2.1 要求提供演示账号或经批准的演示模式 [45]，审核时需要一台可连的演示电脑。JS 层 OTA 的依据是许可协议 3.3.1(B)：可以下载解释执行的代码，但不能改变应用的主要用途 [46]。Google Play 的新个人账号要先跑 12 人、连续 14 天的封闭测试 [47]；Android 开发者验证 2026-09-30 先在 4 个国家生效，2027 年扩展到全球 [48]。
-- **AFK agent 能在 Mac 上无人值守地跑 UI 测试；CI 上 Android 用 Linux + KVM，iOS 要 macOS runner。** Xcode 27 用 Device Hub 取代了 Simulator.app，`xcrun simctl` 仍然可以启动和控制模拟器 [44]。Maestro 2.12（iOS 只支持模拟器，Android 支持模拟器和真机）有 `assertScreenshot` 截图比对 [38][39][41]。agent-device（Callstack）和 Argent（Software Mansion）让 agent 读无障碍树、点击、截图、看日志；agent-device 还能把操作录成脚本在 CI 回放，或执行 Maestro YAML [36][37]。GitHub 托管的 2 vCPU Linux runner 支持 KVM 加速 Android 模拟器 [43]。Detox 官方只测到 RN 0.84，而 SDK 58 是 0.88 [42]，不宜做主力。iOS 上 Maestro 只能用文字或 `aria-label` 定位 WebView 里的元素 [40]，这对 DOM 组件和 Capacitor 不利。
+- **AFK agent 能在 Mac 上无人值守地跑 UI 测试；CI 上 Android 用 Linux + KVM，iOS 要 macOS runner。** Xcode 27 用 Device Hub 取代了 Simulator.app，`xcrun simctl` 仍然可以启动和控制模拟器 [2][44]。Maestro 2.12（iOS 只支持模拟器，Android 支持模拟器和真机）有 `assertScreenshot` 截图比对 [38][39][41]。agent-device（Callstack）和 Argent（Software Mansion）让 agent 读无障碍树、点击、截图、看日志；agent-device 还能把操作录成脚本在 CI 回放，或执行 Maestro YAML [36][37]。GitHub 托管的 2 vCPU Linux runner 支持 KVM 加速 Android 模拟器 [43]。Detox 官方只测到 RN 0.84，而 SDK 58 是 0.88 [42]，不宜做主力。iOS 上 Maestro 只能用文字或 `aria-label` 定位 WebView 里的元素 [40]，这对 DOM 组件和 Capacitor 不利。
 - **对[手机端技术栈](https://github.com/pigcode/monorepo/issues/95)：** 选 Expo 时要一起定下：放在 `frontend/apps/mobile`；React 版本对齐（桌面端固定 19.2.3，SDK 58 要 19.3.0 [4][65]）；把时间线逻辑拆成不含 DOM 的包；列表、Markdown、键盘三件套；原生扩展用 Swift 写。决定前做一次技术验证：用真实长会话测 React Native 时间线（Enriched Markdown + LegendList）的流式输出和滚动，同时把现有 `ChatView` 放进一个 DOM 组件对照测一次。
 - **对[手机端怎么测试和验收](https://github.com/pigcode/monorepo/issues/100)：** 分三层。纯逻辑继续用 vitest；界面流程用 Maestro 在 iOS 模拟器（Mac）和 Android 模拟器（Linux + KVM）上跑，截图比对要固定机型和系统版本；真机验收在开发者的 iPhone 上手工做，因为 Maestro 不支持 iOS 真机，免费账号的包 7 天过期 [28][39]。agent 做探索性验证时用 agent-device 或 Argent，拿截图和日志当证据 [36][37]。
 
@@ -40,7 +40,7 @@
 - Apple 怎样把 4.2.7 和 4.2.3(i) 适用到「连自己电脑的客户端」。先例只说明这类应用能上架，不说明审核依据。
 - Happy 从 React Native 改成原生的原因。
 - Expo 有没有官方的手表应用支持。本次只确认了 iOS 扩展的通用机制 [60]。
-- Flutter 和 Compose Multiplatform 的键盘和长列表表现。本次只核对了版本和稳定状态。
+- Flutter 和 Compose Multiplatform 的键盘和长列表表现，以及 Compose Multiplatform 的跨平台加密库。本次只核对了版本、稳定状态和 Flutter 的加密包。
 
 ## 1. 现有代码能复用什么
 
@@ -121,7 +121,7 @@
   - `freeze` 在切到表情面板或底部弹层时冻结布局；
   - 可以与 FlashList、LegendList 一起用。
 - 输入框：现在的 TipTap 输入框支持 `@` 引用会话、`/` 命令、`$` Skill [65]。React Native 里可以用 `TextInput` 加触发词检测和候选列表，或者用 Enriched Markdown 的富文本输入（支持 mention）[15]。TipTap 本身只能放在 WebView 里（TenTap 或 DOM 组件）[20]。
-- 手势：Expo Router 的 `Stack` 和 `NativeTabs` 用系统自己的导航栏和返回手势，SDK 58 起标为稳定 [2]。
+- 手势和导航：Expo Router 的 `Stack` 和 `NativeTabs` 用系统自己的导航栏和标签栏，SDK 58 起标为稳定 [2]。
 - 深色模式：各候选都由系统外观接口提供，本次没有逐一核对文档。
 
 ### 2.6 原生能力
@@ -229,7 +229,7 @@
 ## 8. 自动化测试和视觉回归
 
 - **开发者的 Mac 上**：
-  - iOS 模拟器：Xcode 27 用 Device Hub 取代了 Simulator.app，`simctl` 的说明改为「控制 Device Hub 里的模拟设备」，仍然从命令行启动模拟器 [44]。Expo 文档的 CI 示例就是用 `xcrun simctl boot`、`bootstatus`、`install` [35]。
+  - iOS 模拟器：Xcode 27 用 Device Hub 取代了 Simulator.app [2]，`simctl` 的说明改为「控制 Device Hub 里的模拟设备」，仍然从命令行启动模拟器 [44]。Expo 文档的 CI 示例就是用 `xcrun simctl boot`、`bootstatus`、`install` [35]。
   - Maestro CLI 2.12.1（2026-11-02）[41]：iOS 只支持模拟器，Android 支持模拟器和真机 [39]；2.2.0 起有 `assertScreenshot`，默认 95% 相似度阈值，可以用 `cropOn` 只比某个元素，失败时生成差异图 [38]。
   - agent-device（Callstack，MIT）：读无障碍快照、点击、输入、截图、录屏、看日志和网络请求，把一次操作录成 `.ad` 脚本在 CI 回放，也能执行 Maestro YAML；支持真机，但要做配对和签名设置 [37]。
   - Argent（Software Mansion）：通过 MCP 让 agent 控制、调试、分析模拟器上的应用，只支持模拟器 [36]。
