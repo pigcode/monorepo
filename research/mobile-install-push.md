@@ -176,7 +176,60 @@ Xcode 直接安装到真机需要在手机上打开开发者模式；App Store �
 
 ### 6.4 聚合服务、UnifiedPush 和自建长连接（待补）
 
-## 7. 不用自家 APNs 权限也能到达 iPhone 的通道（待补）
+## 7. 不用自家 APNs 权限也能到达 iPhone 的通道
+
+免费 Apple ID 阶段手机端自己收不到推送（第 1 节）。这时可以让电脑上的 Host 调用一个现成 App 的推送接口，由那个 App 在 iPhone 上弹通知；用户点开通知再跳进手机端。下表的「App Store 中国区」一列是用 Apple 的 iTunes Search/Lookup API 在 2026-11-21 查询的结果 [44]。
+
+| 通道 | App Store 中国区 | 消息怎么到 iPhone | 第三方能看到什么 | Host 怎么触发 |
+|---|---|---|---|---|
+| Bark | 有（「Bark - 给你的手机发推送」1.6.4）[44] | 发送端 → Bark 服务端 → APNs → Bark App [45] | 用官方服务器 `api.day.app` 时作者能看到请求日志；自建服务端加推送加密后，Bark 服务端和 APNs 都看不到正文 [45][47] | HTTP GET/POST 到 `https://<服务端>/<device_key>`，参数有 `title`、`body`、`url`、`level`、`group`、`ciphertext` 等 [46] |
+| ntfy | 有（ntfy 1.7.0）[44] | 自建 ntfy 服务器 → ntfy.sh → Firebase → APNs → ntfy App，App 再回自建服务器取正文 [48] | ntfy.sh、Firebase、APNs 只拿到消息 ID 和 topic URL 的 SHA256；正文只在自建服务器和手机之间传 [48] | HTTP POST 到自建服务器的 topic |
+| 企业微信群机器人 | 有（企业微信）[44] | 企业微信服务器 → 企业微信 App 的推送 | 全部正文经过腾讯服务器 | HTTP POST 到 `https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=…` [49] |
+| 飞书自定义机器人 | 有（飞书）[44] | 飞书服务器 → 飞书 App 的推送 | 全部正文经过飞书服务器 | HTTP POST 到 `https://open.feishu.cn/open-apis/bot/v2/hook/…` [50] |
+| 钉钉自定义机器人 | 有（钉钉）[44] | 钉钉服务器 → 钉钉 App 的推送 | 全部正文经过钉钉服务器 | HTTP POST 到 `https://oapi.dingtalk.com/robot/send?access_token=…` [51][52] |
+| Telegram Bot | 没有（Telegram Messenger 在中国区查不到）[44] | Telegram 服务器 → Telegram App 的推送 | 全部正文经过 Telegram 服务器 | Bot API `sendMessage` |
+
+### 7.1 Bark
+
+- Bark 是开源 iOS App（MIT 许可），服务端 bark-server 也开源，可以用 Docker 或二进制自建 [45][47]。
+- bark-server 源码里直接写着 Bark App 的 APNs topic `me.fin.bark`、Key ID 和 Team ID，并内置了对应的 APNs 私钥，连接 APNs production [47]。所以自建的 bark-server 不经过作者的服务器，直接把推送发给 APNs。
+- 推送加密：在 App 里设置自定义 AES 密钥，发送端把参数 JSON 加密后放进 `ciphertext`。Bark 文档写明这样「推送内容在传输过程中就不会被 Bark 服务器和苹果 APNs 服务器获取或泄露」[45]。
+- `level=timeSensitive` 在专注模式下也能显示；`level=critical` 是重要警告，要用户在 App 里授权，需要 iOS 15 以上 [46]。这正好补上免费账号没有 Time Sensitive Notifications 能力的缺口（第 1.1 节）。
+- `url` 参数：点击推送时跳转，支持 URL Scheme 和 Universal Link [46]。手机端注册自定义 URL Scheme 不需要任何 capability，所以点通知可以直接打开手机端里对应的会话（推断）。
+- Bark 的隐私说明还指出，App Store 上的版本由 GitHub Actions 从公开源码构建并上传，可以用构建号核对 [45]。
+- 大陆可靠性：送达靠 APNs（见 6.1）。官方服务器 `api.day.app` 在大陆能否稳定访问，未经一手来源证实；自建在开发者的云服务器上可以避开这个依赖。
+
+### 7.2 ntfy
+
+- iOS 限制后台运行，ntfy 无法在没有中心服务器的情况下做即时推送。自建服务器要设置 `upstream-base-url`（默认指向 `https://ntfy.sh`），把每条消息转成一个 poll request 发给上游 [48]。
+- 流程：iOS App 订阅自建服务器上的 topic，同时订阅以该 topic URL 的 SHA256 命名的 Firebase topic；自建服务器收到消息后，向 ntfy.sh 发一个只含消息 ID（`X-Poll-ID`）和 topic 哈希的请求；ntfy.sh 经 Firebase 转 APNs 送到手机；手机再回自建服务器取正文 [48]。上游收到的正文固定是「New message」，手机连不上自建服务器时就显示这句 [48]。
+- 不设上游时通知仍会到，但可能晚几个小时 [48]。
+- 大陆可靠性：自建服务器要能访问 ntfy.sh，手机要能访问自建服务器；ntfy.sh 在大陆能否访问，未经一手来源证实。正文不经过第三方，这是它比 Bark 官方服务器、各家机器人好的地方。
+
+### 7.3 企业微信、飞书、钉钉机器人
+
+| | 企业微信群机器人 | 飞书自定义机器人 | 钉钉自定义机器人 |
+|---|---|---|---|
+| 频率限制 | 每个机器人 20 条/分钟 [49] | 单租户单机器人 100 次/分钟、5 次/秒；避开整点、半点 [50] | 每个机器人 20 条/分钟，超过限流 10 分钟 [51][52] |
+| 消息大小和格式 | text、markdown、markdown_v2、图片、图文、文件、语音、模板卡片；markdown 不超过 4096 字节 [49] | 文本、富文本、图片、群名片、消息卡片；请求体不超过 20 KB [50] | text、link、markdown、actionCard、feedCard 等 [51] |
+| 安全设置 | webhook 地址本身就是凭据，文档要求不要泄露 [49] | 自定义关键词、IP 白名单（最多 10 个）、签名校验 [50] | 自定义关键词（最多 10 个）、加签、IP 白名单 [53] |
+
+- 三者都只能往群里发：开发者要建一个只有自己的群（或企业/租户），机器人消息作为群消息出现，由各自 App 的推送送到手机（推断）。
+- 消息全文以明文经过腾讯、飞书或钉钉的服务器，不能端到端加密（推断：它们只接受明文消息体 [49][50][51]）。所以只能发「会话 X 跑完了」「会话 Y 等你审批」这类摘要，不能放代码和 diff。
+- 三家都是国内服务，App 都在中国区 App Store [44]，大陆网络下最不受网络环境影响（推断）。
+- 点击跳转：消息里可以放链接，飞书卡片按钮的 `open_url` 还能分别填 `ios_url`、`android_url` [50]。这些链接能否在 App 内直接拉起手机端的自定义 URL Scheme，未经一手来源证实。
+
+### 7.4 Telegram Bot
+
+- 同一会话里每秒不超过 1 条，群里每分钟不超过 20 条 [54]。
+- Telegram Messenger 不在中国区 App Store [44]，开发者要用其他地区的 Apple 账户下载；在大陆网络下要开代理才能连上 Telegram 服务器（未经一手来源证实）。这条对开发者不合适。
+
+### 7.5 小结
+
+- 免费阶段最省事的是 Bark：App 在中国区可下载，自建 bark-server 直连 APNs，正文可以加密，支持 Time Sensitive，点开能跳回手机端。
+- 想让正文完全不经第三方，用 ntfy 自建，代价是要能访问 ntfy.sh，而且手机要能连上自建服务器。
+- 企业微信、飞书、钉钉在大陆最稳，但正文明文经过平台，适合只发摘要。
+- 这些通道都只是过渡：付费后改成手机端自己收 APNs（第 2.3 节）。Host 里把它们做成可替换的「通知通道」，以后不需要改通知的触发逻辑（推断）。
 
 ## 8. Expo（待补）
 
@@ -229,3 +282,14 @@ Xcode 直接安装到真机需要在手机上打开开发者模式；App Store �
 41. 小米澎湃OS开发者平台，小米推送 2026 年消息分类新规（2026-08-07 更新）: https://dev.mi.com/xiaomihyperos/documentation/detail?pId=2321
 42. 小米澎湃OS开发者平台，关于订阅消息及消息分类新规的通知（2026-07-02 更新）: https://dev.mi.com/xiaomihyperos/documentation/detail?pId=2322
 43. 本机实测：在调研用的 Mac（macOS 15.6.1、Apple silicon、Xcode 16.4）上运行 `xcrun simctl help push` 的输出。这不是公开来源。
+44. Apple iTunes Search / Lookup API，2026-11-21 查询中国区（`country=cn`）和美国区（`country=us`）：Bark `id=1403753865`、ntfy `id=1625396347`、Expo Go `id=982107779`、Telegram Messenger `id=686449807`、TestFlight `id=899247664`、企业微信 `id=1087897068`、飞书 `id=1401729613`、钉钉 `id=930368978`。例如 https://itunes.apple.com/lookup?id=686449807&country=cn
+45. Bark 文档（仓库 Finb/Bark 的 docs 目录）：隐私说明 https://github.com/Finb/Bark/blob/master/docs/privacy.md ，推送加密 https://github.com/Finb/Bark/blob/master/docs/encryption.md ，部署 https://github.com/Finb/Bark/blob/master/docs/deploy.md
+46. Bark 文档，推送参数: https://github.com/Finb/Bark/blob/master/docs/params.md
+47. bark-server 源码: https://github.com/Finb/bark-server/blob/master/apns/apns.go ，https://github.com/Finb/bark-server/blob/master/apns/apns_certs.go
+48. ntfy 文档，Configuring the ntfy server: iOS instant notifications: https://docs.ntfy.sh/config/#ios-instant-notifications （源文件 https://github.com/binwiederhier/ntfy/blob/main/docs/config.md ）
+49. 企业微信开发者中心，群机器人配置说明（消息推送）: https://developer.work.weixin.qq.com/document/path/91770
+50. 飞书开放平台，自定义机器人使用指南: https://open.feishu.cn/document/client-docs/bot-v3/add-custom-bot
+51. 钉钉开放平台，自定义机器人发送群消息: https://open.dingtalk.com/document/orgapp/custom-robots-send-group-messages
+52. 钉钉开放平台，自定义机器人接入: https://open.dingtalk.com/document/group/custom-robot-access
+53. 钉钉开放平台，自定义机器人安全设置: https://open.dingtalk.com/document/orgapp/customize-robot-security-settings
+54. Telegram, Bots FAQ（My bot is hitting limits）: https://core.telegram.org/bots/faq
